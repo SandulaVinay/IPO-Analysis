@@ -4,8 +4,8 @@ Coordinates alert scheduling, idempotency checks, delivery tracking, and automat
 Primary (WhatsApp) -> Secondary (Email) -> Backup (SMS / Console).
 """
 
-from datetime import datetime, date
-from typing import Dict, Any, List, Optional
+from datetime import datetime
+from typing import Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.common.config import settings
 from src.common.logging import logger
@@ -33,9 +33,7 @@ class NotificationOrchestrator:
         ]
 
     async def trigger_t_minus_2_alert(self, ipo_id: int, analysis_data: Dict[str, Any]) -> bool:
-        """
-        Dispatches T-2 calendar day alert or immediate verified alert.
-        """
+        """Dispatches T-2 calendar day alert or immediate verified alert."""
         ipo = await self.repo.get_ipo_by_id(ipo_id)
         if not ipo:
             return False
@@ -82,14 +80,12 @@ class NotificationOrchestrator:
             scheduled_for=datetime.utcnow(),
             idempotency_key=idempotency_key,
         )
-
         if alert.is_dispatched:
             return True
 
         score = analysis_data.get("score_data", {}).get("overall_score")
         verdict = analysis_data.get("score_data", {}).get("verdict")
         gmp = analysis_data.get("gmp", {}).get("gmp_value", "N/A")
-
         subject = f"🔔 IPO Reminder: {ipo.company_name} opens in 2 days"
         content = f"""🔔 IPO REMINDER
 
@@ -107,17 +103,11 @@ GMP:
 ₹{gmp}
 
 Review the full analysis before making your decision."""
-
         success = await self._dispatch_with_fallback(alert=alert, subject=subject, content=content)
         if success:
             alert.is_dispatched = True
             alert.dispatched_at = datetime.utcnow()
-            await self.repo.transition_state(
-                ipo_id=ipo_id,
-                new_status="SIX_HOUR_REMINDER_SENT",
-                trigger="NOTIFICATION_ORCHESTRATOR",
-                notes="6-Hour reminder dispatched",
-            )
+            await self.repo.transition_state(ipo_id=ipo_id, new_status="SIX_HOUR_REMINDER_SENT", trigger="NOTIFICATION_ORCHESTRATOR", notes="6-Hour reminder dispatched")
             await self.session.commit()
         return success
 
@@ -128,20 +118,13 @@ Review the full analysis before making your decision."""
             return False
 
         idempotency_key = f"T1_{ipo.symbol}_{ipo.verified_open_date}"
-        alert = await self.repo.schedule_alert(
-            ipo_id=ipo_id,
-            alert_type="T_MINUS_1",
-            scheduled_for=datetime.utcnow(),
-            idempotency_key=idempotency_key,
-        )
-
+        alert = await self.repo.schedule_alert(ipo_id=ipo_id, alert_type="T_MINUS_1", scheduled_for=datetime.utcnow(), idempotency_key=idempotency_key)
         if alert.is_dispatched:
             return True
 
         score = analysis_data.get("score_data", {}).get("overall_score")
         verdict = analysis_data.get("score_data", {}).get("verdict")
         gmp = analysis_data.get("gmp", {}).get("gmp_value", "N/A")
-
         subject = f"🚨 IPO OPENS TOMORROW: {ipo.company_name}"
         content = f"""🚨 IPO OPENS TOMORROW
 
@@ -161,64 +144,63 @@ GMP:
 ₹{gmp}
 
 Review the analysis before deciding."""
-
         success = await self._dispatch_with_fallback(alert=alert, subject=subject, content=content)
         if success:
             alert.is_dispatched = True
             alert.dispatched_at = datetime.utcnow()
-            await self.repo.transition_state(
-                ipo_id=ipo_id,
-                new_status="T_MINUS_1_REMINDER_SENT",
-                trigger="NOTIFICATION_ORCHESTRATOR",
-                notes="T-1 day-before reminder dispatched",
-            )
+            await self.repo.transition_state(ipo_id=ipo_id, new_status="T_MINUS_1_REMINDER_SENT", trigger="NOTIFICATION_ORCHESTRATOR", notes="T-1 day-before reminder dispatched")
             await self.session.commit()
         return success
 
+    @staticmethod
+    def _recipient_for_provider(provider) -> str:
+        """Return a recipient valid for the provider being attempted."""
+        name = provider.channel_name
+        if name == "WHATSAPP":
+            return settings.whatsapp_recipient_phone
+        if name == "EMAIL":
+            return settings.email_to
+        if name == "SMS":
+            return settings.sms_recipient_phone
+        return settings.email_to or settings.whatsapp_recipient_phone
+
     async def _dispatch_with_fallback(self, alert: Alert, subject: str, content: str) -> bool:
-        """
-        Execute fallback chain:
-        WhatsApp -> Email -> SMS -> Console
-        """
-        # Create notification record
+        """Execute fallback chain: WhatsApp -> Email -> SMS -> Console."""
         notif = Notification(
             alert_id=alert.id,
             channel="MULTI_CHANNEL_FALLBACK",
-            recipient=settings.whatsapp_recipient_phone or settings.email_to,
+            recipient=settings.email_to or settings.whatsapp_recipient_phone,
             status="QUEUED",
             message_content=content,
         )
         self.session.add(notif)
         await self.session.flush()
 
-        # Iterate providers in priority order
         for idx, provider in enumerate(self.providers, 1):
-            logger.info(f"Attempting notification dispatch via {provider.channel_name}...")
-            res = await provider.send_notification(
-                recipient=notif.recipient,
-                subject=subject,
-                content=content,
-            )
+            recipient = self._recipient_for_provider(provider)
+            logger.info(f"Attempting notification dispatch via {provider.channel_name} to configured recipient...")
+            res = await provider.send_notification(recipient=recipient, subject=subject, content=content)
 
-            # Record attempt
             attempt = NotificationAttempt(
                 notification_id=notif.id,
                 attempt_number=idx,
-                status="SUCCESS" if res["success"] else "FAILED",
+                status="SUCCESS" if res.get("success") and res.get("delivered", False) else ("MOCKED" if res.get("mocked") else "FAILED"),
                 provider_message_id=res.get("message_id"),
                 error_message=res.get("error"),
             )
             self.session.add(attempt)
             await self.session.flush()
 
-            if res["success"]:
+            if res.get("success") and res.get("delivered", False):
                 notif.status = "DELIVERED"
                 notif.channel = provider.channel_name
+                notif.recipient = recipient
                 notif.delivered_at = datetime.utcnow()
                 logger.info(f"Notification delivered successfully via {provider.channel_name} (Msg ID: {res.get('message_id')})")
                 return True
-            else:
-                logger.warning(f"{provider.channel_name} dispatch failed: {res.get('error')}. Falling back to next channel...")
+
+            logger.warning(f"{provider.channel_name} dispatch did not deliver: {res.get('error') or 'mocked/not delivered'}. Falling back to next channel...")
 
         notif.status = "FAILED"
+        await self.session.flush()
         return False

@@ -1,13 +1,10 @@
-name: Automated IPO Discovery & Alert Scheduler
+name: IPO Email Delivery Test
 
 on:
-  schedule:
-    # Runs at 08:30 IST (03:00 UTC) and 14:30 IST (09:00 UTC) every weekday
-    - cron: '0 3,9 * * 1-5'
   workflow_dispatch:
 
 jobs:
-  run-ipo-intelligence:
+  test-email:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -24,14 +21,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Discovery & Notifications
+      - name: Send Real SMTP Test Email
         env:
           APP_ENV: production
-          ENABLE_AUTOMATED_SCHEDULER: "true"
-          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP }}
-          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
-          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
-          WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
           ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL }}
           EMAIL_PROVIDER: smtp
           SMTP_HOST: smtp.gmail.com
@@ -40,6 +32,4 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-        run: |
-          python -m src.cli.main discover
-          python -m src.cli.main health
+        run: python scripts/test_email.py

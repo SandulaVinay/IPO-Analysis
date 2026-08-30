@@ -1,0 +1,61 @@
+name: IPO Email Delivery Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-email:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Send test email through Gmail SMTP
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          python - <<'PY'
+          import os
+          import smtplib
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+
+          user = os.environ.get("SMTP_USER", "").strip()
+          password = os.environ.get("SMTP_PASSWORD", "")
+          recipient = os.environ.get("EMAIL_TO", "").strip()
+
+          missing = []
+          if not user: missing.append("SMTP_USER")
+          if not password: missing.append("SMTP_PASSWORD")
+          if not recipient: missing.append("EMAIL_TO")
+          if missing:
+              raise SystemExit("Missing GitHub Actions secrets: " + ", ".join(missing))
+
+          msg = MIMEMultipart("alternative")
+          msg["Subject"] = "[IPO Analysis] Email Configuration Test"
+          msg["From"] = user
+          msg["To"] = recipient
+          msg.attach(MIMEText(
+              "This is a real SMTP delivery test from the IPO Analysis GitHub Action.\n\n"
+              "If you received this email, Gmail SMTP configuration is working.\n\n"
+              "The test does not depend on an IPO being discovered or qualifying for an alert.",
+              "plain",
+              "utf-8",
+          ))
+
+          print(f"SMTP user configured: {'yes' if user else 'no'}")
+          print(f"Recipient configured: {'yes' if recipient else 'no'}")
+          print("Connecting to smtp.gmail.com:587 with STARTTLS...")
+          with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
+              server.ehlo()
+              server.starttls()
+              server.ehlo()
+              server.login(user, password)
+              server.sendmail(user, [recipient], msg.as_string())
+
+          print("SUCCESS: Gmail SMTP accepted the test message for delivery.")
+          PY

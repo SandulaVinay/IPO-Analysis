@@ -4,8 +4,8 @@ Loads configuration from environment variables and provides strict types and def
 """
 
 from pathlib import Path
-from typing import Literal
-from pydantic import Field
+from typing import Literal, Any
+from pydantic import Field, field_validator, ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +15,80 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @field_validator(
+        "enable_automated_scheduler",
+        "enable_whatsapp",
+        "enable_email",
+        "enable_sms",
+        mode="before",
+    )
+    @classmethod
+    def parse_bool(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            v_clean = v.strip().lower()
+            if v_clean in ("true", "1", "t", "yes", "y", "enabled", "on"):
+                return True
+            return False
+        return bool(v)
+
+    @field_validator(
+        "port",
+        "t_minus_days_target",
+        "reminder_hours_after_alert",
+        "final_reminder_days_before",
+        "smtp_port",
+        "max_permissible_conflicts",
+        mode="before",
+    )
+    @classmethod
+    def parse_int_fields(cls, v: Any, info: ValidationInfo) -> Any:
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return cls.model_fields[info.field_name].default
+        if isinstance(v, str):
+            try:
+                return int(v.strip())
+            except ValueError:
+                return cls.model_fields[info.field_name].default
+        return v
+
+    @field_validator(
+        "weight_business_quality",
+        "weight_financial_quality",
+        "weight_management_governance",
+        "weight_ipo_structure",
+        "weight_valuation",
+        "weight_growth_industry",
+        "weight_risk",
+        "weight_market_sentiment",
+        "min_data_completeness_ratio",
+        mode="before",
+    )
+    @classmethod
+    def parse_float_fields(cls, v: Any, info: ValidationInfo) -> Any:
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return cls.model_fields[info.field_name].default
+        if isinstance(v, str):
+            try:
+                return float(v.strip())
+            except ValueError:
+                return cls.model_fields[info.field_name].default
+        return v
+
+    @field_validator(
+        "app_env",
+        "whatsapp_provider",
+        "email_provider",
+        "sms_provider",
+        mode="before",
+    )
+    @classmethod
+    def parse_literal_fields(cls, v: Any, info: ValidationInfo) -> Any:
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return cls.model_fields[info.field_name].default
+        return v
 
     # General App Settings
     app_env: Literal["development", "staging", "production"] = "development"

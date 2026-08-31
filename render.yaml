@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: indian-ipo-intelligence
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m src.cli.main serve --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: APP_ENV
+        value: production
+      - key: TIMEZONE
+        value: Asia/Kolkata
+      - key: ENABLE_AUTOMATED_SCHEDULER
+        value: "true"

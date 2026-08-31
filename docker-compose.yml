@@ -1,0 +1,20 @@
+services:
+  ipo-intelligence:
+    build: .
+    container_name: ipo_intelligence_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=INFO
+      - TIMEZONE=Asia/Kolkata
+      - PORT=8000
+      - DATABASE_URL=sqlite+aiosqlite:////app/storage/ipo_system.db
+      - ENABLE_AUTOMATED_SCHEDULER=true
+    volumes:
+      - ipo_data:/app/storage
+
+volumes:
+  ipo_data:
+    driver: local

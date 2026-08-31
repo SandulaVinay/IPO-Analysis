@@ -1,0 +1,41 @@
+name: Automated IPO Discovery & Alert Scheduler
+
+on:
+  schedule:
+    # Runs at 08:30 IST (03:00 UTC) and 14:30 IST (09:00 UTC) every weekday
+    - cron: '0 3,9 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  run-ipo-intelligence:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Discovery & Notifications
+        env:
+          APP_ENV: production
+          ENABLE_AUTOMATED_SCHEDULER: "true"
+          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP }}
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
+          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          python -m src.cli.main discover
+          python -m src.cli.main health

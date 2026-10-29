@@ -37,3 +37,24 @@ def test_state_store_does_not_mark_failed_events_as_processed(tmp_path):
         channel=None,
     )
     assert not store.has_processed_event("T2_EXAMPLE_2026-11-10")
+
+
+
+def test_watchlist_symbols_are_validated_before_use(tmp_path):
+    store = StateStore(str(tmp_path))
+    (tmp_path / "watchlist.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "companies": [{"symbol": "M&M", "company_name": "Mahindra & Mahindra Limited"}],
+        }),
+        encoding="utf-8",
+    )
+    assert store.load_watchlist()[0]["symbol"] == "M&M"
+
+    (tmp_path / "watchlist.json").write_text(
+        json.dumps({"schema_version": 1, "companies": [{"symbol": "../../evil"}]}),
+        encoding="utf-8",
+    )
+    import pytest
+    with pytest.raises(RuntimeError, match="unsupported characters"):
+        store.load_watchlist()

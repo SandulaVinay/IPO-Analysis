@@ -98,7 +98,8 @@ class EmailProvider(NotificationProvider):
             logger.info(f"Email successfully accepted by SMTP server for {to_addr}")
             return {
                 "success": True,
-                "delivered": True,
+                "accepted": True,
+                "delivered": False,
                 "mocked": False,
                 "message_id": message_id,
                 "error": None,

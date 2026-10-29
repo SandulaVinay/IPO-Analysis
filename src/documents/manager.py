@@ -57,6 +57,15 @@ class DocumentManager:
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
 
+    async def has_source_url(self, ipo_id: int, source_url: str) -> bool:
+        result = await self.session.execute(
+            select(DocumentVersion.id).join(IPODocument).where(
+                IPODocument.ipo_id == ipo_id,
+                DocumentVersion.source_url == source_url,
+            ).limit(1)
+        )
+        return result.first() is not None
+
     async def ingest_document(
         self,
         ipo_id: int,

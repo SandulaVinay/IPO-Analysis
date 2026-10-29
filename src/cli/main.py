@@ -38,14 +38,16 @@ async def cmd_discover():
             engine = DiscoveryEngine(session)
             ipos = await engine.run_discovery()
             saved = await store.save_ipo_registry(session)
+            run_status = getattr(engine, "source_status", "SUCCESS")
             store.record_run(
                 command="discover",
-                status="SUCCESS",
-                detail=f"restored={restored}; discovered={len(ipos)}; registry_total={saved}",
+                status=run_status,
+                detail=f"restored={restored}; discovered={len(ipos)}; registry_total={saved}; source_coverage={run_status}",
             )
+            style = "green" if run_status == "SUCCESS" else "yellow"
             console.print(
-                f"[bold green]Discovery complete. {len(ipos)} new/updated candidates; "
-                f"{saved} public registry records persisted.[/bold green]"
+                f"[bold {style}]Discovery {run_status.lower()}. {len(ipos)} new/updated candidates; "
+                f"{saved} public registry records persisted.[/bold {style}]"
             )
     except Exception as exc:
         store.record_run(command="discover", status="FAILED", detail=type(exc).__name__)

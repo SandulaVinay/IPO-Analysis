@@ -1,7 +1,7 @@
 import pytest
 from types import SimpleNamespace
 
-from src.ingestion.scrapers import _parse_official_issue_tables, PortalScraper
+from src.ingestion.scrapers import _parse_official_issue_tables, _has_recognized_issue_table, PortalScraper
 from src.notifications.whatsapp import WhatsAppProvider
 from src.ingestion import client as client_module
 from src.common.config import settings
@@ -249,3 +249,14 @@ async def test_email_provider_rejects_attachments_outside_reports_directory(tmp_
     )
     assert result["success"] is False
     assert "inside the reports directory" in result["error"]
+
+
+
+def test_ipo_source_layout_validation_distinguishes_empty_table_from_changed_layout():
+    valid_empty_table = """
+    <table>
+      <tr><th>Company Name</th><th>Issue Start Date</th><th>Issue End Date</th></tr>
+    </table>
+    """
+    assert _has_recognized_issue_table(valid_empty_table) is True
+    assert _has_recognized_issue_table("<html><body>Service unavailable</body></html>") is False

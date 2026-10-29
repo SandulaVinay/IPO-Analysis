@@ -110,6 +110,79 @@ def _write_candidate_report(
     return report_path
 
 
+async def _notify_new_document(
+    *,
+    store: StateStore,
+    symbol: str,
+    company_name: str,
+    document_type: str,
+    document_title: str,
+    source_url: str,
+    document_hash: str,
+    version_label: str,
+    page_count: int,
+    evidence_count: int,
+    report_pdf: Path,
+) -> None:
+    """Send one WhatsApp-first alert per document hash, with email fallback."""
+    event_key = "PROSPECTUS_" + hashlib.sha256(
+        f"{symbol}|{source_url}|{document_hash}".encode("utf-8")
+    ).hexdigest()[:32]
+    if store.has_processed_event(event_key):
+        return
+    run_id = os.getenv("GITHUB_RUN_ID")
+    repository = os.getenv("GITHUB_REPOSITORY", "SandulaVinay/IPO-Analysis")
+    artifact_link = f"\\nWorkflow run: https://github.com/{repository}/actions/runs/{run_id}" if run_id else ""
+    message = (
+        "New official IPO document detected.\\n\\n"
+        f"Company: {company_name} ({symbol})\\n"
+        f"Document: {document_title} ({document_type}, {version_label})\\n"
+        f"Pages: {page_count}; candidate passages: {evidence_count}\\n"
+        f"Official source: {source_url}\\n\\n"
+        "The attached PDF is an evidence-review report. Extracted passages remain UNVERIFIED; "
+        "this alert is not an investment recommendation."
+        + artifact_link
+    )
+    try:
+        result = await WhatsAppProvider().send_notification(
+            recipient=settings.whatsapp_recipient_phone,
+            subject=f"New IPO document: {company_name} ({symbol})",
+            content=message,
+            metadata={"attachment_path": str(report_pdf)},
+        )
+        channel = "WHATSAPP"
+        accepted = bool(result.get("success") and (result.get("accepted") or result.get("delivered")))
+        if not accepted:
+            result = await EmailProvider().send_notification(
+                recipient=settings.email_to,
+                subject=f"New IPO document: {company_name} ({symbol})",
+                content=message,
+                metadata={"attachments": [str(report_pdf)]},
+            )
+            channel = "EMAIL"
+            accepted = bool(result.get("success") and (result.get("accepted") or result.get("delivered")))
+        if accepted:
+            store.record_event(
+                event_key,
+                event_type="PROSPECTUS_DOCUMENT",
+                symbol=symbol,
+                event_date=datetime.now(timezone.utc).date().isoformat(),
+                status="ACCEPTED",
+                channel=channel,
+            )
+        elif settings.enable_whatsapp or settings.enable_email:
+            store.record_event(
+                event_key,
+                event_type="PROSPECTUS_DOCUMENT",
+                symbol=symbol,
+                event_date=datetime.now(timezone.utc).date().isoformat(),
+                status="FAILED",
+                channel=None,
+            )
+    except Exception as exc:
+        logger.warning("Prospectus notification failed (%s); report artifact remains available.", type(exc).__name__)
+
+
 class DocumentManager:
     """Manages downloading, cryptographic hashing, and version tracking of IPO filings."""
 

@@ -259,16 +259,16 @@ async def run_pipeline_for_ipo(ipo, session: AsyncSession) -> Dict[str, Any]:
 
     # Verification & Completeness
     facts_data = [
-        {"field_name": "verified_open_date", "source_name": "NSE", "verification_status": "VERIFIED"},
-        {"field_name": "verified_close_date", "source_name": "NSE", "verification_status": "VERIFIED"},
-        {"field_name": "min_price", "source_name": "RHP", "verification_status": "VERIFIED"},
-        {"field_name": "max_price", "source_name": "RHP", "verification_status": "VERIFIED"},
-        {"field_name": "lot_size", "source_name": "RHP", "verification_status": "VERIFIED"},
-        {"field_name": "issue_size_cr", "source_name": "RHP", "verification_status": "VERIFIED"},
-        {"field_name": "fresh_issue_cr", "source_name": "RHP", "verification_status": "VERIFIED"},
-        {"field_name": "revenue_latest", "source_name": "RHP", "verification_status": "VERIFIED"},
-        {"field_name": "pat_latest", "source_name": "RHP", "verification_status": "VERIFIED"},
-        {"field_name": "cfo_latest", "source_name": "RHP", "verification_status": "VERIFIED"},
+        {"field_name": "verified_open_date", "source_name": "NSE", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "verified_close_date", "source_name": "NSE", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "min_price", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "max_price", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "lot_size", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "issue_size_cr", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "fresh_issue_cr", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "revenue_latest", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "pat_latest", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "cfo_latest", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
     ]
     ipo_dict = {
         "symbol": ipo.symbol,

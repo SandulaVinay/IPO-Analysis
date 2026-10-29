@@ -290,7 +290,8 @@ def _report_text(item: Dict[str, Any], metrics: Dict[str, Any]) -> str:
         f"- **Audited status:** {item.get('audit_status') or 'Not specified'}\n"
         f"- **Statement basis:** {item.get('consolidation') or 'Not specified'}\n"
         f"- **Official source:** {item['source_url']}\n"
-        f"- **Filing attachment:** {attachment}\n\n"
+        f"- **Filing attachment:** {attachment}\n"
+        f"- **Details / PDF attachment:** {item.get('details_url') or 'Not available'}\n\n"
         f"## Extracted financial metrics\n\n{analysis}\n{analysis_note}\n"
     )
 
@@ -373,6 +374,7 @@ async def monitor_financial_results() -> Dict[str, Any]:
                 f"Period: {item.get('relating_to') or 'Not specified'}\n"
                 f"Broadcast: {item['broadcast_time']}\n"
                 f"Official filing: {attachment or item['source_url']}\n"
+                + (f"Details PDF: {item['details_url']}\n" if item.get("details_url") else "")
             )
             run_id = os.getenv("GITHUB_RUN_ID")
             repository = os.getenv("GITHUB_REPOSITORY", "SandulaVinay/IPO-Analysis")

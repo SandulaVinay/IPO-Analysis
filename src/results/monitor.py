@@ -82,7 +82,10 @@ def parse_financial_results_page(html: str, symbol: str, page_url: str) -> List[
         relating_i = index_for("relating to", "relating")
         broadcast_i = index_for("broadcast date", "broadcast")
         audit_i = index_for("audited unaudited", "audited")
+        cumulative_i = index_for("cumulative non cumulative", "cumulative")
         consolidation_i = index_for("consolidated non consolidated", "consolidated")
+        period_type_i = index_for("period")
+        submission_i = index_for("type of submission", "submission")
         if period_i is None or broadcast_i is None:
             continue
 
@@ -97,7 +100,10 @@ def parse_financial_results_page(html: str, symbol: str, page_url: str) -> List[
             company = _clean(cells[company_i].get_text(" ", strip=True)) if company_i is not None and company_i < len(cells) else ""
             relating = _clean(cells[relating_i].get_text(" ", strip=True)) if relating_i is not None and relating_i < len(cells) else ""
             audit = _clean(cells[audit_i].get_text(" ", strip=True)) if audit_i is not None and audit_i < len(cells) else ""
+            cumulative = _clean(cells[cumulative_i].get_text(" ", strip=True)) if cumulative_i is not None and cumulative_i < len(cells) else ""
             consolidation = _clean(cells[consolidation_i].get_text(" ", strip=True)) if consolidation_i is not None and consolidation_i < len(cells) else ""
+            period_type = _clean(cells[period_type_i].get_text(" ", strip=True)) if period_type_i is not None and period_type_i < len(cells) else ""
+            submission_type = _clean(cells[submission_i].get_text(" ", strip=True)) if submission_i is not None and submission_i < len(cells) else ""
             links = []
             for anchor in tr.find_all("a", href=True):
                 href = urljoin(page_url, anchor["href"].strip())
@@ -117,6 +123,9 @@ def parse_financial_results_page(html: str, symbol: str, page_url: str) -> List[
                 "relating_to": relating,
                 "broadcast_time": broadcast,
                 "audit_status": audit,
+                "cumulative_status": cumulative,
+                "period_type": period_type,
+                "submission_type": submission_type,
                 "consolidation": consolidation,
                 "source_url": page_url,
                 "attachment_url": attachment,

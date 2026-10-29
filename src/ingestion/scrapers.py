@@ -169,6 +169,10 @@ class PortalScraper(BaseScraper):
     source_name = "NSE/BSE Official Public Issues"
     source_tier = "TIER_1"
 
+    def __init__(self):
+        self.last_source_status = "NOT_RUN"
+        self.last_source_errors = []
+
     async def fetch_upcoming_ipos(self) -> List[Dict[str, Any]]:
         collected: List[Dict[str, Any]] = []
         successful_sources = 0
@@ -198,6 +202,10 @@ class PortalScraper(BaseScraper):
             raise RuntimeError("All official IPO sources failed: " + ", ".join(source_errors))
         if recognized_sources == 0:
             raise RuntimeError("No official IPO source layout was recognized: " + ", ".join(source_errors))
+        self.last_source_errors = list(source_errors)
+        self.last_source_status = "PARTIAL" if source_errors else "SUCCESS"
+        if source_errors:
+            logger.warning("IPO discovery has partial source coverage; some official sources were unavailable or unrecognized.")
 
         deduped: Dict[str, Dict[str, Any]] = {}
         for row in collected:

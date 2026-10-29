@@ -33,6 +33,39 @@ def _parse_date_value(value: str):
 
 
 
+def _extract_prospectus_links(row, source_url: str) -> List[Dict[str, str]]:
+    """Find prospectus/addendum links from the same official exchange issue row."""
+    documents: List[Dict[str, str]] = []
+    seen = set()
+    for anchor in row.find_all("a", href=True):
+        href = urljoin(source_url, anchor["href"].strip())
+        if not href.startswith("https://"):
+            continue
+        label = re.sub(r"\\s+", " ", anchor.get_text(" ", strip=True)).strip()
+        descriptor = f"{label} {href}".lower()
+        if any(term in descriptor for term in ("draft red herring prospectus", "drhp")):
+            document_type = "DRHP"
+        elif any(term in descriptor for term in ("red herring prospectus", "rhp")):
+            document_type = "RHP"
+        elif "addendum" in descriptor or "corrigendum" in descriptor:
+            document_type = "ADDENDUM"
+        elif "prospectus" in descriptor:
+            document_type = "PROSPECTUS"
+        elif "price band" in descriptor or "price-band" in descriptor:
+            document_type = "PRICE_BAND_AD"
+        else:
+            continue
+        if href in seen:
+            continue
+        seen.add(href)
+        documents.append({
+            "document_type": document_type,
+            "document_title": label or document_type,
+            "source_url": href,
+        })
+    return documents
+
+
 def _parse_official_issue_tables(html: str, *, source_name: str, source_url: str) -> List[Dict[str, Any]]:
     soup = BeautifulSoup(html, "lxml")
     rows: List[Dict[str, Any]] = []
@@ -82,6 +115,7 @@ def _parse_official_issue_tables(html: str, *, source_name: str, source_url: str
             row = {
                 "company_name": company_name,
                 "industry": None,
+                "document_links": _extract_prospectus_links(tr, source_url),
                 "issue_type": issue_type,
                 "source_name": source_name,
                 "source_tier": "TIER_1",
@@ -146,6 +180,12 @@ class PortalScraper(BaseScraper):
                 previous = deduped[key]
                 previous["additional_source_url"] = row.get("source_url")
                 previous["additional_source_name"] = row.get("source_name")
+                existing_links = previous.setdefault("document_links", [])
+                known_urls = {item.get("source_url") for item in existing_links if isinstance(item, dict)}
+                for document in row.get("document_links", []):
+                    if document.get("source_url") not in known_urls:
+                        existing_links.append(document)
+                        known_urls.add(document.get("source_url"))
                 conflicts = previous.setdefault("source_conflicts", [])
                 for date_key in ("verified_open_date", "verified_close_date"):
                     existing_value = previous.get(date_key)

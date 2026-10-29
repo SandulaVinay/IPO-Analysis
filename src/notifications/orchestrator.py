@@ -1,7 +1,6 @@
 """
 Notification Orchestrator.
-Coordinates alert scheduling, idempotency checks, delivery tracking, and automatic provider fallback:
-Primary (WhatsApp) -> Secondary (Email) -> Backup (SMS / Console).
+Coordinates alert scheduling, idempotency checks, delivery tracking, and WhatsApp-to-email fallback.
 """
 
 from datetime import datetime
@@ -192,9 +191,7 @@ Review the analysis before deciding."""
             return settings.whatsapp_recipient_phone
         if name == "EMAIL":
             return settings.email_to
-        if name == "SMS":
-            return settings.sms_recipient_phone
-        return settings.email_to or settings.whatsapp_recipient_phone
+        return ""
 
     async def _dispatch_with_fallback(self, alert: Alert, subject: str, content: str) -> bool:
         """Execute fallback chain and distinguish provider acceptance from delivery."""

@@ -260,3 +260,28 @@ def test_ipo_source_layout_validation_distinguishes_empty_table_from_changed_lay
     """
     assert _has_recognized_issue_table(valid_empty_table) is True
     assert _has_recognized_issue_table("<html><body>Service unavailable</body></html>") is False
+
+
+
+@pytest.mark.asyncio
+async def test_email_provider_rejects_non_pdf_content_with_pdf_extension(tmp_path, monkeypatch):
+    from src.notifications.email import EmailProvider
+
+    monkeypatch.chdir(tmp_path)
+    report_dir = tmp_path / "reports" / "daily"
+    report_dir.mkdir(parents=True)
+    fake_pdf = report_dir / "fake.pdf"
+    fake_pdf.write_text("not a PDF", encoding="utf-8")
+    monkeypatch.setattr(settings, "enable_email", True)
+    monkeypatch.setattr(settings, "email_provider", "smtp")
+    monkeypatch.setattr(settings, "smtp_user", "sender@example.test")
+    monkeypatch.setattr(settings, "smtp_password", "test-password")
+    monkeypatch.setattr(settings, "email_to", "recipient@example.test")
+    result = await EmailProvider().send_notification(
+        recipient="recipient@example.test",
+        subject="Report",
+        content="body",
+        metadata={"attachments": [str(fake_pdf)]},
+    )
+    assert result["success"] is False
+    assert "recognizable PDF" in result["error"]

@@ -124,6 +124,26 @@ class StateStore:
         self._write("ipo_registry.json", {"schema_version": 1, "updated_at": _utc_now(), "ipos": records})
         return len(records)
 
+    def load_watchlist(self) -> list[Dict[str, Any]]:
+        """Load public NSE symbols from the sanitized state branch."""
+        payload = self._read("watchlist.json", {"schema_version": 1, "companies": []})
+        companies = payload.get("companies", [])
+        if not isinstance(companies, list):
+            raise RuntimeError("Company watchlist must be a list.")
+        normalized = []
+        for item in companies:
+            if isinstance(item, str) and item.strip():
+                normalized.append({"symbol": item.strip().upper()})
+            elif isinstance(item, dict) and isinstance(item.get("symbol"), str) and item["symbol"].strip():
+                normalized.append({**item, "symbol": item["symbol"].strip().upper()})
+        return normalized
+
+    def has_seen_event(self, event_key: str) -> bool:
+        """Return whether the outbox has ever recorded this event, regardless of delivery status."""
+        payload = self._read("notification_outbox.json", {"schema_version": 1, "events": []})
+        events = payload.get("events", [])
+        return any(isinstance(event, dict) and event.get("event_key") == event_key for event in events)
+
     def has_processed_event(self, event_key: str) -> bool:
         payload = self._read("processed_events.json", {"schema_version": 1, "processed_event_keys": []})
         keys = payload.get("processed_event_keys", [])

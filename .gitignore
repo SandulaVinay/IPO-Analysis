@@ -73,3 +73,7 @@ ipo_system_test.db
 downloads/
 storage/
 *.log
+
+# Local sanitized runtime state (the public state branch is managed separately)
+.runtime_state/
+state-branch/

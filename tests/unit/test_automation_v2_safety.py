@@ -285,3 +285,29 @@ async def test_email_provider_rejects_non_pdf_content_with_pdf_extension(tmp_pat
     )
     assert result["success"] is False
     assert "recognizable PDF" in result["error"]
+
+
+
+@pytest.mark.asyncio
+async def test_portal_scraper_reports_partial_when_one_official_layout_is_unrecognized(monkeypatch):
+    from src.ingestion import scrapers as scraper_module
+
+    recognized_empty_table = """
+    <table>
+      <tr><th>Company Name</th><th>Issue Start Date</th><th>Issue End Date</th></tr>
+    </table>
+    """
+    responses = iter([
+        SimpleNamespace(text=recognized_empty_table),
+        SimpleNamespace(text="<html><body>Service unavailable</body></html>"),
+    ])
+
+    async def fake_get(url, headers=None):
+        return next(responses)
+
+    monkeypatch.setattr(scraper_module.http_client, "get", fake_get)
+    scraper = PortalScraper()
+    rows = await scraper.fetch_upcoming_ipos()
+    assert rows == []
+    assert scraper.last_source_status == "PARTIAL"
+    assert any("UNRECOGNIZED_LAYOUT" in error for error in scraper.last_source_errors)

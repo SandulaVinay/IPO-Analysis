@@ -35,9 +35,11 @@ class DiscoveryEngine:
             
             announced_open_date = Normalizer.parse_date(raw.get("announced_open_date") or raw.get("verified_open_date"))
             announced_close_date = Normalizer.parse_date(raw.get("announced_close_date") or raw.get("verified_close_date"))
-            conflicts = raw.get("source_conflicts") or []
-            verified_open_date = None if conflicts else Normalizer.parse_date(raw.get("verified_open_date"))
-            verified_close_date = None if conflicts else Normalizer.parse_date(raw.get("verified_close_date"))
+            date_conflicts = raw.get("source_conflicts") or []
+            field_conflicts = raw.get("field_conflicts") or []
+            conflicts = date_conflicts + field_conflicts
+            verified_open_date = None if date_conflicts else Normalizer.parse_date(raw.get("verified_open_date"))
+            verified_close_date = None if date_conflicts else Normalizer.parse_date(raw.get("verified_close_date"))
 
             ipo = await self.repo.create_or_update_ipo(
                 symbol=symbol,
@@ -56,9 +58,14 @@ class DiscoveryEngine:
                 ofs_cr=raw.get("ofs_cr"),
             )
             if conflicts:
-                # Clear previously verified dates so stale data cannot survive a new source conflict.
-                ipo.verified_open_date = None
-                ipo.verified_close_date = None
+                # Clear only fields that are explicitly in conflict; never retain stale values.
+                if date_conflicts:
+                    ipo.verified_open_date = None
+                    ipo.verified_close_date = None
+                for conflict in field_conflicts:
+                    field_name = conflict.get("field")
+                    if field_name in {"min_price", "max_price", "lot_size", "issue_size_cr"}:
+                        setattr(ipo, field_name, None)
                 previous_status = ipo.status
                 ipo.status = "SOURCE_CONFLICT"
                 if previous_status != "SOURCE_CONFLICT":
@@ -67,9 +74,9 @@ class DiscoveryEngine:
                         from_status=previous_status,
                         to_status="SOURCE_CONFLICT",
                         trigger="DISCOVERY_ENGINE",
-                        notes=f"Conflicting official source dates: {conflicts[:3]}",
+                        notes=f"Conflicting official source fields: {conflicts[:3]}",
                     ))
-                logger.warning("Official source conflict for %s (%s); verified dates cleared.", company_name, symbol)
+                logger.warning("Official source conflict for %s (%s); conflicted fields were cleared.", company_name, symbol)
             elif ipo.status == "SOURCE_CONFLICT":
                 ipo.status = "IPO_DISCOVERED"
 

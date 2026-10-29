@@ -154,3 +154,21 @@ async def test_sms_stub_never_claims_delivery(monkeypatch):
     )
     assert result["success"] is False
     assert result["delivered"] is False
+
+
+
+@pytest.mark.asyncio
+async def test_email_console_stub_does_not_log_recipient_or_message_body(monkeypatch, caplog):
+    from src.notifications.email import EmailProvider
+
+    monkeypatch.setattr(settings, "app_env", "development")
+    monkeypatch.setattr(settings, "enable_email", True)
+    monkeypatch.setattr(settings, "email_provider", "console")
+    result = await EmailProvider().send_notification(
+        recipient="private@example.com",
+        subject="private subject",
+        content="private message body",
+    )
+    assert result["mocked"] is True
+    assert "private@example.com" not in caplog.text
+    assert "private message body" not in caplog.text

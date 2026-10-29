@@ -1,6 +1,6 @@
 """
-Email Notification Provider (SMTP / Resend / Brevo).
-Dispatches rich HTML and clean plain-text research reports directly to user inbox.
+Email Notification Provider (SMTP with a local-only console stub).
+Supports plain-text research reports and validated PDF attachments.
 """
 
 import smtplib

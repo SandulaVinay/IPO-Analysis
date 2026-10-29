@@ -1,0 +1,144 @@
+# IPO-Analysis Automation v2 — Architecture and Rollout Gates
+
+## Purpose
+
+A low-cost, scheduled Indian IPO and listed-company research assistant. GitHub Actions runs the jobs; Python performs deterministic calculations; official exchange/company filings are the source of truth; WhatsApp is the preferred alert channel with email fallback.
+
+This document describes the intended architecture and the implementation status. A feature is not production-ready merely because a module exists: it must pass tests and source-level validation.
+
+## Operating principles
+
+1. **Evidence before conclusions.** Every factual output must link to the official source and preserve the capture time/document identity where available.
+2. **Fail closed.** Missing, stale, conflicting, or unsupported data produces `UNABLE_TO_ASSESS` or `UNAVAILABLE`, not a guessed recommendation.
+3. **Separate decisions.** IPO fundamentals, issue valuation, listing-day risk, and longer-term suitability are different assessments. GMP is unofficial sentiment and must never be presented as an official fact.
+4. **Deterministic calculations.** Financial ratios and score arithmetic run in tested Python code. Optional AI may explain already-verified results, but cannot fill missing data or alter numeric calculations.
+5. **Idempotent scheduled work.** A repeated GitHub Actions run should not send duplicate alerts for an event already accepted by a provider.
+6. **No secrets in source control.** Credentials and notification recipients belong in GitHub Actions Secrets, never in this public repository or the public state branch.
+7. **Transparent status.** Provider acceptance is not proof of handset delivery or inbox placement.
+
+## Runtime architecture
+
+```text
+GitHub Actions (weekday schedule + manual dispatch)
+        |
+        +--> official NSE/BSE IPO discovery
+        |       |
+        |       +--> normalize and compare exchange evidence
+        |       +--> clear verified dates on source conflict
+        |       +--> persist sanitized IPO registry
+        |
+        +--> official financial-results filing monitor
+        |       |
+        |       +--> exact issuer-name matching against watchlist
+        |       +--> record period, submission, audit, consolidation metadata
+        |       +--> extract supported XBRL metrics only
+        |       +--> write Markdown report artifact
+        |
+        +--> WhatsApp Cloud API --> email fallback
+        |
+        +--> health checks, CI tests, sanitized state commit
+                |
+                +--> public `state` branch
+```
+
+## State and privacy
+
+The `state` branch is public. It may contain only public issuer symbols/names, public IPO metadata, hashed event keys, run statuses, and source/report references. Do not store phone numbers, email addresses, API tokens, private notes, or message bodies there.
+
+State files currently use schema version 1:
+
+- `state/watchlist.json`: companies to monitor for financial-results filings.
+- `state/ipo_registry.json`: sanitized IPO discovery registry.
+- `state/processed_events.json`: event keys already accepted for notification.
+- `state/notification_outbox.json`: sanitized notification status and channel metadata.
+- `state/run_history.json`: bounded operational run history.
+- `state/schema_version.json`: state-schema marker.
+
+Example watchlist entry (use the exact issuer name displayed on the NSE filing page; add aliases only when you have verified them):
+
+```json
+{
+  "schema_version": 1,
+  "companies": [
+    {
+      "symbol": "RELIANCE",
+      "company_name": "Reliance Industries Limited",
+      "company_name_aliases": ["Reliance Industries Ltd"]
+    }
+  ]
+}
+```
+
+**Important:** the results page can present many issuers in one table. The monitor must filter to the configured exact company name/verified aliases. A symbol alone is not sufficient to prove that a page row belongs to that issuer. If the name is missing or cannot be matched, the monitor skips that symbol and records a degraded/partial run rather than sending a potentially misattributed alert.
+
+## Financial-results workflow
+
+1. Fetch the official NSE financial-results page.
+2. Parse only recognizable filing rows; retain the official page URL and any official attachment URL.
+3. Match the row to the configured issuer name/aliases.
+4. Prefer the latest period end available for that issuer and prefer consolidated results when present. Preserve audit status, cumulative status, period type, submission type, and broadcast time.
+5. If an XBRL instance is linked and matches supported tags/contexts/units, extract only supported revenue, PAT, EPS, and operating cash-flow facts. Compare current and prior-year matching periods when both are present.
+6. If the attachment is PDF/unsupported XBRL or the period/unit mapping is ambiguous, report the filing but label metrics unavailable. Do not infer a verdict.
+7. Write a Markdown report as a short-lived GitHub Actions artifact. Do not commit generated reports or issuer financial statements to the public state branch.
+8. Attempt WhatsApp first. If it fails, attempt email. Record provider acceptance, not assumed final delivery. A failed notification remains eligible for retry.
+
+The XBRL extractor is deliberately conservative and currently supports only a subset of tags and period contexts. It is **not** a general-purpose parser for every Indian GAAP/Ind AS filing. A reported metric must be checked against the source filing before it is used in an investment decision.
+
+## IPO analysis workflow
+
+The current production analysis path must remain fail-closed until a verified RHP/DRHP ingestion pipeline is connected. That pipeline still needs:
+
+- Official prospectus discovery and document version/hash tracking.
+- Safe PDF/XBRL extraction with page/section provenance.
+- Verification of revenue, profit, debt, cash flow, EPS, share count, issue size, fresh issue/OFS split, price band, and peer valuation.
+- Reconciliation of consolidated vs standalone values and restated financial periods.
+- Data completeness and conflict gates.
+- Versioned deterministic formulas with regression fixtures and explainable component scores.
+- Separate fundamental, valuation, listing-risk, and long-term assessments.
+
+Until these gates pass, no automated `APPLY`, `AVOID`, or buy/sell conclusion should be emitted from incomplete inputs.
+
+## Scheduling and recovery
+
+- The workflow runs at 08:30 and 14:30 India Standard Time on weekdays (GitHub cron uses UTC).
+- GitHub scheduled runs may be delayed or skipped during platform load. Treat schedules as at-least-once, not exact-time execution.
+- Workflow concurrency prevents two scheduler runs from writing the same state branch simultaneously.
+- A failed source request must be visible in run status/logs. It must not be recorded as a successful full check.
+- Reports are retained as GitHub Actions artifacts for seven days.
+- Keep a manual `workflow_dispatch` path for recovery.
+
+## Notification secrets
+
+Set only when ready to test real delivery. Use GitHub repository **Settings → Secrets and variables → Actions**. Never paste secret values into issues, commits, logs, or this chat.
+
+- `ENABLE_WHATSAPP` — `true` only after Cloud API setup is verified.
+- `WHATSAPP_PHONE_NUMBER_ID`
+- `WHATSAPP_ACCESS_TOKEN`
+- `WHATSAPP_RECIPIENT_PHONE` — international digits with country code.
+- `ENABLE_EMAIL` — `true` only after SMTP is verified.
+- `SMTP_USER`
+- `SMTP_PASSWORD` — use an app password if the provider requires it.
+- `EMAIL_FROM`
+- `EMAIL_TO`
+
+WhatsApp availability, template requirements, and charges depend on Meta/provider terms and the account. Do not assume WhatsApp delivery is always free. Email fallback is also subject to provider limits.
+
+## Validation checklist before enabling live alerts
+
+- [ ] Latest CI passes on the exact PR head.
+- [ ] Official NSE/BSE source adapters have been tested against live page responses and fixtures.
+- [ ] No row can be attributed to a symbol without verified issuer-name matching.
+- [ ] XBRL facts match the correct issuer, statement basis, period, duration, units, and reported values.
+- [ ] Unsupported/missing values result in `UNAVAILABLE` / `UNABLE_TO_ASSESS`.
+- [ ] Re-running the same fixture/run does not create duplicate notifications.
+- [ ] WhatsApp acceptance and failure fallback are tested with non-sensitive test content.
+- [ ] State-branch persistence works on successful and failed workflow paths.
+- [ ] No recipient data, secrets, raw private messages, or financial report artifacts are committed.
+- [ ] Live delivery is manually enabled only after the user configures secrets and approves a test.
+
+## Current status (do not overstate)
+
+- Implemented on `automation-v2`: official IPO-page parsing, source-date conflict handling, CI, sanitized state persistence, WhatsApp Cloud API adapter, and a watchlist-based results monitor with conservative XBRL extraction.
+- Recent work added exact issuer-name filtering and preservation of cumulative/submission metadata.
+- Still incomplete: comprehensive RHP/DRHP financial extraction, full production IPO scoring from verified documents, broad XBRL/PDF financial-results coverage, and a fully validated live-source scheduled run.
+- The draft pull request must remain unmerged and production recommendations must remain disabled until the validation checklist is satisfied.

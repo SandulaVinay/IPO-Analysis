@@ -29,7 +29,7 @@ def test_completeness_counts_only_provenance_bearing_verified_facts():
         "revenue_latest", "pat_latest", "cfo_latest",
     ]
     facts = [
-        {"field_name": field, "verification_status": "VERIFIED", "source_name": "OFFICIAL_RHP"}
+        {"field_name": field, "verification_status": "VERIFIED", "source_name": "OFFICIAL_RHP", "source_url": "https://www.sebi.gov.in/example-rhp.pdf"}
         for field in fields
     ]
     result = VerificationEngine.evaluate_ipo_completeness(
@@ -48,4 +48,4 @@ def test_verified_fact_without_source_name_does_not_count_as_verified_source():
         [{"field_name": "revenue_latest", "verification_status": "VERIFIED"}],
     )
     assert result["verified_sources_count"] == 0
-    assert result["completeness_pct"] == 10.0
+    assert result["completeness_pct"] == 0.0

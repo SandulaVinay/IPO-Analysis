@@ -100,7 +100,7 @@ Until these gates pass, no automated `APPLY`, `AVOID`, or buy/sell conclusion sh
 
 ## Scheduling and recovery
 
-- The workflow runs at 08:30 and 14:30 India Standard Time on weekdays (GitHub cron uses UTC).
+- The workflow runs at 08:30, 11:30, 14:30, and 17:30 India Standard Time on weekdays (GitHub cron uses UTC). The daily IPO digest runs on the final weekday cycle and on manual dispatch.
 - GitHub scheduled runs may be delayed or skipped during platform load. Treat schedules as at-least-once, not exact-time execution.
 - Workflow concurrency prevents two scheduler runs from writing the same state branch simultaneously.
 - A failed source request must be visible in run status/logs. It must not be recorded as a successful full check.

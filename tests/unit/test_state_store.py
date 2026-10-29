@@ -89,3 +89,27 @@ def test_document_registry_deduplicates_versions_and_rechecks_after_seven_days(t
         document["last_checked_at"] = stale_time
     (tmp_path / "document_registry.json").write_text(json.dumps(payload), encoding="utf-8")
     assert store.has_document_url(common["source_url"]) is False
+
+
+
+def test_public_document_registry_redacts_token_like_query_parameters(tmp_path):
+    store = StateStore(str(tmp_path))
+    source_url = "https://nsearchives.nseindia.com/rhp.pdf?token=private-token&download=1"
+    store.record_document(
+        symbol="EXAMPLE",
+        company_name="Example Limited",
+        document_type="RHP",
+        document_title="Example RHP",
+        source_url=source_url,
+        document_hash="c" * 64,
+        version_label="v1",
+        page_count=50,
+        text_pages_extracted=45,
+        evidence_count=2,
+        processing_status="PARSED",
+    )
+    payload_text = (tmp_path / "document_registry.json").read_text(encoding="utf-8")
+    payload = json.loads(payload_text)
+    assert "private-token" not in payload_text
+    assert "token=" not in payload["documents"][0]["source_url"]
+    assert store.has_document_url(source_url) is True

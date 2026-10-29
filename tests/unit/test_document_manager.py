@@ -67,3 +67,18 @@ async def test_document_ingestion_is_idempotent_and_keeps_revisions_immutable(tm
             assert all(__import__("pathlib").Path(item.file_path).exists() for item in versions)
     finally:
         await engine.dispose()
+
+
+
+def test_document_url_validation_rejects_local_and_insecure_targets():
+    from src.documents.manager import _validate_public_https_url
+
+    assert _validate_public_https_url("https://www.nseindia.com/example.pdf").hostname == "www.nseindia.com"
+    with pytest.raises(ValueError, match="HTTPS"):
+        _validate_public_https_url("http://www.nseindia.com/example.pdf")
+    with pytest.raises(ValueError, match="Private/local"):
+        _validate_public_https_url("https://localhost/example.pdf")
+    with pytest.raises(ValueError, match="Non-public IP"):
+        _validate_public_https_url("https://127.0.0.1/example.pdf")
+    with pytest.raises(ValueError, match="credentials"):
+        _validate_public_https_url("https://user:pass@www.nseindia.com/example.pdf")

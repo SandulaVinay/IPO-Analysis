@@ -130,7 +130,7 @@ class Settings(BaseSettings):
     whatsapp_phone_number_id: str = ""
     whatsapp_access_token: str = ""
     whatsapp_api_version: str = "v22.0"
-    whatsapp_recipient_phone: str = "+919876543210"
+    whatsapp_recipient_phone: str = ""
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_whatsapp_from: str = "+14155238886"
@@ -142,13 +142,13 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
-    email_from: str = "alerts@ipointelligence.local"
-    email_to: str = "investor@example.com"
+    email_from: str = ""
+    email_to: str = ""
 
     # SMS Provider Settings
     enable_sms: bool = False
     sms_provider: Literal["twilio", "console"] = "console"
-    sms_recipient_phone: str = "+919876543210"
+    sms_recipient_phone: str = ""
 
     # YouTube API Key
     youtube_api_key: str = ""

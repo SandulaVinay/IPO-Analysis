@@ -19,6 +19,7 @@ from src.common.config import settings
 from src.common.logging import logger
 from src.database.models import IPODocument, DocumentVersion, Fact
 from src.documents.extractor import extract_pdf_candidate_evidence
+from src.reporting.pdf import markdown_to_pdf
 from src.ingestion.client import http_client
 
 MAX_DOCUMENT_BYTES = 50 * 1024 * 1024
@@ -98,7 +99,9 @@ def _write_candidate_report(
             "Extraction status: CANDIDATE_UNVERIFIED; no numeric value has been assigned.",
             "",
         ])
-    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    report_content = "\n".join(lines) + "\n"
+    report_path.write_text(report_content, encoding="utf-8")
+    markdown_to_pdf(report_content, report_path.with_suffix(".pdf"), title="Prospectus Evidence Candidates")
 
 
 class DocumentManager:

@@ -11,11 +11,13 @@ from datetime import datetime, date
 from typing import Optional
 from urllib.parse import urlparse
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.common.config import settings
 from src.common.logging import logger
-from src.database.models import IPODocument, DocumentVersion
+from src.database.models import IPODocument, DocumentVersion, Fact
+from src.documents.extractor import extract_pdf_candidate_evidence
 from src.ingestion.client import http_client
 
 MAX_DOCUMENT_BYTES = 50 * 1024 * 1024
@@ -91,6 +93,27 @@ class DocumentManager:
                 raise RuntimeError("IPO document download failed; document was not registered.") from exc
 
         _validate_pdf_content(content)
+        doc_hash = hashlib.sha256(content).hexdigest()
+
+        # Content-hash idempotency prevents the scheduled workflow from registering
+        # a new document and repeating evidence extraction for the same filing.
+        existing_result = await self.session.execute(
+            select(DocumentVersion)
+            .join(IPODocument, DocumentVersion.document_id == IPODocument.id)
+            .where(
+                IPODocument.ipo_id == ipo_id,
+                IPODocument.document_type == safe_type,
+                DocumentVersion.document_hash == doc_hash,
+            )
+            .order_by(DocumentVersion.id.desc())
+        )
+        existing_version = existing_result.scalars().first()
+        if existing_version is not None:
+            return existing_version
+
+        # Parse before persistence so a corrupt/non-PDF document is never registered
+        # as a usable prospectus. Evidence is candidate-only and remains UNVERIFIED.
+        extraction = extract_pdf_candidate_evidence(content, source_url=source_url)
         temporary_path = file_path.with_suffix(file_path.suffix + ".tmp")
         try:
             with open(temporary_path, "wb") as file_obj:
@@ -102,7 +125,6 @@ class DocumentManager:
             if temporary_path.exists():
                 temporary_path.unlink()
 
-        doc_hash = self.calculate_sha256(str(file_path))
         doc = IPODocument(
             ipo_id=ipo_id,
             document_type=safe_type,
@@ -119,9 +141,31 @@ class DocumentManager:
             file_path=str(file_path),
             document_hash=doc_hash,
             publication_date=publication_date or datetime.utcnow().date(),
-            processing_status="DOWNLOADED",
+            page_count=extraction["page_count"],
+            processing_status="PARSED" if extraction["text_pages_extracted"] else "NO_TEXT",
         )
         self.session.add(version)
         await self.session.flush()
-        logger.info("Registered validated %s PDF version %s (SHA-256 %s...).", safe_type, safe_version, doc_hash[:16])
+
+        for candidate in extraction["evidence"]:
+            self.session.add(Fact(
+                ipo_id=ipo_id,
+                field_name=candidate["field_name"],
+                value_text=candidate["evidence_text"],
+                value_numeric=None,
+                value_type="STRING",
+                source_name="PROSPECTUS_TEXT_EXTRACTION",
+                source_url=source_url,
+                source_tier="TIER_3",
+                document_id=doc.id,
+                document_version=safe_version,
+                page_number=candidate["page_number"],
+                confidence="LOW",
+                verification_status="UNVERIFIED",
+            ))
+        await self.session.flush()
+        logger.info(
+            "Registered validated %s PDF version %s (SHA-256 %s...); pages=%s candidates=%s. Candidate facts remain UNVERIFIED.",
+            safe_type, safe_version, doc_hash[:16], extraction["page_count"], extraction["evidence_count"],
+        )
         return version

@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "description": "Public company symbols to monitor for official quarterly and annual results. Keep recipient details and credentials out of this file.",
+  "companies": []
+}

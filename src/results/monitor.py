@@ -109,9 +109,24 @@ def parse_financial_results_page(html: str, symbol: str, page_url: str) -> List[
             links = []
             for anchor in tr.find_all("a", href=True):
                 href = urljoin(page_url, anchor["href"].strip())
-                if href.startswith("https://") and href not in links:
-                    links.append(href)
-            attachment = next((link for link in links if any(ext in link.lower() for ext in (".pdf", ".xml", ".xbrl", ".xlsx")) or "/xbrl/" in link.lower()), None)
+                label = _clean(anchor.get_text(" ", strip=True))
+                if href.startswith("https://") and all(item["url"] != href for item in links):
+                    links.append({"url": href, "label": label})
+            xbrl_attachment = next((
+                item["url"] for item in links
+                if "xbrl" in item["label"].lower()
+                or any(ext in item["url"].lower() for ext in (".xml", ".xbrl"))
+                or "/xbrl/" in item["url"].lower()
+            ), None)
+            details_attachment = next((
+                item["url"] for item in links
+                if "details" in item["label"].lower()
+                or item["url"].lower().split("?")[0].endswith(".pdf")
+            ), None)
+            attachment = xbrl_attachment or details_attachment or next(
+                (item["url"] for item in links if item["url"].lower().split("?")[0].endswith(".xlsx")),
+                None,
+            )
             event_material = "|".join([symbol.upper(), period_end, relating, broadcast, consolidation, attachment or page_url])
             event_key = "RESULT_" + hashlib.sha256(event_material.encode("utf-8")).hexdigest()[:32]
             if event_key in seen:
@@ -131,6 +146,8 @@ def parse_financial_results_page(html: str, symbol: str, page_url: str) -> List[
                 "consolidation": consolidation,
                 "source_url": page_url,
                 "attachment_url": attachment,
+                "xbrl_url": xbrl_attachment,
+                "details_url": details_attachment,
             })
     return output
 
@@ -334,7 +351,7 @@ async def monitor_financial_results() -> Dict[str, Any]:
                 continue
             new_filings += 1
             metrics: Dict[str, Any] = {"status": "UNAVAILABLE", "reason": "No supported XBRL attachment was detected."}
-            attachment = item.get("attachment_url") or ""
+            attachment = item.get("xbrl_url") or item.get("attachment_url") or ""
             if attachment.lower().endswith((".xml", ".xbrl")) or "/xbrl/" in attachment.lower():
                 try:
                     xbrl_response = await http_client.get(attachment, headers={"Referer": "https://www.nseindia.com/"})

@@ -39,3 +39,13 @@ def test_completeness_counts_only_provenance_bearing_verified_facts():
     assert result["completeness_pct"] == 100.0
     assert result["verified_sources_count"] == 1
     assert result["confidence_level"] == "HIGH"
+
+
+
+def test_verified_fact_without_source_name_does_not_count_as_verified_source():
+    result = VerificationEngine.evaluate_ipo_completeness(
+        {},
+        [{"field_name": "revenue_latest", "verification_status": "VERIFIED"}],
+    )
+    assert result["verified_sources_count"] == 0
+    assert result["completeness_pct"] == 10.0

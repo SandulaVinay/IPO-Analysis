@@ -58,13 +58,14 @@ class DiscoveryEngine:
                 ipo.verified_close_date = None
                 previous_status = ipo.status
                 ipo.status = "SOURCE_CONFLICT"
-                self.session.add(IPOEvent(
-                    ipo_id=ipo.id,
-                    from_status=previous_status,
-                    to_status="SOURCE_CONFLICT",
-                    trigger="DISCOVERY_ENGINE",
-                    notes=f"Conflicting official source dates: {conflicts[:3]}",
-                ))
+                if previous_status != "SOURCE_CONFLICT":
+                    self.session.add(IPOEvent(
+                        ipo_id=ipo.id,
+                        from_status=previous_status,
+                        to_status="SOURCE_CONFLICT",
+                        trigger="DISCOVERY_ENGINE",
+                        notes=f"Conflicting official source dates: {conflicts[:3]}",
+                    ))
                 logger.warning("Official source conflict for %s (%s); verified dates cleared.", company_name, symbol)
             elif ipo.status == "SOURCE_CONFLICT":
                 ipo.status = "IPO_DISCOVERED"

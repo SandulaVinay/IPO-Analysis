@@ -34,6 +34,27 @@ def _parse_date_value(value: str):
 
 
 
+def _has_recognized_issue_table(html: str) -> bool:
+    """Distinguish a valid empty issue table from a changed/unrecognized page layout."""
+    soup = BeautifulSoup(html, "lxml")
+    company_aliases = ("company name", "name of company", "company", "issuer name", "issuer")
+    open_aliases = ("issue start date", "open date", "opening date", "issue opening date", "start date")
+    close_aliases = ("issue end date", "close date", "closing date", "issue closing date", "end date")
+    for table in soup.find_all("table"):
+        header_row = table.find("tr")
+        if header_row is None:
+            continue
+        headers = [_norm(cell.get_text(" ", strip=True)) for cell in header_row.find_all(["th", "td"])]
+        has_company = any(any(alias in header for alias in company_aliases) for header in headers)
+        has_date = any(
+            any(alias in header for alias in open_aliases + close_aliases)
+            for header in headers
+        )
+        if has_company and has_date:
+            return True
+    return False
+
+
 def _extract_prospectus_links(row, source_url: str) -> List[Dict[str, str]]:
     """Find prospectus/addendum links from the same official exchange issue row."""
     documents: List[Dict[str, str]] = []
@@ -151,6 +172,7 @@ class PortalScraper(BaseScraper):
     async def fetch_upcoming_ipos(self) -> List[Dict[str, Any]]:
         collected: List[Dict[str, Any]] = []
         successful_sources = 0
+        recognized_sources = 0
         source_errors = []
         sources = (
             ("NSE India", NSE_IPO_URL),
@@ -160,6 +182,10 @@ class PortalScraper(BaseScraper):
             try:
                 response = await http_client.get(url, headers={"Referer": "https://www.nseindia.com/" if source_name == "NSE India" else "https://www.bseindia.com/"})
                 successful_sources += 1
+                if _has_recognized_issue_table(response.text):
+                    recognized_sources += 1
+                else:
+                    source_errors.append(f"{source_name}:UNRECOGNIZED_LAYOUT")
                 parsed = _parse_official_issue_tables(response.text, source_name=source_name, source_url=url)
                 logger.info("Official IPO source %s yielded %s table rows.", source_name, len(parsed))
                 collected.extend(parsed)
@@ -170,6 +196,8 @@ class PortalScraper(BaseScraper):
 
         if successful_sources == 0:
             raise RuntimeError("All official IPO sources failed: " + ", ".join(source_errors))
+        if recognized_sources == 0:
+            raise RuntimeError("No official IPO source layout was recognized: " + ", ".join(source_errors))
 
         deduped: Dict[str, Dict[str, Any]] = {}
         for row in collected:

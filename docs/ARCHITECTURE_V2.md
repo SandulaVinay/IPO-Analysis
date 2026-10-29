@@ -170,3 +170,8 @@ When a generated PDF exists, the WhatsApp adapter now uploads it through the Clo
 
 
 The completeness engine now counts only explicit verified date fields and provenance-bearing facts marked `VERIFIED`; non-null but unverified numeric IPO fields no longer inflate completeness or confidence. A zero count of verified sources remains zero rather than being reported as one.
+
+
+## Persistent prospectus registry
+
+The public state branch now stores only prospectus metadata (symbol, sanitized source URL, URL hash, document SHA-256, version label, page count, extraction counts, and timestamps). It deliberately does not store candidate text or notification content. The same source URL is rechecked at least daily; unchanged content retains its version, while a changed PDF gets a new version label. New content generates a page-cited Markdown/PDF review artifact and a WhatsApp document alert with email fallback. URL query parameters that look like tokens or signatures are removed from public metadata and reports.

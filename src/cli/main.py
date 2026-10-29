@@ -21,24 +21,41 @@ from src.discovery.engine import DiscoveryEngine
 from src.web.app import run_pipeline_for_ipo
 from src.notifications.orchestrator import NotificationOrchestrator
 from src.monitoring.health import HealthMonitor
+from src.state.store import StateStore
 
 console = Console(legacy_windows=False, force_terminal=True, safe_box=True, highlight=False)
 
 
 async def cmd_discover():
-    """Run discovery cycle."""
+    """Run discovery and persist sanitized state for the next ephemeral runner."""
     console.print("[bold blue]Initiating Indian IPO Discovery Cycle...[/bold blue]")
     await init_db()
-    async with AsyncSessionLocal() as session:
-        engine = DiscoveryEngine(session)
-        ipos = await engine.run_discovery()
-        console.print(f"[bold green]Discovery cycle complete. {len(ipos)} IPOs identified/updated.[/bold green]")
+    store = StateStore()
+    try:
+        async with AsyncSessionLocal() as session:
+            restored = await store.restore_ipo_registry(session)
+            engine = DiscoveryEngine(session)
+            ipos = await engine.run_discovery()
+            saved = await store.save_ipo_registry(session)
+            store.record_run(
+                command="discover",
+                status="SUCCESS",
+                detail=f"restored={restored}; discovered={len(ipos)}; registry_total={saved}",
+            )
+            console.print(
+                f"[bold green]Discovery complete. {len(ipos)} new/updated candidates; "
+                f"{saved} public registry records persisted.[/bold green]"
+            )
+    except Exception as exc:
+        store.record_run(command="discover", status="FAILED", detail=type(exc).__name__)
+        raise
 
 
 async def cmd_list():
     """List all tracked IPOs."""
     await init_db()
     async with AsyncSessionLocal() as session:
+        await StateStore().restore_ipo_registry(session)
         repo = IPORepository(session)
         ipos = await repo.list_all_ipos()
 
@@ -68,6 +85,7 @@ async def cmd_analyze(symbol: str, format_type: str = "exec"):
     console.print(f"[bold blue]Running Full Forensic Analysis Pipeline for {symbol}...[/bold blue]")
     await init_db()
     async with AsyncSessionLocal() as session:
+        await StateStore().restore_ipo_registry(session)
         repo = IPORepository(session)
         ipo = await repo.get_ipo_by_symbol(symbol)
         if not ipo:
@@ -89,6 +107,7 @@ async def cmd_notify(symbol: str):
     console.print(f"[bold yellow]Triggering T-2 Alert Dispatch for {symbol}...[/bold yellow]")
     await init_db()
     async with AsyncSessionLocal() as session:
+        await StateStore().restore_ipo_registry(session)
         repo = IPORepository(session)
         ipo = await repo.get_ipo_by_symbol(symbol)
         if not ipo:
@@ -108,6 +127,7 @@ async def cmd_health():
     """Check health status."""
     await init_db()
     async with AsyncSessionLocal() as session:
+        await StateStore().restore_ipo_registry(session)
         health = await HealthMonitor.get_system_health(session)
         table = Table(title="Subsystems Health Diagnostics", header_style="bold cyan")
         table.add_column("Subsystem", style="white")

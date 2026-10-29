@@ -84,6 +84,8 @@ def test_document_registry_deduplicates_versions_and_rechecks_after_seven_days(t
     payload = json.loads((tmp_path / "document_registry.json").read_text(encoding="utf-8"))
     assert len(payload["documents"]) == 2
 
-    payload["documents"][-1]["last_checked_at"] = (datetime.now(timezone.utc) - timedelta(days=8)).isoformat()
+    stale_time = (datetime.now(timezone.utc) - timedelta(days=8)).isoformat()
+    for document in payload["documents"]:
+        document["last_checked_at"] = stale_time
     (tmp_path / "document_registry.json").write_text(json.dumps(payload), encoding="utf-8")
     assert store.has_document_url(common["source_url"]) is False

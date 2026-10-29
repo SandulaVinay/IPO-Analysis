@@ -121,8 +121,8 @@ def extract_xbrl_metrics(xml_content: bytes, period_ended: str, relating_to: str
     """Extract a conservative subset of quarterly/annual metrics from an XBRL instance."""
     if len(xml_content) > 10_000_000:
         raise ValueError("XBRL attachment exceeds the 10 MB safety limit.")
-    prefix = xml_content[:4096].upper()
-    if b"<!DOCTYPE" in prefix or b"<!ENTITY" in prefix:
+    xml_upper = xml_content.upper()
+    if b"<!DOCTYPE" in xml_upper or b"<!ENTITY" in xml_upper:
         raise ValueError("XBRL document contains a prohibited DTD/entity declaration.")
 
     root = ET.fromstring(xml_content)
@@ -193,7 +193,12 @@ def extract_xbrl_metrics(xml_content: bytes, period_ended: str, relating_to: str
             if tag not in normalized_aliases:
                 continue
             priority = normalized_aliases.index(tag)
-            if metric != "eps" and "inr" in units.get(unit_ref or "", ""):
+            unit_name = units.get(unit_ref or "", "")
+            if metric == "eps" and "inr" not in unit_name:
+                continue
+            if metric != "eps":
+                if "inr" not in unit_name:
+                    continue
                 numeric = numeric / CRORE
             if metric not in priorities[period_key] or priority < priorities[period_key][metric]:
                 values[period_key][metric] = numeric

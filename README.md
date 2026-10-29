@@ -99,3 +99,10 @@ The `automation-v2` branch and draft pull request are being used to validate the
 - `ENABLE_DEMO_ANALYSIS` defaults to `false`. Never enable demo analysis in production.
 - Configure WhatsApp and email values through GitHub repository Actions Secrets, not in files or chat. The application defaults recipient fields to blank to prevent accidental sends.
 - This is not yet a full investment recommendation service: verified RHP/DRHP financial extraction, full IPO scoring on real issuer data, and broader results-format coverage remain rollout gates. Production analysis returns `UNABLE_TO_ASSESS` until verified inputs are wired into the analysis pipeline.
+
+
+## Automation v2 architecture and current limitations
+
+See [Automation v2 Architecture and Rollout Gates](docs/ARCHITECTURE_V2.md) for the GitHub Actions design, public state-branch schema, watchlist format, notification secret names, and production-readiness checklist.
+
+**Important:** automated IPO investment recommendations are not production-ready yet. The production path must return `UNABLE_TO_ASSESS` until official RHP/DRHP financial extraction and verification are implemented. The financial-results monitor currently supports only a conservative subset of XBRL facts; unsupported filings are reported as unavailable rather than guessed. Do not enable real notifications until GitHub Actions Secrets are configured and a manual test is approved.

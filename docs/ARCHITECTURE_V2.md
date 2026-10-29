@@ -175,3 +175,8 @@ The completeness engine now counts only explicit verified date fields and proven
 ## Persistent prospectus registry
 
 The public state branch now stores only prospectus metadata (symbol, sanitized source URL, URL hash, document SHA-256, version label, page count, extraction counts, and timestamps). It deliberately does not store candidate text or notification content. The same source URL is rechecked at least daily; unchanged content retains its version, while a changed PDF gets a new version label. New content generates a page-cited Markdown/PDF review artifact and a WhatsApp document alert with email fallback. URL query parameters that look like tokens or signatures are removed from public metadata and reports.
+
+
+## Prospectus table candidates
+
+The PDF extractor now supplements linear page text with best-effort table-row extraction on pages containing financial labels. It retains the row's header context and cell values as a page-cited `TABLE_ROW_CANDIDATE`; it does not map values to years, infer units, or mark any numeric fact verified. Period/basis/unit reconciliation remains a separate production gate.

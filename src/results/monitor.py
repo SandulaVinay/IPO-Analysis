@@ -362,7 +362,8 @@ async def monitor_financial_results() -> Dict[str, Any]:
                     logger.warning("XBRL extraction failed for %s (%s).", symbol, type(exc).__name__)
 
             safe_period = re.sub(r"[^0-9A-Za-z_-]+", "_", item["period_ended"])
-            report_path = report_dir / f"{symbol}_{safe_period}_{item['event_key'][-8:]}.md"
+            safe_symbol = re.sub(r"[^0-9A-Za-z_-]+", "_", symbol)
+            report_path = report_dir / f"{safe_symbol}_{safe_period}_{item['event_key'][-8:]}.md"
             report_content = _report_text(item, metrics)
             report_path.write_text(report_content, encoding="utf-8")
             markdown_to_pdf(report_content, report_path.with_suffix(".pdf"), title=f"Financial Results - {symbol}")

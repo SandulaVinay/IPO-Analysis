@@ -57,6 +57,50 @@ def _validate_pdf_content(content: bytes) -> None:
         raise ValueError("Downloaded content is not a recognizable PDF; refusing to register it.")
 
 
+def _write_candidate_report(
+    *,
+    ipo_id: int,
+    document_type: str,
+    document_title: str,
+    source_url: str,
+    document_hash: str,
+    extraction: dict,
+) -> None:
+    """Write a review artifact; it contains candidate evidence, never a recommendation."""
+    report_dir = Path("reports/prospectus")
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / f"{ipo_id}_{_safe_component(document_type, 'DOC')}_{document_hash[:12]}.md"
+    lines = [
+        "# Prospectus evidence candidates",
+        "",
+        "**Status: UNVERIFIED — not an investment recommendation.**",
+        "",
+        f"- IPO database ID: {ipo_id}",
+        f"- Document type: {document_type}",
+        f"- Document title: {document_title}",
+        f"- Source URL: {source_url}",
+        f"- SHA-256: {document_hash}",
+        f"- Pages: {extraction['page_count']}",
+        f"- Text pages extracted: {extraction['text_pages_extracted']}",
+        f"- Candidate passages: {extraction['evidence_count']}",
+        "",
+        "## Candidate passages",
+        "",
+    ]
+    if not extraction["evidence"]:
+        lines.append("No supported text candidates were found. Scanned/image-only PDFs may require OCR.")
+    for item in extraction["evidence"]:
+        lines.extend([
+            f"### {item['field_name']} — page {item['page_number']}",
+            "",
+            f"> {item['evidence_text']}",
+            "",
+            "Extraction status: CANDIDATE_UNVERIFIED; no numeric value has been assigned.",
+            "",
+        ])
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 class DocumentManager:
     """Manages downloading, cryptographic hashing, and version tracking of IPO filings."""
 
@@ -212,6 +256,14 @@ class DocumentManager:
                 verification_status="UNVERIFIED",
             ))
         await self.session.flush()
+        _write_candidate_report(
+            ipo_id=ipo_id,
+            document_type=safe_type,
+            document_title=document_title,
+            source_url=source_url,
+            document_hash=doc_hash,
+            extraction=extraction,
+        )
         logger.info(
             "Registered validated %s PDF version %s (SHA-256 %s...); pages=%s candidates=%s. Candidate facts remain UNVERIFIED.",
             safe_type, safe_version, doc_hash[:16], extraction["page_count"], extraction["evidence_count"],

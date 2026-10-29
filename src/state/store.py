@@ -144,7 +144,7 @@ class StateStore:
             normalized.append(entry)
         return normalized
 
-    def has_document_url(self, source_url: str, *, max_age_days: int = 7) -> bool:
+    def has_document_url(self, source_url: str, *, max_age_days: int = 1) -> bool:
         """Avoid repeatedly downloading an unchanged prospectus URL on ephemeral runners."""
         payload = self._read("document_registry.json", {"schema_version": 1, "documents": []})
         documents = payload.get("documents", [])

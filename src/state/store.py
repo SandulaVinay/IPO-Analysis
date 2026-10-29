@@ -7,7 +7,7 @@ import json
 import os
 import re
 import tempfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -143,6 +143,78 @@ class StateStore:
                 raise RuntimeError("Watchlist symbol contains unsupported characters.")
             normalized.append(entry)
         return normalized
+
+    def has_document_url(self, source_url: str, *, max_age_days: int = 7) -> bool:
+        """Avoid repeatedly downloading an unchanged prospectus URL on ephemeral runners."""
+        payload = self._read("document_registry.json", {"schema_version": 1, "documents": []})
+        documents = payload.get("documents", [])
+        if not isinstance(documents, list):
+            raise RuntimeError("Document registry must contain a list.")
+        matches = [item for item in documents if isinstance(item, dict) and item.get("source_url") == source_url]
+        if not matches:
+            return False
+        latest = max(matches, key=lambda item: str(item.get("last_checked_at") or item.get("ingested_at") or ""))
+        timestamp = latest.get("last_checked_at") or latest.get("ingested_at")
+        if not timestamp:
+            return False
+        try:
+            checked_at = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+            if checked_at.tzinfo is None:
+                checked_at = checked_at.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return False
+        return datetime.now(timezone.utc) - checked_at < timedelta(days=max_age_days)
+
+    def record_document(
+        self,
+        *,
+        symbol: str,
+        company_name: str,
+        document_type: str,
+        document_title: str,
+        source_url: str,
+        document_hash: str,
+        version_label: str,
+        page_count: int,
+        text_pages_extracted: int,
+        evidence_count: int,
+        processing_status: str,
+    ) -> None:
+        """Persist only public document metadata; candidate text stays out of the public state branch."""
+        payload = self._read("document_registry.json", {"schema_version": 1, "documents": []})
+        documents = payload.get("documents", [])
+        if not isinstance(documents, list):
+            raise RuntimeError("Document registry must contain a list.")
+        now = _utc_now()
+        existing = next((
+            item for item in documents
+            if isinstance(item, dict)
+            and item.get("symbol") == symbol
+            and item.get("source_url") == source_url
+            and item.get("document_hash") == document_hash
+        ), None)
+        record = {
+            "symbol": symbol,
+            "company_name": company_name,
+            "document_type": document_type,
+            "document_title": document_title,
+            "source_url": source_url,
+            "document_hash": document_hash,
+            "version_label": version_label,
+            "page_count": int(page_count),
+            "text_pages_extracted": int(text_pages_extracted),
+            "evidence_count": int(evidence_count),
+            "processing_status": processing_status,
+            "last_checked_at": now,
+        }
+        if existing is None:
+            record["ingested_at"] = now
+            documents.append(record)
+        else:
+            existing.update(record)
+            existing.setdefault("ingested_at", now)
+        payload["documents"] = documents[-2000:]
+        self._write("document_registry.json", payload)
 
     def has_seen_event(self, event_key: str) -> bool:
         """Return whether the outbox has ever recorded this event, regardless of delivery status."""

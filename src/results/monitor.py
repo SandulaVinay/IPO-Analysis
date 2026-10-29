@@ -395,6 +395,7 @@ async def monitor_financial_results() -> Dict[str, Any]:
                 recipient=settings.whatsapp_recipient_phone,
                 subject=subject,
                 content=content,
+                metadata={"attachment_path": str(report_path.with_suffix(".pdf"))},
             )
             channel = "WHATSAPP"
             success = bool(result.get("success") and (result.get("accepted") or result.get("delivered")))

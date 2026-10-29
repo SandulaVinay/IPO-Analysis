@@ -5,6 +5,7 @@ recipient details, credentials, or notification message bodies to this store.
 """
 import json
 import os
+import re
 import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -133,9 +134,14 @@ class StateStore:
         normalized = []
         for item in companies:
             if isinstance(item, str) and item.strip():
-                normalized.append({"symbol": item.strip().upper()})
+                entry = {"symbol": item.strip().upper()}
             elif isinstance(item, dict) and isinstance(item.get("symbol"), str) and item["symbol"].strip():
-                normalized.append({**item, "symbol": item["symbol"].strip().upper()})
+                entry = {**item, "symbol": item["symbol"].strip().upper()}
+            else:
+                raise RuntimeError("Each watchlist company must be a symbol string or an object with a symbol.")
+            if not re.fullmatch(r"[A-Z0-9&._-]{1,30}", entry["symbol"]):
+                raise RuntimeError("Watchlist symbol contains unsupported characters.")
+            normalized.append(entry)
         return normalized
 
     def has_seen_event(self, event_key: str) -> bool:

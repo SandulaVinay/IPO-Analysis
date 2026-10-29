@@ -179,6 +179,7 @@ async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateSt
         recipient=settings.whatsapp_recipient_phone,
         subject=f"Daily IPO status digest — {now.strftime('%d %b %Y')}",
         content=message,
+        metadata={"attachment_path": str(report_path.with_suffix(".pdf"))},
     )
     if whatsapp.get("success") and (whatsapp.get("accepted") or whatsapp.get("delivered")):
         accepted = True

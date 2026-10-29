@@ -14,8 +14,6 @@ from src.database.models import IPO, Alert, Notification, NotificationAttempt
 from src.database.repository import IPORepository
 from src.notifications.whatsapp import WhatsAppProvider
 from src.notifications.email import EmailProvider
-from src.notifications.sms import SMSProvider
-from src.notifications.console import ConsoleProvider
 from src.reporting.generator import ReportGenerator
 from src.state.store import StateStore
 
@@ -26,12 +24,9 @@ class NotificationOrchestrator:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.repo = IPORepository(session)
-        self.providers = [
-            WhatsAppProvider(),
-            EmailProvider(),
-            SMSProvider(),
-            ConsoleProvider(),
-        ]
+        # Architecture policy: WhatsApp primary, email fallback only.
+        # Do not treat mock SMS or console logging as successful delivery.
+        self.providers = [WhatsAppProvider(), EmailProvider()]
 
     async def trigger_t_minus_2_alert(self, ipo_id: int, analysis_data: Dict[str, Any]) -> bool:
         """Dispatches T-2 calendar day alert or immediate verified alert."""

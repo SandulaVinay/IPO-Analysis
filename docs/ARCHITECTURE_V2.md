@@ -142,3 +142,10 @@ WhatsApp availability, template requirements, and charges depend on Meta/provide
 - Recent work added exact issuer-name filtering and preservation of cumulative/submission metadata.
 - Still incomplete: automatic RHP/DRHP discovery from exchange pages, table-aware financial statement extraction and period reconciliation, verification/reconciliation workflow for candidate facts, full production IPO scoring from verified documents, broad XBRL/PDF financial-results coverage, and a fully validated live-source scheduled run.
 - The draft pull request must remain unmerged and production recommendations must remain disabled until the validation checklist is satisfied.
+
+
+## Prospectus ingestion update
+
+The discovery parser now looks for links labeled as RHP, DRHP, prospectus, addendum, corrigendum, or price-band advertisement within official IPO issue rows. When such a link is present, the discovery cycle attempts HTTPS PDF ingestion. Invalid or unavailable documents are skipped without creating placeholders. A validated PDF is hashed, deduplicated by content, versioned immutably, and scanned for page-cited candidate passages. Candidate facts are stored as `UNVERIFIED` with low confidence and never feed the production scoring engine. A review-only Markdown report is uploaded as a seven-day GitHub Actions artifact.
+
+This is an initial adapter, not proof of complete prospectus coverage. NSE/BSE page layouts and linked PDF hosting must still be validated against live cases. Revised documents at a different URL are versioned; if an exchange overwrites the same URL in place, the current source-URL cache may defer detection until the link changes or a manual refresh is added.

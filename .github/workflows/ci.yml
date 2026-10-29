@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 15
     env:
       APP_ENV: test
+      ENABLE_DEMO_ANALYSIS: "true"
       ENABLE_WHATSAPP: "false"
       ENABLE_EMAIL: "false"
       ENABLE_SMS: "false"

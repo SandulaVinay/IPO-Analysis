@@ -62,7 +62,17 @@ jobs:
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: |
           python -m src.cli.main discover
+          python -m src.cli.main results
           python -m src.cli.main health
+
+      - name: Upload results reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: financial-results-reports
+          path: reports/results/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Persist sanitized state
         if: always() && steps.checkout_state.outcome == 'success'

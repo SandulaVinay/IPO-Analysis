@@ -85,3 +85,19 @@ async def test_production_analysis_fails_closed_without_verified_sources(monkeyp
     assert result["score_data"]["overall_score"] == 0.0
     assert result["assessment_status"] == "UNABLE_TO_ASSESS"
     assert "No investment recommendation" in result["executive_summary"]
+
+
+def test_document_ingestion_rejects_html_or_empty_content():
+    from src.documents.manager import _validate_pdf_content
+
+    with pytest.raises(ValueError, match="empty"):
+        _validate_pdf_content(b"")
+    with pytest.raises(ValueError, match="not a recognizable PDF"):
+        _validate_pdf_content(b"<html><body>blocked by exchange</body></html>")
+
+
+def test_document_ingestion_accepts_pdf_header_and_sanitizes_path_components():
+    from src.documents.manager import _safe_component, _validate_pdf_content
+
+    _validate_pdf_content(b"%PDF-1.7\\nminimal test fixture")
+    assert _safe_component("../../RHP/2026", "filing") == "______RHP_2026"

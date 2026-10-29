@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     @field_validator(
         "enable_automated_scheduler",
+        "enable_demo_analysis",
         "enable_whatsapp",
         "enable_email",
         "enable_sms",
@@ -107,6 +108,7 @@ class Settings(BaseSettings):
     reminder_hours_after_alert: int = 6
     final_reminder_days_before: int = 1
     enable_automated_scheduler: bool = True
+    enable_demo_analysis: bool = False
 
     # Scoring Model Weights (Must sum to 1.0)
     weight_business_quality: float = 0.20

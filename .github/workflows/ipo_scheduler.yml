@@ -65,6 +65,37 @@ jobs:
           python -m src.cli.main results
           python -m src.cli.main health
 
+      - name: Run daily IPO status digest
+        if: always() && (github.event_name == 'workflow_dispatch' || github.event.schedule == '0 9 * * 1-5')
+        env:
+          APP_ENV: production
+          STATE_DIR: state-branch/state
+          ENABLE_DEMO_ANALYSIS: "false"
+          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP }}
+          WHATSAPP_PROVIDER: cloud_api
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_API_VERSION: v22.0
+          WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
+          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL }}
+          EMAIL_PROVIDER: smtp
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: 587
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: python -m src.cli.digest
+
+      - name: Upload daily IPO digest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-ipo-digest
+          path: reports/daily/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload results reports
         if: always()
         uses: actions/upload-artifact@v4

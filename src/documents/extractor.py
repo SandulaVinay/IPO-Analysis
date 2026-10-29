@@ -20,50 +20,50 @@ MAX_PAGE_TEXT = 200_000
 # review, not a parsed/verified financial value.
 EVIDENCE_PATTERNS = {
     "revenue_from_operations": (
-        r"revenue\\s+from\\s+operations",
-        r"revenue\\s+from\\s+sale[s]?\\s+of\\s+products",
-        r"total\\s+income\\s+from\\s+operations",
+        r"revenue\s+from\s+operations",
+        r"revenue\s+from\s+sale[s]?\s+of\s+products",
+        r"total\s+income\s+from\s+operations",
     ),
     "profit_after_tax": (
-        r"profit\\s*/?\\s*\\(?loss\\)?\\s+for\\s+the\\s+year",
-        r"profit\\s+after\\s+tax",
-        r"profit\\s*/?\\s*\\(?loss\\)?\\s+for\\s+the\\s+period",
+        r"profit\s*/?\s*\(?loss\)?\s+for\s+the\s+year",
+        r"profit\s+after\s+tax",
+        r"profit\s*/?\s*\(?loss\)?\s+for\s+the\s+period",
     ),
     "operating_cash_flow": (
-        r"net\\s+cash\\s+(?:generated\\s+from|from)\\s+operating\\s+activities",
-        r"cash\\s+flow[s]?\\s+from\\s+operating\\s+activities",
+        r"net\s+cash\s+(?:generated\s+from|from)\s+operating\s+activities",
+        r"cash\s+flow[s]?\s+from\s+operating\s+activities",
     ),
     "earnings_per_share": (
-        r"earnings\\s+per\\s+share",
-        r"basic\\s+and\\s+diluted\\s+earnings\\s+per\\s+share",
+        r"earnings\s+per\s+share",
+        r"basic\s+and\s+diluted\s+earnings\s+per\s+share",
     ),
     "borrowings": (
-        r"total\\s+borrowings",
-        r"borrowings\\s+including\\s+current\\s+maturities",
-        r"financial\\s+liabilities",
+        r"total\s+borrowings",
+        r"borrowings\s+including\s+current\s+maturities",
+        r"financial\s+liabilities",
     ),
     "net_worth": (
-        r"net\\s+worth",
-        r"total\\s+shareholders'?\\s+equity",
+        r"net\s+worth",
+        r"total\s+shareholders'?\s+equity",
     ),
     "issue_structure": (
-        r"fresh\\s+issue",
-        r"offer\\s+for\\s+sale",
-        r"objects\\s+of\\s+the\\s+offer",
-        r"objects\\s+of\\s+the\\s+issue",
+        r"fresh\s+issue",
+        r"offer\s+for\s+sale",
+        r"objects\s+of\s+the\s+offer",
+        r"objects\s+of\s+the\s+issue",
     ),
     "risk_factors": (
-        r"risk\\s+factors",
+        r"risk\s+factors",
         r"litigation",
-        r"contingent\\s+liabilit(?:y|ies)",
+        r"contingent\s+liabilit(?:y|ies)",
     ),
 }
 
 
 def _normalized_lines(text: str) -> List[str]:
     lines = []
-    for raw in (text or "").replace("\\x00", " ").splitlines():
-        line = re.sub(r"\\s+", " ", raw).strip()
+    for raw in (text or "").replace("\x00", " ").splitlines():
+        line = re.sub(r"\s+", " ", raw).strip()
         if line:
             lines.append(line)
     return lines

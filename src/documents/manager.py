@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from datetime import datetime, date, timezone
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +32,14 @@ def _safe_component(value: str, fallback: str) -> str:
     cleaned = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in str(value or ""))
     cleaned = cleaned.strip("._-")
     return cleaned[:100] or fallback
+
+
+def _safe_public_source_url(url: str) -> str:
+    """Remove token-like query parameters before a source URL enters reports or messages."""
+    parts = urlsplit(url)
+    sensitive = re.compile(r"(token|secret|password|auth|signature|credential|api.?key|session|expires)", re.IGNORECASE)
+    query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if not sensitive.search(key)]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
 def _validate_public_https_url(value: str):
@@ -360,11 +368,12 @@ class DocumentManager:
         version.version_label = persisted_label
         doc.latest_version = persisted_label
         await self.session.flush()
+        public_source_url = _safe_public_source_url(source_url)
         report_path = _write_candidate_report(
             ipo_id=ipo_id,
             document_type=safe_type,
             document_title=document_title,
-            source_url=source_url,
+            source_url=public_source_url,
             document_hash=doc_hash,
             version_label=persisted_label,
             extraction=extraction,
@@ -375,7 +384,7 @@ class DocumentManager:
             company_name=ipo_row.company_name,
             document_type=safe_type,
             document_title=document_title,
-            source_url=source_url,
+            source_url=public_source_url,
             document_hash=doc_hash,
             version_label=persisted_label,
             page_count=extraction["page_count"],

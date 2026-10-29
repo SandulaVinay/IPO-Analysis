@@ -39,7 +39,7 @@ class WhatsAppProvider(NotificationProvider):
             "text": {"preview_url": False, "body": message_body},
         }
         try:
-            response = await http_client.post(url, json=payload, headers=headers)
+            response = await http_client.post(url, json=payload, headers=headers, retry_transient=False)
             body = response.json()
             messages = body.get("messages") or []
             message_id = messages[0].get("id") if messages and isinstance(messages[0], dict) else None

@@ -77,3 +77,6 @@ storage/
 # Local sanitized runtime state (the public state branch is managed separately)
 .runtime_state/
 state-branch/
+
+# Generated reports are uploaded as workflow artifacts, not committed
+reports/

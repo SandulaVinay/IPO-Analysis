@@ -3,6 +3,7 @@
 Only public IPO and document metadata plus operational event keys belong here. Never write
 recipient details, credentials, or notification message bodies to this store.
 """
+import hashlib
 import json
 import os
 import re
@@ -10,12 +11,21 @@ import tempfile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models import IPO
 from src.database.repository import IPORepository
+
+
+def _public_source_url(source_url: str) -> str:
+    """Remove token-like query parameters before persisting URLs to a public state branch."""
+    parts = urlsplit(source_url)
+    sensitive = re.compile(r"(token|secret|password|auth|signature|credential|api.?key|session|expires)", re.IGNORECASE)
+    query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if not sensitive.search(key)]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
 def _utc_now() -> str:
@@ -150,7 +160,12 @@ class StateStore:
         documents = payload.get("documents", [])
         if not isinstance(documents, list):
             raise RuntimeError("Document registry must contain a list.")
-        matches = [item for item in documents if isinstance(item, dict) and item.get("source_url") == source_url]
+        url_hash = hashlib.sha256(source_url.encode("utf-8")).hexdigest()
+        matches = [
+            item for item in documents
+            if isinstance(item, dict)
+            and (item.get("source_url_hash") == url_hash or item.get("source_url") == source_url)
+        ]
         if not matches:
             return False
         latest = max(matches, key=lambda item: str(item.get("last_checked_at") or item.get("ingested_at") or ""))
@@ -173,7 +188,7 @@ class StateStore:
             raise RuntimeError("Document registry must contain a list.")
         return any(
             isinstance(item, dict)
-            and item.get("source_url") == source_url
+            and (item.get("source_url_hash") == hashlib.sha256(source_url.encode("utf-8")).hexdigest() or item.get("source_url") == source_url)
             and item.get("document_hash") == document_hash
             for item in documents
         )
@@ -199,11 +214,13 @@ class StateStore:
         if not isinstance(documents, list):
             raise RuntimeError("Document registry must contain a list.")
         now = _utc_now()
+        source_url_hash = hashlib.sha256(source_url.encode("utf-8")).hexdigest()
+        public_url = _public_source_url(source_url)
         existing = next((
             item for item in documents
             if isinstance(item, dict)
             and item.get("symbol") == symbol
-            and item.get("source_url") == source_url
+            and (item.get("source_url_hash") == source_url_hash or item.get("source_url") == source_url)
             and item.get("document_hash") == document_hash
         ), None)
         record = {
@@ -211,7 +228,8 @@ class StateStore:
             "company_name": company_name,
             "document_type": document_type,
             "document_title": document_title,
-            "source_url": source_url,
+            "source_url": public_url,
+            "source_url_hash": source_url_hash,
             "document_hash": document_hash,
             "version_label": version_label,
             "page_count": int(page_count),
@@ -225,7 +243,7 @@ class StateStore:
                 item for item in documents
                 if isinstance(item, dict)
                 and item.get("symbol") == symbol
-                and item.get("source_url") == source_url
+                and (item.get("source_url_hash") == source_url_hash or item.get("source_url") == source_url)
                 and item.get("document_type") == document_type
                 and item.get("document_title") == document_title
             ]

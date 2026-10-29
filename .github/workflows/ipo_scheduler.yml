@@ -4,7 +4,9 @@ on:
   schedule:
     # 08:30 IST and 14:30 IST weekdays; scheduled runs can be delayed by GitHub.
     - cron: '0 3 * * 1-5'
+    - cron: '0 6 * * 1-5'
     - cron: '0 9 * * 1-5'
+    - cron: '0 12 * * 1-5'
   workflow_dispatch:
 
 permissions:
@@ -67,7 +69,7 @@ jobs:
           python -m src.cli.main health
 
       - name: Run daily IPO status digest
-        if: always() && (github.event_name == 'workflow_dispatch' || github.event.schedule == '0 9 * * 1-5')
+        if: always() && (github.event_name == 'workflow_dispatch' || github.event.schedule == '0 12 * * 1-5')
         env:
           APP_ENV: production
           STATE_DIR: state-branch/state

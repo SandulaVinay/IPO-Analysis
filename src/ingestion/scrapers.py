@@ -105,19 +105,26 @@ class PortalScraper(BaseScraper):
 
     async def fetch_upcoming_ipos(self) -> List[Dict[str, Any]]:
         collected: List[Dict[str, Any]] = []
+        successful_sources = 0
+        source_errors = []
         sources = (
             ("NSE India", NSE_IPO_URL),
             ("BSE India", BSE_IPO_URL),
         )
         for source_name, url in sources:
             try:
-                response = await http_client.get(url)
+                response = await http_client.get(url, headers={"Referer": "https://www.nseindia.com/" if source_name == "NSE India" else "https://www.bseindia.com/"})
+                successful_sources += 1
                 parsed = _parse_official_issue_tables(response.text, source_name=source_name, source_url=url)
                 logger.info("Official IPO source %s yielded %s table rows.", source_name, len(parsed))
                 collected.extend(parsed)
             except Exception as exc:
                 # Keep the other official source available if one exchange is down.
-                logger.warning("Official IPO source %s could not be parsed (%s).", source_name, type(exc).__name__)
+                source_errors.append(f"{source_name}:{type(exc).__name__}")
+                logger.warning("Official IPO source %s could not be retrieved or parsed (%s).", source_name, type(exc).__name__)
+
+        if successful_sources == 0:
+            raise RuntimeError("All official IPO sources failed: " + ", ".join(source_errors))
 
         deduped: Dict[str, Dict[str, Any]] = {}
         for row in collected:

@@ -101,7 +101,10 @@ class EmailProvider(NotificationProvider):
                 total_attachment_bytes += path.stat().st_size
                 if total_attachment_bytes > 10 * 1024 * 1024:
                     raise ValueError("Email report attachments exceed the 10 MB total limit.")
-                part = MIMEApplication(path.read_bytes(), _subtype="pdf")
+                attachment_bytes = path.read_bytes()
+                if b"%PDF-" not in attachment_bytes[:1024]:
+                    raise ValueError("Email attachment is not a recognizable PDF file.")
+                part = MIMEApplication(attachment_bytes, _subtype="pdf")
                 part.add_header("Content-Disposition", "attachment", filename=path.name)
                 msg.attach(part)
 

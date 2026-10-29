@@ -4,6 +4,7 @@ The monitor reports only values found in a source filing. It never infers financ
 performance from a filing title and never emits a buy/sell recommendation.
 """
 import hashlib
+import os
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -356,6 +357,10 @@ async def monitor_financial_results() -> Dict[str, Any]:
                 f"Broadcast: {item['broadcast_time']}\n"
                 f"Official filing: {attachment or item['source_url']}\n"
             )
+            run_id = os.getenv("GITHUB_RUN_ID")
+            repository = os.getenv("GITHUB_REPOSITORY", "SandulaVinay/IPO-Analysis")
+            if run_id:
+                content += f"\nFull PDF report artifact: https://github.com/{repository}/actions/runs/{run_id}\n"
             if metrics.get("status") == "EXTRACTED":
                 content += (
                     f"Revenue: ₹{_format_metric(metrics.get('revenue_cr'))} Cr\n"
@@ -379,6 +384,7 @@ async def monitor_financial_results() -> Dict[str, Any]:
                     recipient=settings.email_to,
                     subject=subject,
                     content=content,
+                    metadata={"attachments": [str(report_path.with_suffix(".pdf"))]},
                 )
                 channel = "EMAIL"
                 success = bool(result.get("success") and (result.get("accepted") or result.get("delivered")))

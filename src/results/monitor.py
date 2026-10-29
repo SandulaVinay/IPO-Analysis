@@ -20,6 +20,7 @@ from src.ingestion.client import http_client
 from src.notifications.email import EmailProvider
 from src.notifications.whatsapp import WhatsAppProvider
 from src.state.store import StateStore
+from src.reporting.pdf import markdown_to_pdf
 
 NSE_RESULTS_URL = "https://www.nseindia.com/companies-listing/corporate-filings-financial-results"
 CRORE = 10_000_000
@@ -343,7 +344,9 @@ async def monitor_financial_results() -> Dict[str, Any]:
 
             safe_period = re.sub(r"[^0-9A-Za-z_-]+", "_", item["period_ended"])
             report_path = report_dir / f"{symbol}_{safe_period}_{item['event_key'][-8:]}.md"
-            report_path.write_text(_report_text(item, metrics), encoding="utf-8")
+            report_content = _report_text(item, metrics)
+            report_path.write_text(report_content, encoding="utf-8")
+            markdown_to_pdf(report_content, report_path.with_suffix(".pdf"), title=f"Financial Results - {symbol}")
             subject = f"Official results filing: {item['company_name']} ({symbol})"
             content = (
                 f"Official NSE financial-results filing detected.\n\n"

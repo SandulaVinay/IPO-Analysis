@@ -26,7 +26,7 @@ class DiscoveryEngine:
         logger.info("Starting IPO discovery cycle...")
         raw_ipos = await self.scraper.fetch_upcoming_ipos()
         discovered_entities: List[IPO] = []
-        document_manager = DocumentManager(self.session)
+        document_manager = None
 
         for raw in raw_ipos:
             symbol = raw.get("symbol") or Normalizer.generate_symbol(raw["company_name"])
@@ -83,6 +83,8 @@ class DiscoveryEngine:
                 if not source_url or not document_type:
                     continue
                 try:
+                    if document_manager is None:
+                        document_manager = DocumentManager(self.session)
                     if await document_manager.has_source_url(ipo.id, source_url):
                         continue
                     version = await document_manager.ingest_document(

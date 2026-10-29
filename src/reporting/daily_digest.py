@@ -117,7 +117,7 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
         "",
         "## Important limitation",
         "",
-        "This is a discovery/status digest, not personalized financial advice. Prospectus candidate passages remain UNVERIFIED until financial periods, units, consolidated/standalone basis, and source evidence are reconciled. Do not apply based on this digest alone.",
+        "This discovery/status digest is not an investment recommendation or personalized financial advice. Prospectus candidate passages remain UNVERIFIED until financial periods, units, consolidated/standalone basis, and source evidence are reconciled. Do not apply based on this digest alone.",
         "",
     ])
     message = (

@@ -98,3 +98,26 @@ async def test_daily_digest_uses_email_fallback_with_pdf_when_whatsapp_fails(tmp
     attachment = captured["metadata"]["attachments"][0]
     assert attachment.endswith(".pdf")
     assert (tmp_path / attachment).exists()
+
+
+
+def test_daily_digest_labels_announced_dates_when_verified_dates_are_missing():
+    ipo = SimpleNamespace(
+        symbol="CONFLICT",
+        company_name="Conflict Issuer Limited",
+        status="SOURCE_CONFLICT",
+        verified_open_date=None,
+        verified_close_date=None,
+        announced_open_date=date(2026, 11, 10),
+        announced_close_date=date(2026, 11, 15),
+        min_price=None,
+        max_price=None,
+        issue_size_cr=None,
+    )
+    report, _ = _build_report(
+        [ipo],
+        now=datetime(2026, 10, 29, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata")),
+        discovery_run={"status": "SUCCESS"},
+    )
+    assert "announced; not verified" in report
+    assert "WAIT" in report

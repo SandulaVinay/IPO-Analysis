@@ -132,13 +132,13 @@ async def _notify_new_document(
         return
     run_id = os.getenv("GITHUB_RUN_ID")
     repository = os.getenv("GITHUB_REPOSITORY", "SandulaVinay/IPO-Analysis")
-    artifact_link = f"\\nWorkflow run: https://github.com/{repository}/actions/runs/{run_id}" if run_id else ""
+    artifact_link = f"\nWorkflow run: https://github.com/{repository}/actions/runs/{run_id}" if run_id else ""
     message = (
-        "New official IPO document detected.\\n\\n"
-        f"Company: {company_name} ({symbol})\\n"
-        f"Document: {document_title} ({document_type}, {version_label})\\n"
-        f"Pages: {page_count}; candidate passages: {evidence_count}\\n"
-        f"Official source: {source_url}\\n\\n"
+        "New official IPO document detected.\n\n"
+        f"Company: {company_name} ({symbol})\n"
+        f"Document: {document_title} ({document_type}, {version_label})\n"
+        f"Pages: {page_count}; candidate passages: {evidence_count}\n"
+        f"Official source: {source_url}\n\n"
         "The attached PDF is an evidence-review report. Extracted passages remain UNVERIFIED; "
         "this alert is not an investment recommendation."
         + artifact_link

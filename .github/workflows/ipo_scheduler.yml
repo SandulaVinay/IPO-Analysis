@@ -2,7 +2,7 @@ name: Automated IPO Discovery & Alert Scheduler
 
 on:
   schedule:
-    # 08:30 IST and 14:30 IST weekdays; scheduled runs can be delayed by GitHub.
+    # 08:30, 11:30, 14:30, and 17:30 IST weekdays; scheduled runs can be delayed by GitHub.
     - cron: '0 3 * * 1-5'
     - cron: '0 6 * * 1-5'
     - cron: '0 9 * * 1-5'
@@ -49,13 +49,13 @@ jobs:
           STATE_DIR: state-branch/state
           ENABLE_DEMO_ANALYSIS: "false"
           ENABLE_AUTOMATED_SCHEDULER: "true"
-          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP }}
+          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP || 'false' }}
           WHATSAPP_PROVIDER: cloud_api
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
           WHATSAPP_API_VERSION: v22.0
           WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
-          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL }}
+          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL || 'false' }}
           EMAIL_PROVIDER: smtp
           SMTP_HOST: smtp.gmail.com
           SMTP_PORT: 587

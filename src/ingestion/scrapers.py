@@ -156,7 +156,7 @@ def _parse_official_issue_tables(html: str, *, source_name: str, source_url: str
                 row["symbol"] = cell_text(symbol_idx).upper()
             if cell_text(price_idx):
                 price_text = cell_text(price_idx)
-                price_values = [float(value.replace(",", "")) for value in re.findall(r"\\d[\\d,]*(?:\\.\\d+)?", price_text)]
+                price_values = [float(value.replace(",", "")) for value in re.findall(r"\d[\d,]*(?:\.\d+)?", price_text)]
                 if len(price_values) >= 2:
                     row["min_price"], row["max_price"] = price_values[0], price_values[1]
                 elif len(price_values) == 1:
@@ -164,12 +164,12 @@ def _parse_official_issue_tables(html: str, *, source_name: str, source_url: str
             if cell_text(issue_size_idx):
                 issue_size_text = cell_text(issue_size_idx)
                 issue_size_header = headers[issue_size_idx] if issue_size_idx < len(headers) else ""
-                if re.search(r"\\bcr\\b|crore", issue_size_text + " " + issue_size_header, re.IGNORECASE):
-                    issue_size_values = re.findall(r"\\d[\\d,]*(?:\\.\\d+)?", issue_size_text)
+                if re.search(r"\bcr\b|crore", issue_size_text + " " + issue_size_header, re.IGNORECASE):
+                    issue_size_values = re.findall(r"\d[\d,]*(?:\.\d+)?", issue_size_text)
                     if issue_size_values:
                         row["issue_size_cr"] = float(issue_size_values[0].replace(",", ""))
             if cell_text(lot_size_idx):
-                lot_values = re.findall(r"\\d[\\d,]*", cell_text(lot_size_idx))
+                lot_values = re.findall(r"\d[\d,]*", cell_text(lot_size_idx))
                 if lot_values:
                     row["lot_size"] = int(lot_values[0].replace(",", ""))
             if cell_text(open_idx):

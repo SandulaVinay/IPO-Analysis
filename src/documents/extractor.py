@@ -137,7 +137,7 @@ def extract_candidate_evidence_from_tables(
     for page_number, tables in enumerate(tables_by_page, start=1):
         for table_index, table in enumerate(tables or [], start=1):
             rows = [
-                [re.sub(r"\\s+", " ", str(cell or "")).strip() for cell in (row or [])]
+                [re.sub(r"\s+", " ", str(cell or "")).strip() for cell in (row or [])]
                 for row in (table or [])
             ]
             rows = [row for row in rows if any(row)]

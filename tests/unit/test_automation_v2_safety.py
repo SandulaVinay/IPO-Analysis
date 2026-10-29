@@ -54,7 +54,7 @@ async def test_whatsapp_cloud_api_posts_and_reports_acceptance(monkeypatch):
         def json(self):
             return {"messages": [{"id": "wamid.test-message"}]}
 
-    async def fake_post(url, *, json=None, data=None, headers=None):
+    async def fake_post(url, *, json=None, data=None, headers=None, retry_transient=True):
         seen["url"] = url
         seen["json"] = json
         seen["headers"] = headers

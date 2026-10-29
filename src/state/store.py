@@ -226,9 +226,11 @@ class StateStore:
             documents.append(record)
             version_label = record["version_label"]
         else:
+            preserved_label = existing.get("version_label")
             existing.update(record)
+            existing["version_label"] = preserved_label or record["version_label"]
             existing.setdefault("ingested_at", now)
-            version_label = str(existing.get("version_label") or version_label)
+            version_label = str(existing["version_label"])
         payload["documents"] = documents[-2000:]
         self._write("document_registry.json", payload)
         return version_label

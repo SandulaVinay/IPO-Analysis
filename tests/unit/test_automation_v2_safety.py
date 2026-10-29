@@ -100,4 +100,4 @@ def test_document_ingestion_accepts_pdf_header_and_sanitizes_path_components():
     from src.documents.manager import _safe_component, _validate_pdf_content
 
     _validate_pdf_content(b"%PDF-1.7\\nminimal test fixture")
-    assert _safe_component("../../RHP/2026", "filing") == "______RHP_2026"
+    assert _safe_component("../../RHP/2026", "filing") == "RHP_2026"

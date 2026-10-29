@@ -22,8 +22,6 @@ from src.database.models import IPO, IPODocument, DocumentVersion, Fact
 from src.state.store import StateStore
 from src.documents.extractor import extract_pdf_candidate_evidence
 from src.reporting.pdf import markdown_to_pdf
-from src.notifications.email import EmailProvider
-from src.notifications.whatsapp import WhatsAppProvider
 from src.ingestion.client import http_client
 
 MAX_DOCUMENT_BYTES = 50 * 1024 * 1024
@@ -134,6 +132,9 @@ async def _notify_new_document(
     report_pdf: Path,
 ) -> None:
     """Send one WhatsApp-first alert per document hash, with email fallback."""
+    from src.notifications.email import EmailProvider
+    from src.notifications.whatsapp import WhatsAppProvider
+
     event_key = "PROSPECTUS_" + hashlib.sha256(
         f"{symbol}|{source_url}|{document_hash}".encode("utf-8")
     ).hexdigest()[:32]

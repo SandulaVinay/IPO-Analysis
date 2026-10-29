@@ -4,6 +4,8 @@ Dispatches rich HTML and clean plain-text research reports directly to user inbo
 """
 
 import smtplib
+from pathlib import Path
+from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Dict, Any, Optional
@@ -81,11 +83,27 @@ class EmailProvider(NotificationProvider):
             return {"success": False, "delivered": False, "mocked": False, "message_id": None, "error": error}
 
         try:
-            msg = MIMEMultipart("alternative")
+            msg = MIMEMultipart("mixed")
             msg["Subject"] = subject
             msg["From"] = settings.email_from or settings.smtp_user
             msg["To"] = to_addr
             msg.attach(MIMEText(content, "plain", "utf-8"))
+
+            attachments = (metadata or {}).get("attachments", [])
+            if attachments and not isinstance(attachments, list):
+                raise ValueError("Email attachments must be supplied as a list of report paths.")
+            report_root = Path("reports").resolve()
+            total_attachment_bytes = 0
+            for attachment in attachments:
+                path = Path(str(attachment)).resolve()
+                if not path.is_relative_to(report_root) or path.suffix.lower() != ".pdf" or not path.is_file():
+                    raise ValueError("Email attachments must be existing PDF files inside the reports directory.")
+                total_attachment_bytes += path.stat().st_size
+                if total_attachment_bytes > 10 * 1024 * 1024:
+                    raise ValueError("Email report attachments exceed the 10 MB total limit.")
+                part = MIMEApplication(path.read_bytes(), _subtype="pdf")
+                part.add_header("Content-Disposition", "attachment", filename=path.name)
+                msg.attach(part)
 
             with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
                 server.ehlo()

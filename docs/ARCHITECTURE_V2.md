@@ -138,7 +138,7 @@ WhatsApp availability, template requirements, and charges depend on Meta/provide
 
 ## Current status (do not overstate)
 
-- Implemented on `automation-v2`: official IPO-page parsing, source-date conflict handling, CI, sanitized state persistence, WhatsApp Cloud API adapter, and a watchlist-based results monitor with conservative XBRL extraction.
+- Implemented on `automation-v2`: official IPO-page parsing, source-date conflict handling, CI, sanitized state persistence, WhatsApp Cloud API adapter, a watchlist-based results monitor with conservative XBRL extraction, and prospectus PDF validation with page-cited candidate evidence stored as explicitly UNVERIFIED facts.
 - Recent work added exact issuer-name filtering and preservation of cumulative/submission metadata.
-- Still incomplete: comprehensive RHP/DRHP financial extraction, full production IPO scoring from verified documents, broad XBRL/PDF financial-results coverage, and a fully validated live-source scheduled run.
+- Still incomplete: automatic RHP/DRHP discovery from exchange pages, table-aware financial statement extraction and period reconciliation, verification/reconciliation workflow for candidate facts, full production IPO scoring from verified documents, broad XBRL/PDF financial-results coverage, and a fully validated live-source scheduled run.
 - The draft pull request must remain unmerged and production recommendations must remain disabled until the validation checklist is satisfied.

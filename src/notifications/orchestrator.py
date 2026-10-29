@@ -165,7 +165,7 @@ Review the analysis before deciding."""
         return settings.email_to or settings.whatsapp_recipient_phone
 
     async def _dispatch_with_fallback(self, alert: Alert, subject: str, content: str) -> bool:
-        """Execute fallback chain: WhatsApp -> Email -> SMS -> Console."""
+        """Execute fallback chain and distinguish provider acceptance from delivery."""
         notif = Notification(
             alert_id=alert.id,
             channel="MULTI_CHANNEL_FALLBACK",
@@ -178,28 +178,38 @@ Review the analysis before deciding."""
 
         for idx, provider in enumerate(self.providers, 1):
             recipient = self._recipient_for_provider(provider)
-            logger.info(f"Attempting notification dispatch via {provider.channel_name} to configured recipient...")
+            logger.info("Attempting notification dispatch via %s to configured recipient...", provider.channel_name)
             res = await provider.send_notification(recipient=recipient, subject=subject, content=content)
-
+            delivered = bool(res.get("success") and res.get("delivered", False))
+            accepted = bool(res.get("success") and res.get("accepted", False))
             attempt = NotificationAttempt(
                 notification_id=notif.id,
                 attempt_number=idx,
-                status="SUCCESS" if res.get("success") and res.get("delivered", False) else ("MOCKED" if res.get("mocked") else "FAILED"),
+                status="DELIVERED" if delivered else ("ACCEPTED" if accepted else ("MOCKED" if res.get("mocked") else "FAILED")),
                 provider_message_id=res.get("message_id"),
                 error_message=res.get("error"),
             )
             self.session.add(attempt)
             await self.session.flush()
 
-            if res.get("success") and res.get("delivered", False):
+            if delivered:
                 notif.status = "DELIVERED"
                 notif.channel = provider.channel_name
                 notif.recipient = recipient
                 notif.delivered_at = datetime.utcnow()
-                logger.info(f"Notification delivered successfully via {provider.channel_name} (Msg ID: {res.get('message_id')})")
+                logger.info("Notification delivered via %s (provider message ID recorded).", provider.channel_name)
                 return True
 
-            logger.warning(f"{provider.channel_name} dispatch did not deliver: {res.get('error') or 'mocked/not delivered'}. Falling back to next channel...")
+            if accepted:
+                # Avoid duplicate fallback messages after the provider accepted the request.
+                # Final handset delivery requires a provider delivery-status callback.
+                notif.status = "ACCEPTED"
+                notif.channel = provider.channel_name
+                notif.recipient = recipient
+                logger.info("Notification accepted by %s; final delivery remains unconfirmed.", provider.channel_name)
+                return True
+
+            logger.warning("%s dispatch failed; trying the next configured channel.", provider.channel_name)
 
         notif.status = "FAILED"
         await self.session.flush()

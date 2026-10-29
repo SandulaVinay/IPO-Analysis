@@ -25,6 +25,7 @@ class DiscoveryEngine:
         """Execute full discovery cycle."""
         logger.info("Starting IPO discovery cycle...")
         raw_ipos = await self.scraper.fetch_upcoming_ipos()
+        self.source_status = self.scraper.last_source_status
         discovered_entities: List[IPO] = []
         document_manager = None
 

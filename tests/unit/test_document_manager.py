@@ -152,3 +152,15 @@ async def test_prospectus_notification_is_idempotent_by_document_hash(tmp_path, 
     await _notify_new_document(**kwargs)
     await _notify_new_document(**kwargs)
     assert len(calls) == 1
+
+
+
+def test_public_prospectus_source_urls_redact_token_like_query_parameters():
+    from src.documents.manager import _safe_public_source_url
+
+    public_url = _safe_public_source_url(
+        "https://nsearchives.nseindia.com/rhp.pdf?token=secret-value&download=1&signature=abc"
+    )
+    assert "secret-value" not in public_url
+    assert "signature=abc" not in public_url
+    assert "download=1" in public_url

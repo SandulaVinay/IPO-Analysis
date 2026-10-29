@@ -306,6 +306,10 @@ async def monitor_financial_results() -> Dict[str, Any]:
                 headers={"Referer": "https://www.nseindia.com/companies-listing/corporate-filings-application"},
             )
             all_page_rows = parse_financial_results_page(response.text, symbol, page_url)
+            if not all_page_rows:
+                errors += 1
+                logger.warning("NSE financial-results page returned no recognizable filing rows; parser/source response may have changed.")
+                continue
             filings = [item for item in all_page_rows if _matches_watchlist_company(item, company)]
             if not filings:
                 logger.info("No exact company-name match found on NSE financial-results page for %s; no alert emitted.", symbol)

@@ -70,3 +70,31 @@ async def test_daily_digest_creates_report_without_claiming_delivery_when_channe
     pdf_path = (tmp_path / result["report_path"]).with_suffix(".pdf")
     assert pdf_path.exists()
     assert pdf_path.read_bytes().startswith(b"%PDF-")
+
+
+
+@pytest.mark.asyncio
+async def test_daily_digest_uses_email_fallback_with_pdf_when_whatsapp_fails(tmp_path, monkeypatch):
+    import src.reporting.daily_digest as digest_module
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "enable_whatsapp", True)
+    monkeypatch.setattr(settings, "enable_email", True)
+    captured = {}
+
+    async def whatsapp_fail(self, recipient, subject, content, metadata=None):
+        return {"success": False, "accepted": False, "delivered": False, "error": "test failure"}
+
+    async def email_accept(self, recipient, subject, content, metadata=None):
+        captured["metadata"] = metadata
+        return {"success": True, "accepted": True, "delivered": False, "error": None}
+
+    monkeypatch.setattr(digest_module.WhatsAppProvider, "send_notification", whatsapp_fail)
+    monkeypatch.setattr(digest_module.EmailProvider, "send_notification", email_accept)
+    store = StateStore(root=str(tmp_path / "state"))
+    result = await generate_daily_ipo_digest([], store)
+    assert result["status"] == "ACCEPTED"
+    assert result["channel"] == "EMAIL"
+    attachment = captured["metadata"]["attachments"][0]
+    assert attachment.endswith(".pdf")
+    assert (tmp_path / attachment).exists()

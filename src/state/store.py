@@ -165,6 +165,19 @@ class StateStore:
             return False
         return datetime.now(timezone.utc) - checked_at < timedelta(days=max_age_days)
 
+    def has_document_hash(self, source_url: str, document_hash: str) -> bool:
+        """Return whether this exact PDF content hash has already been recorded."""
+        payload = self._read("document_registry.json", {"schema_version": 1, "documents": []})
+        documents = payload.get("documents", [])
+        if not isinstance(documents, list):
+            raise RuntimeError("Document registry must contain a list.")
+        return any(
+            isinstance(item, dict)
+            and item.get("source_url") == source_url
+            and item.get("document_hash") == document_hash
+            for item in documents
+        )
+
     def record_document(
         self,
         *,

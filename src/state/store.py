@@ -179,7 +179,7 @@ class StateStore:
         text_pages_extracted: int,
         evidence_count: int,
         processing_status: str,
-    ) -> None:
+    ) -> str:
         """Persist only public document metadata; candidate text stays out of the public state branch."""
         payload = self._read("document_registry.json", {"schema_version": 1, "documents": []})
         documents = payload.get("documents", [])
@@ -208,13 +208,30 @@ class StateStore:
             "last_checked_at": now,
         }
         if existing is None:
+            previous_versions = [
+                item for item in documents
+                if isinstance(item, dict)
+                and item.get("symbol") == symbol
+                and item.get("source_url") == source_url
+                and item.get("document_type") == document_type
+                and item.get("document_title") == document_title
+            ]
+            if previous_versions:
+                used = {str(item.get("version_label", "")) for item in previous_versions}
+                index = len(previous_versions) + 1
+                while f"v{index}" in used:
+                    index += 1
+                record["version_label"] = f"v{index}"
             record["ingested_at"] = now
             documents.append(record)
+            version_label = record["version_label"]
         else:
             existing.update(record)
             existing.setdefault("ingested_at", now)
+            version_label = str(existing.get("version_label") or version_label)
         payload["documents"] = documents[-2000:]
         self._write("document_registry.json", payload)
+        return version_label
 
     def has_seen_event(self, event_key: str) -> bool:
         """Return whether the outbox has ever recorded this event, regardless of delivery status."""

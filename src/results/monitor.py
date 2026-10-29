@@ -18,6 +18,7 @@ from src.notifications.email import EmailProvider
 from src.notifications.whatsapp import WhatsAppProvider
 from src.state.store import StateStore
 from src.common.logging import logger
+from src.discovery.normalizer import Normalizer
 
 NSE_RESULTS_URL = "https://www.nseindia.com/companies-listing/corporate-filings-financial-results"
 
@@ -48,7 +49,7 @@ def parse_financial_results_page(html: str, symbol: str, page_url: str) -> List[
 
         company_i = index_for("company name", "company")
         period_i = index_for("period ended", "period end")
-        relating_i = index_for("relating to", "quarter", "period")
+        relating_i = index_for("relating to", "relating")
         broadcast_i = index_for("broadcast date", "broadcast")
         audit_i = index_for("audited unaudited", "audited")
         consolidation_i = index_for("consolidated non consolidated", "consolidated")
@@ -139,6 +140,15 @@ async def monitor_financial_results() -> Dict[str, Any]:
                 headers={"Referer": "https://www.nseindia.com/companies-listing/corporate-filings-application"},
             )
             filings = parse_financial_results_page(response.text, symbol, page_url)
+            if filings:
+                parsed_periods = [(Normalizer.parse_date(item.get("period_ended")), item) for item in filings]
+                valid_periods = [period for period, _ in parsed_periods if period is not None]
+                if valid_periods:
+                    latest_period = max(valid_periods)
+                    filings = [item for period, item in parsed_periods if period == latest_period]
+                consolidated = [item for item in filings if "consolidated" in (item.get("consolidation") or "").lower() and "non-consolidated" not in (item.get("consolidation") or "").lower()]
+                if consolidated:
+                    filings = consolidated
         except Exception as exc:
             errors += 1
             logger.warning("NSE results check failed for %s (%s).", symbol, type(exc).__name__)
@@ -148,7 +158,8 @@ async def monitor_financial_results() -> Dict[str, Any]:
             if store.has_processed_event(item["event_key"]):
                 continue
             new_filings += 1
-            report_path = report_dir / f"{symbol}_{re.sub(r'[^0-9A-Za-z_-]+', '_', item['period_ended'])}_{item['event_key'][-8:]}.md"
+            safe_period = re.sub(r"[^0-9A-Za-z_-]+", "_", item["period_ended"])
+            report_path = report_dir / f"{symbol}_{safe_period}_{item['event_key'][-8:]}.md"
             report_path.write_text(_report_text(item), encoding="utf-8")
             subject = f"Official quarterly/annual results filing: {item['company_name']} ({symbol})"
             content = (

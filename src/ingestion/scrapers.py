@@ -7,6 +7,7 @@ manufacturing a sample IPO.
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import re
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 

@@ -70,3 +70,52 @@ def test_xbrl_extraction_calculates_reported_values_and_yoy_changes():
     assert result["cfo_cr"] == 25.0
     assert result["revenue_yoy_pct"] == 25.0
     assert result["pat_yoy_pct"] == 33.33
+
+
+
+def test_watchlist_match_requires_exact_configured_company_name():
+    from src.results.monitor import _matches_watchlist_company
+
+    filing = {"company_name": "Reliance Industries Limited"}
+    assert _matches_watchlist_company(
+        filing,
+        {"symbol": "RELIANCE", "company_name": "Reliance Industries Limited"},
+    )
+    assert _matches_watchlist_company(
+        filing,
+        {
+            "symbol": "RELIANCE",
+            "company_name": "Reliance Industries Ltd",
+            "company_name_aliases": ["Reliance Industries Limited"],
+        },
+    )
+    assert not _matches_watchlist_company(
+        filing,
+        {"symbol": "TCS", "company_name": "Tata Consultancy Services Limited"},
+    )
+    assert not _matches_watchlist_company(filing, {"symbol": "RELIANCE"})
+
+
+def test_results_parser_keeps_cumulative_and_submission_metadata():
+    html = """
+    <table>
+      <tr>
+        <th>Company Name</th><th>Audited / Unaudited</th>
+        <th>Cumulative / Non-Cumulative</th><th>Consolidated / Non-Consolidated</th>
+        <th>Period</th><th>Period Ended</th><th>Relating To</th>
+        <th>Type of Submission</th><th>XBRL</th><th>Broadcast Date/Time</th>
+      </tr>
+      <tr>
+        <td>Reliance Industries Limited</td><td>Unaudited</td><td>Non-Cumulative</td>
+        <td>Consolidated</td><td>Quarterly</td><td>30-SEP-2026</td>
+        <td>Second Quarter</td><td>Original</td>
+        <td><a href="https://nsearchives.nseindia.com/corporate/reliance.xml">XBRL</a></td>
+        <td>29-OCT-2026 18:15:00</td>
+      </tr>
+    </table>
+    """
+    rows = parse_financial_results_page(html, "RELIANCE", "https://www.nseindia.com/companies-listing/corporate-filings-financial-results")
+    assert len(rows) == 1
+    assert rows[0]["cumulative_status"] == "Non-Cumulative"
+    assert rows[0]["period_type"] == "Quarterly"
+    assert rows[0]["submission_type"] == "Original"

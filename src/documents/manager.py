@@ -8,7 +8,7 @@ import hashlib
 import ipaddress
 import os
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -235,7 +235,7 @@ class DocumentManager:
             source_url=source_url,
             file_path=str(file_path),
             document_hash=doc_hash,
-            publication_date=publication_date or datetime.utcnow().date(),
+            publication_date=publication_date or datetime.now(timezone.utc).date(),
             page_count=extraction["page_count"],
             processing_status="PARSED" if extraction["text_pages_extracted"] else "NO_TEXT",
         )

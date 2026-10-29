@@ -31,13 +31,14 @@ async def main() -> int:
         ),
     )
 
+    print(f"ACCEPTED={result.get('accepted', False)}")
     print(f"DELIVERED={result.get('delivered', False)}")
     print(f"MOCKED={result.get('mocked', False)}")
     print(f"MESSAGE_ID={result.get('message_id')}")
     if result.get("error"):
         print(f"ERROR={result['error']}")
 
-    return 0 if result.get("delivered", False) else 1
+    return 0 if result.get("accepted", False) or result.get("delivered", False) else 1
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ manufacturing a sample IPO.
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import re
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -43,7 +43,7 @@ def _extract_prospectus_links(row, source_url: str) -> List[Dict[str, str]]:
         if not href.startswith("https://"):
             continue
         label = re.sub(r"\s+", " ", anchor.get_text(" ", strip=True)).strip()
-        descriptor = f"{label} {href}".lower()
+        descriptor = f"{label} {urlparse(href).path}".lower()
         if any(term in descriptor for term in ("draft red herring prospectus", "drhp")):
             document_type = "DRHP"
         elif any(term in descriptor for term in ("red herring prospectus", "rhp")):

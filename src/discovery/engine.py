@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.common.logging import logger
 from src.database.models import IPO, IPOEvent
 from src.database.repository import IPORepository
+from src.documents.manager import DocumentManager
 from src.discovery.normalizer import Normalizer
 from src.ingestion.scrapers import PortalScraper
 
@@ -25,6 +26,7 @@ class DiscoveryEngine:
         logger.info("Starting IPO discovery cycle...")
         raw_ipos = await self.scraper.fetch_upcoming_ipos()
         discovered_entities: List[IPO] = []
+        document_manager = DocumentManager(self.session)
 
         for raw in raw_ipos:
             symbol = raw.get("symbol") or Normalizer.generate_symbol(raw["company_name"])
@@ -69,6 +71,36 @@ class DiscoveryEngine:
                 logger.warning("Official source conflict for %s (%s); verified dates cleared.", company_name, symbol)
             elif ipo.status == "SOURCE_CONFLICT":
                 ipo.status = "IPO_DISCOVERED"
+
+            # Prospectus links are optional: only real, validated PDFs are ingested.
+            # A failed download never creates a placeholder and never unblocks scoring.
+            for document in raw.get("document_links") or []:
+                if not isinstance(document, dict):
+                    continue
+                source_url = document.get("source_url")
+                document_type = document.get("document_type")
+                document_title = document.get("document_title") or document_type or "Prospectus"
+                if not source_url or not document_type:
+                    continue
+                try:
+                    if await document_manager.has_source_url(ipo.id, source_url):
+                        continue
+                    version = await document_manager.ingest_document(
+                        ipo_id=ipo.id,
+                        document_type=document_type,
+                        document_title=document_title,
+                        source_url=source_url,
+                    )
+                    logger.info(
+                        "Prospectus evidence ingestion completed for %s: type=%s status=%s",
+                        symbol, document_type, version.processing_status,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Prospectus ingestion skipped for %s (%s); analysis remains gated.",
+                        symbol, type(exc).__name__,
+                    )
+
             discovered_entities.append(ipo)
             logger.info(
                 "Discovered/updated IPO: %s (%s) | announced dates: %s to %s | verified dates: %s to %s",

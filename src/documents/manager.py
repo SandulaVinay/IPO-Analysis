@@ -17,7 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.common.config import settings
 from src.common.logging import logger
-from src.database.models import IPODocument, DocumentVersion, Fact
+from src.database.models import IPO, IPODocument, DocumentVersion, Fact
+from src.state.store import StateStore
 from src.documents.extractor import extract_pdf_candidate_evidence
 from src.reporting.pdf import markdown_to_pdf
 from src.ingestion.client import http_client
@@ -122,6 +123,8 @@ class DocumentManager:
         return sha256_hash.hexdigest()
 
     async def has_source_url(self, ipo_id: int, source_url: str) -> bool:
+        if StateStore().has_document_url(source_url):
+            return True
         result = await self.session.execute(
             select(DocumentVersion.id).join(IPODocument).where(
                 IPODocument.ipo_id == ipo_id,
@@ -267,6 +270,26 @@ class DocumentManager:
             document_hash=doc_hash,
             extraction=extraction,
         )
+        ipo_result = await self.session.execute(select(IPO).where(IPO.id == ipo_id))
+        ipo_row = ipo_result.scalars().first()
+        if ipo_row is None:
+            raise RuntimeError("IPO record disappeared before document metadata persistence.")
+        persisted_label = StateStore().record_document(
+            symbol=ipo_row.symbol,
+            company_name=ipo_row.company_name,
+            document_type=safe_type,
+            document_title=document_title,
+            source_url=source_url,
+            document_hash=doc_hash,
+            version_label=version.version_label,
+            page_count=extraction["page_count"],
+            text_pages_extracted=extraction["text_pages_extracted"],
+            evidence_count=extraction["evidence_count"],
+            processing_status=version.processing_status,
+        )
+        version.version_label = persisted_label
+        doc.latest_version = persisted_label
+        await self.session.flush()
         logger.info(
             "Registered validated %s PDF version %s (SHA-256 %s...); pages=%s candidates=%s. Candidate facts remain UNVERIFIED.",
             safe_type, safe_version, doc_hash[:16], extraction["page_count"], extraction["evidence_count"],

@@ -41,7 +41,7 @@ def _extract_prospectus_links(row, source_url: str) -> List[Dict[str, str]]:
         href = urljoin(source_url, anchor["href"].strip())
         if not href.startswith("https://"):
             continue
-        label = re.sub(r"\\s+", " ", anchor.get_text(" ", strip=True)).strip()
+        label = re.sub(r"\s+", " ", anchor.get_text(" ", strip=True)).strip()
         descriptor = f"{label} {href}".lower()
         if any(term in descriptor for term in ("draft red herring prospectus", "drhp")):
             document_type = "DRHP"

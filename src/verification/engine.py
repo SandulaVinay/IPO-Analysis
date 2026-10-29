@@ -38,7 +38,12 @@ class VerificationEngine:
             if value is not None and value != "":
                 available_fields.add(k)
         for fact in facts:
-            if fact.get("field_name") and fact.get("verification_status") == "VERIFIED":
+            if (
+                fact.get("field_name")
+                and fact.get("verification_status") == "VERIFIED"
+                and fact.get("source_name")
+                and fact.get("source_url")
+            ):
                 available_fields.add(fact["field_name"])
 
         missing_critical = [f for f in cls.CRITICAL_FIELDS if f not in available_fields]
@@ -46,7 +51,7 @@ class VerificationEngine:
         completeness_pct = round(completeness_ratio * 100.0, 1)
 
         # Count verified distinct sources
-        verified_sources = {f.get("source_name") for f in facts if f.get("verification_status") == "VERIFIED" and f.get("source_name")}
+        verified_sources = {f.get("source_name") for f in facts if f.get("verification_status") == "VERIFIED" and f.get("source_name") and f.get("source_url")}
 
         # Determine confidence
         if completeness_pct >= 90.0 and len(missing_critical) == 0:

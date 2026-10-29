@@ -67,3 +67,6 @@ async def test_daily_digest_creates_report_without_claiming_delivery_when_channe
     assert result["status"] == "REPORT_ONLY"
     assert result["notifications_accepted"] == 0
     assert (tmp_path / result["report_path"]).exists()
+    pdf_path = (tmp_path / result["report_path"]).with_suffix(".pdf")
+    assert pdf_path.exists()
+    assert pdf_path.read_bytes().startswith(b"%PDF-")

@@ -139,7 +139,36 @@ async def trigger_notification(symbol: str, session: AsyncSession = Depends(get_
 
 
 async def run_pipeline_for_ipo(ipo, session: AsyncSession) -> Dict[str, Any]:
-    """Helper to run the full evidence and scoring pipeline for an IPO."""
+    """Run analysis; production must not use the demo financial inputs below."""
+    if settings.app_env == "production":
+        reason = (
+            "Production analysis is fail-closed because verified issuer financials and live official-source "
+            "adapters are not yet connected. No investment recommendation was generated."
+        )
+        safe_report = (
+            f"ASSESSMENT: UNABLE TO ASSESS\n\n{ipo.company_name} ({ipo.symbol})\n\n"
+            f"{reason}\n\nDo not use this report as a basis for an investment decision."
+        )
+        return {
+            "symbol": ipo.symbol,
+            "company_name": ipo.company_name,
+            "score_data": {
+                "verdict": "UNABLE_TO_ASSESS",
+                "overall_score": 0.0,
+                "is_safety_gated": True,
+                "safety_gate_reasons": [reason],
+                "pillar_scores": {},
+                "weights_used": {},
+                "horizons": {},
+            },
+            "gmp": {"gmp_value": None, "status": "UNAVAILABLE"},
+            "subscription": {"status": "UNAVAILABLE"},
+            "executive_summary": safe_report,
+            "full_report": safe_report,
+            "copy_mode": safe_report,
+            "assessment_status": "UNABLE_TO_ASSESS",
+        }
+
     # 1. Gather historical financials
     periods_data = [
         {"period_name": "FY23", "revenue": 650.0, "ebitda": 110.0, "pat": 55.0, "cfo": 48.0, "net_debt": 40.0, "net_worth": 300.0, "trade_receivables": 75.0},

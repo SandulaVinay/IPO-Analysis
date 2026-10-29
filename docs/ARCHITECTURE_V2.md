@@ -164,3 +164,6 @@ Daily IPO status, supported financial-results filing reports, and prospectus evi
 ## Source coverage status
 
 The IPO discovery adapter now distinguishes a recognized-but-empty official issue table from an unrecognized page layout. If both exchange layouts are unrecognized or both requests fail, discovery fails instead of reporting success. If one source remains usable while another fails or changes layout, the run is recorded as `PARTIAL`; the daily digest warns that cached state may be stale or incomplete.
+
+
+When a generated PDF exists, the WhatsApp adapter now uploads it through the Cloud API media endpoint and sends a document message with a short caption. The attachment must be a valid PDF inside the generated `reports/` directory and remain under 10 MB. If upload or document delivery is rejected, the email fallback receives the PDF attachment instead.

@@ -1,4 +1,5 @@
 """Official WhatsApp Cloud API adapter; acceptance is not final handset delivery."""
+from pathlib import Path
 from typing import Dict, Any, Optional
 from src.common.config import settings
 from src.common.logging import logger
@@ -28,17 +29,51 @@ class WhatsAppProvider(NotificationProvider):
         # template. Rejection is handled as a provider failure so email can be tried.
         message_body = f"{subject}\n\n{content}".strip()
         if len(message_body) > 4000:
-            message_body = message_body[:3970].rstrip() + "\n\n[Shortened; see the email report.]"
+            message_body = message_body[:3970].rstrip() + "\n\n[Shortened; see the report artifact.]"
         url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{settings.whatsapp_phone_number_id}/messages"
         headers = {"Authorization": f"Bearer {settings.whatsapp_access_token}"}
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": digits,
-            "type": "text",
-            "text": {"preview_url": False, "body": message_body},
-        }
+        attachment_path = (metadata or {}).get("attachment_path")
         try:
+            if attachment_path:
+                path = Path(str(attachment_path)).resolve()
+                report_root = Path("reports").resolve()
+                if not path.is_relative_to(report_root) or path.suffix.lower() != ".pdf" or not path.is_file():
+                    raise ValueError("WhatsApp attachments must be existing PDF files inside the reports directory.")
+                pdf_bytes = path.read_bytes()
+                if b"%PDF-" not in pdf_bytes[:1024]:
+                    raise ValueError("WhatsApp attachment is not a recognizable PDF.")
+                if len(pdf_bytes) > 10 * 1024 * 1024:
+                    raise ValueError("WhatsApp PDF attachment exceeds the 10 MB limit.")
+
+                media_url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{settings.whatsapp_phone_number_id}/media"
+                media_response = await http_client.post(
+                    media_url,
+                    data={"messaging_product": "whatsapp", "type": "application/pdf"},
+                    files={"file": (path.name, pdf_bytes, "application/pdf")},
+                    headers=headers,
+                    retry_transient=False,
+                )
+                media_body = media_response.json()
+                media_id = media_body.get("id")
+                if not media_id:
+                    logger.warning("WhatsApp media upload response did not contain a media ID.")
+                    return {"success": False, "accepted": False, "delivered": False, "mocked": False, "message_id": None, "error": "WhatsApp media upload returned no media ID"}
+                caption = message_body if len(message_body) <= 900 else message_body[:850].rstrip() + "\n\nFull report attached as PDF."
+                payload = {
+                    "messaging_product": "whatsapp",
+                    "recipient_type": "individual",
+                    "to": digits,
+                    "type": "document",
+                    "document": {"id": media_id, "filename": path.name, "caption": caption},
+                }
+            else:
+                payload = {
+                    "messaging_product": "whatsapp",
+                    "recipient_type": "individual",
+                    "to": digits,
+                    "type": "text",
+                    "text": {"preview_url": False, "body": message_body},
+                }
             response = await http_client.post(url, json=payload, headers=headers, retry_transient=False)
             body = response.json()
             messages = body.get("messages") or []

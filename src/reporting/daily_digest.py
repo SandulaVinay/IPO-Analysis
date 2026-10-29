@@ -13,7 +13,7 @@ from src.state.store import StateStore
 from src.reporting.pdf import markdown_to_pdf
 
 NSE_IPO_URL = "https://www.nseindia.com/market-data/all-upcoming-issues-ipo"
-BSE_IPO_URL = "https://www.bseindia.com/markets/PublicIssues/IPOIssues_new.aspx?id=1&Type=p"
+BSE_IPO_URL = "https://www.bseindia.com/markets/PublicIssues/Issuesummary.aspx"
 IST = ZoneInfo("Asia/Kolkata")
 
 

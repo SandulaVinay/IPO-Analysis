@@ -50,7 +50,7 @@ jobs:
           WHATSAPP_PROVIDER: cloud_api
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
-          WHATSAPP_API_VERSION: ${{ secrets.WHATSAPP_API_VERSION }}
+          WHATSAPP_API_VERSION: v22.0
           WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
           ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL }}
           EMAIL_PROVIDER: smtp

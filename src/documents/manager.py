@@ -71,11 +71,6 @@ class DocumentManager:
         safe_type = _safe_component(document_type, "DOCUMENT")
         safe_version = _safe_component(version_label, "v1")
         safe_title = _safe_component(document_title, "filing")
-        filename = f"{int(ipo_id)}_{safe_type}_{safe_version}_{safe_title}.pdf"
-        file_path = (self.storage_dir / filename).resolve()
-        if file_path.parent != self.storage_dir.resolve():
-            raise ValueError("Invalid document path.")
-
         if local_content is not None:
             content = local_content
         else:
@@ -111,6 +106,34 @@ class DocumentManager:
         if existing_version is not None:
             return existing_version
 
+        # Reuse the logical document record for revised filings while keeping every
+        # content version in a distinct immutable file.
+        document_result = await self.session.execute(
+            select(IPODocument)
+            .where(
+                IPODocument.ipo_id == ipo_id,
+                IPODocument.document_type == safe_type,
+                IPODocument.document_title == document_title[:255],
+            )
+            .order_by(IPODocument.id.desc())
+        )
+        doc = document_result.scalars().first()
+        if doc is not None:
+            versions_result = await self.session.execute(
+                select(DocumentVersion).where(DocumentVersion.document_id == doc.id)
+            )
+            existing_versions = list(versions_result.scalars().all())
+            used_labels = {item.version_label for item in existing_versions}
+            if safe_version in used_labels:
+                index = 1
+                while f"v{index}" in used_labels:
+                    index += 1
+                safe_version = f"v{index}"
+        filename = f"{int(ipo_id)}_{safe_type}_{safe_title}_{doc_hash[:12]}.pdf"
+        file_path = (self.storage_dir / filename).resolve()
+        if file_path.parent != self.storage_dir.resolve():
+            raise ValueError("Invalid document path.")
+
         # Parse before persistence so a corrupt/non-PDF document is never registered
         # as a usable prospectus. Evidence is candidate-only and remains UNVERIFIED.
         extraction = extract_pdf_candidate_evidence(content, source_url=source_url)
@@ -125,14 +148,17 @@ class DocumentManager:
             if temporary_path.exists():
                 temporary_path.unlink()
 
-        doc = IPODocument(
-            ipo_id=ipo_id,
-            document_type=safe_type,
-            document_title=document_title[:255],
-            latest_version=safe_version,
-        )
-        self.session.add(doc)
-        await self.session.flush()
+        if doc is None:
+            doc = IPODocument(
+                ipo_id=ipo_id,
+                document_type=safe_type,
+                document_title=document_title[:255],
+                latest_version=safe_version,
+            )
+            self.session.add(doc)
+            await self.session.flush()
+        else:
+            doc.latest_version = safe_version
 
         version = DocumentVersion(
             document_id=doc.id,

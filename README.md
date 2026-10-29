@@ -109,3 +109,8 @@ The `automation-v2` branch and draft pull request are being used to validate the
 See [Automation v2 Architecture and Rollout Gates](docs/ARCHITECTURE_V2.md) for the GitHub Actions design, public state-branch schema, watchlist format, notification secret names, and production-readiness checklist.
 
 **Important:** automated IPO investment recommendations are not production-ready yet. The production path must return `UNABLE_TO_ASSESS` until official RHP/DRHP financial extraction and verification are implemented. The financial-results monitor currently supports only a conservative subset of XBRL facts; unsupported filings are reported as unavailable rather than guessed. Do not enable real notifications until GitHub Actions Secrets are configured and a manual test is approved.
+
+
+### PDF research artifacts
+
+The daily IPO digest, supported financial-results alerts, and prospectus evidence reviews are generated as Markdown and PDF files. The scheduler uploads these as seven-day GitHub Actions artifacts. WhatsApp messages link to the workflow run; when email fallback is used, the relevant PDF is attached. The daily digest remains `UNABLE_TO_ASSESS` until the real prospectus financial verification workflow is complete.

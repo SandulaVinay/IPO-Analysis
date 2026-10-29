@@ -96,6 +96,7 @@ def test_candidate_report_is_explicitly_unverified_and_contains_page_citation(tm
         document_title="Example RHP",
         source_url="https://www.nseindia.com/example.pdf",
         document_hash="c" * 64,
+        version_label="v1",
         extraction={
             "page_count": 10,
             "text_pages_extracted": 8,
@@ -119,7 +120,7 @@ def test_candidate_report_is_explicitly_unverified_and_contains_page_citation(tm
 async def test_prospectus_notification_is_idempotent_by_document_hash(tmp_path, monkeypatch):
     from src.documents.manager import _notify_new_document
     from src.state.store import StateStore
-    import src.documents.manager as manager_module
+    import src.notifications.whatsapp as whatsapp_module
 
     monkeypatch.setenv("STATE_DIR", str(tmp_path / "state"))
     monkeypatch.setattr(settings, "enable_whatsapp", True)
@@ -134,7 +135,7 @@ async def test_prospectus_notification_is_idempotent_by_document_hash(tmp_path, 
         calls.append(metadata)
         return {"success": True, "accepted": True, "delivered": False, "message_id": "wamid.test"}
 
-    monkeypatch.setattr(manager_module.WhatsAppProvider, "send_notification", fake_send)
+    monkeypatch.setattr(whatsapp_module.WhatsAppProvider, "send_notification", fake_send)
     store = StateStore(root=str(tmp_path / "state"))
     kwargs = {
         "store": store,

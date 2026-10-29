@@ -119,3 +119,26 @@ def test_results_parser_keeps_cumulative_and_submission_metadata():
     assert rows[0]["cumulative_status"] == "Non-Cumulative"
     assert rows[0]["period_type"] == "Quarterly"
     assert rows[0]["submission_type"] == "Original"
+
+
+
+def test_results_parser_prefers_xbrl_over_details_pdf():
+    html = """
+    <table>
+      <tr><th>Company Name</th><th>Period Ended</th><th>Relating To</th><th>Broadcast Date/Time</th><th>Details</th><th>XBRL</th></tr>
+      <tr>
+        <td>Example Ltd</td><td>30-Sep-2026</td><td>Second Quarter</td><td>29-Oct-2026 18:15:00</td>
+        <td><a href="https://nsearchives.nseindia.com/corporate/details.pdf">Details (100 KB)</a></td>
+        <td><a href="https://nsearchives.nseindia.com/corporate/results.xml">XBRL (50 KB)</a></td>
+      </tr>
+    </table>
+    """
+    rows = parse_financial_results_page(
+        html,
+        "EXAMPLE",
+        "https://www.nseindia.com/companies-listing/corporate-filings-financial-results",
+    )
+    assert len(rows) == 1
+    assert rows[0]["attachment_url"] == "https://nsearchives.nseindia.com/corporate/results.xml"
+    assert rows[0]["xbrl_url"] == "https://nsearchives.nseindia.com/corporate/results.xml"
+    assert rows[0]["details_url"] == "https://nsearchives.nseindia.com/corporate/details.pdf"

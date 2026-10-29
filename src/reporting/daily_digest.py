@@ -139,10 +139,15 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
     )
     run_id = os.getenv("GITHUB_RUN_ID")
     repository = os.getenv("GITHUB_REPOSITORY", "SandulaVinay/IPO-Analysis")
-    if run_id:
-        message += f"\n\nFull PDF report: https://github.com/{repository}/actions/runs/{run_id} (open the run and download the daily-ipo-digest artifact)."
-    if len(message) > 3500:
-        message = message[:3450].rstrip() + "\n\n[Truncated; full PDF report is in the GitHub Actions artifact.]"
+    artifact_link = (
+        f"\n\nFull PDF report: https://github.com/{repository}/actions/runs/{run_id} "
+        "(open the run and download the daily-ipo-digest artifact)."
+        if run_id else ""
+    )
+    if len(message) + len(artifact_link) > 3500:
+        keep_chars = max(2500, 3500 - len(artifact_link) - 100)
+        message = message[:keep_chars].rstrip() + "\n\n[Truncated; full PDF report is in the GitHub Actions artifact.]"
+    message += artifact_link
     return "\n".join(lines), message
 
 

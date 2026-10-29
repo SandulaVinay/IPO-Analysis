@@ -30,7 +30,7 @@ def test_daily_digest_fails_closed_and_links_official_sources():
     assert "UNABLE_TO_ASSESS" in report
     assert "not an investment recommendation" in report.lower()
     assert "https://www.nseindia.com/market-data/all-upcoming-issues-ipo" in report
-    assert "https://www.bseindia.com/markets/PublicIssues/IPOIssues_new.aspx" in report
+    assert "https://www.bseindia.com/markets/PublicIssues/Issuesummary.aspx" in report
     assert "No APPLY/AVOID" in report
     assert "Latest discovery status: SUCCESS" in message
 

@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 
 from src.common.logging import logger
 from src.ingestion.client import http_client
+from src.discovery.normalizer import Normalizer
 
 
 NSE_IPO_URL = "https://www.nseindia.com/market-data/all-upcoming-issues-ipo"
@@ -128,10 +129,38 @@ class PortalScraper(BaseScraper):
                 previous = deduped[key]
                 previous["additional_source_url"] = row.get("source_url")
                 previous["additional_source_name"] = row.get("source_name")
+                conflicts = previous.setdefault("source_conflicts", [])
                 for date_key in ("verified_open_date", "verified_close_date"):
-                    if not previous.get(date_key) and row.get(date_key):
-                        previous[date_key] = row[date_key]
-                        previous[date_key.replace("verified", "announced")] = row[date_key]
+                    existing_value = previous.get(date_key)
+                    incoming_value = row.get(date_key)
+                    if existing_value and incoming_value:
+                        existing_date = Normalizer.parse_date(existing_value)
+                        incoming_date = Normalizer.parse_date(incoming_value)
+                        if existing_date and incoming_date and existing_date != incoming_date:
+                            conflicts.append({
+                                "field": date_key,
+                                "source_a": previous.get("source_name"),
+                                "value_a": existing_value,
+                                "source_b": row.get("source_name"),
+                                "value_b": incoming_value,
+                            })
+                            previous.pop(date_key, None)
+                        elif not existing_date and not incoming_date and str(existing_value).strip() != str(incoming_value).strip():
+                            conflicts.append({
+                                "field": date_key,
+                                "source_a": previous.get("source_name"),
+                                "value_a": existing_value,
+                                "source_b": row.get("source_name"),
+                                "value_b": incoming_value,
+                            })
+                            previous.pop(date_key, None)
+                    elif incoming_value and not existing_value:
+                        previous[date_key] = incoming_value
+                    announced_key = date_key.replace("verified", "announced")
+                    if previous.get(date_key) and not previous.get(announced_key):
+                        previous[announced_key] = previous[date_key]
+                if not conflicts:
+                    previous.pop("source_conflicts", None)
 
         if not deduped:
             logger.warning("No official IPO rows were parsed. No candidate or recommendation will be fabricated.")

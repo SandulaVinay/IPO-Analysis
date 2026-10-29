@@ -172,3 +172,80 @@ async def test_email_console_stub_does_not_log_recipient_or_message_body(monkeyp
     assert result["mocked"] is True
     assert "private@example.com" not in caplog.text
     assert "private message body" not in caplog.text
+
+
+
+@pytest.mark.asyncio
+async def test_email_provider_attaches_pdf_reports_only_from_reports_directory(tmp_path, monkeypatch):
+    from email import message_from_string
+    from src.notifications.email import EmailProvider
+    import src.notifications.email as email_module
+
+    monkeypatch.chdir(tmp_path)
+    report_dir = tmp_path / "reports" / "daily"
+    report_dir.mkdir(parents=True)
+    pdf_path = report_dir / "digest.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 test fixture")
+    monkeypatch.setattr(settings, "enable_email", True)
+    monkeypatch.setattr(settings, "email_provider", "smtp")
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "smtp_host", "smtp.example.test")
+    monkeypatch.setattr(settings, "smtp_port", 587)
+    monkeypatch.setattr(settings, "smtp_user", "sender@example.test")
+    monkeypatch.setattr(settings, "smtp_password", "test-password")
+    monkeypatch.setattr(settings, "email_from", "sender@example.test")
+    monkeypatch.setattr(settings, "email_to", "recipient@example.test")
+
+    sent = {}
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout=30):
+            sent["host"] = host
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def ehlo(self):
+            pass
+        def starttls(self):
+            pass
+        def login(self, user, password):
+            assert user == "sender@example.test"
+            assert password == "test-password"
+        def sendmail(self, sender, recipients, message):
+            sent["message"] = message
+            sent["recipients"] = recipients
+
+    monkeypatch.setattr(email_module.smtplib, "SMTP", FakeSMTP)
+    result = await EmailProvider().send_notification(
+        recipient="recipient@example.test",
+        subject="Daily report",
+        content="See attached PDF.",
+        metadata={"attachments": [str(pdf_path)]},
+    )
+    parsed = message_from_string(sent["message"])
+    assert result["accepted"] is True
+    assert parsed.get_content_type() == "multipart/mixed"
+    assert any(part.get_content_type() == "application/pdf" for part in parsed.walk())
+
+
+@pytest.mark.asyncio
+async def test_email_provider_rejects_attachments_outside_reports_directory(tmp_path, monkeypatch):
+    from src.notifications.email import EmailProvider
+
+    monkeypatch.chdir(tmp_path)
+    outside = tmp_path / "private.pdf"
+    outside.write_bytes(b"%PDF-1.4")
+    monkeypatch.setattr(settings, "enable_email", True)
+    monkeypatch.setattr(settings, "email_provider", "smtp")
+    monkeypatch.setattr(settings, "smtp_user", "sender@example.test")
+    monkeypatch.setattr(settings, "smtp_password", "test-password")
+    monkeypatch.setattr(settings, "email_to", "recipient@example.test")
+    result = await EmailProvider().send_notification(
+        recipient="recipient@example.test",
+        subject="Report",
+        content="body",
+        metadata={"attachments": [str(outside)]},
+    )
+    assert result["success"] is False
+    assert "inside the reports directory" in result["error"]

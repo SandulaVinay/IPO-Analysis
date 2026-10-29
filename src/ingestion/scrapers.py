@@ -284,6 +284,33 @@ class PortalScraper(BaseScraper):
                 if not conflicts:
                     previous.pop("source_conflicts", None)
 
+                field_conflicts = previous.setdefault("field_conflicts", [])
+                for field in ("min_price", "max_price", "lot_size", "issue_size_cr"):
+                    existing_value = previous.get(field)
+                    incoming_value = row.get(field)
+                    if existing_value is not None and incoming_value is not None:
+                        try:
+                            left = float(existing_value)
+                            right = float(incoming_value)
+                        except (TypeError, ValueError):
+                            continue
+                        tolerance = max(0.01, abs(left) * 0.01) if field == "issue_size_cr" else (0.01 if field in ("min_price", "max_price") else 0.0)
+                        if abs(left - right) > tolerance:
+                            field_conflicts.append({
+                                "field": field,
+                                "source_a": previous.get("source_name"),
+                                "value_a": existing_value,
+                                "source_b": row.get("source_name"),
+                                "value_b": incoming_value,
+                            })
+                            previous.pop(field, None)
+                    elif incoming_value is not None and existing_value is None and field not in {
+                        item.get("field") for item in field_conflicts
+                    }:
+                        previous[field] = incoming_value
+                if not field_conflicts:
+                    previous.pop("field_conflicts", None)
+
         if not deduped:
             logger.warning("No official IPO rows were parsed. No candidate or recommendation will be fabricated.")
         return list(deduped.values())

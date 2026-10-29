@@ -53,6 +53,9 @@ python -m src.cli.main notify HEXAGON_TECH
 # Monitor quarterly/annual result filings for symbols in the public state watchlist
 python -m src.cli.main results
 
+# Generate the daily IPO status digest (no apply/avoid recommendation until verified issuer facts are connected)
+python -m src.cli.digest
+
 # Check Subsystems Health
 python -m src.cli.main health
 ```

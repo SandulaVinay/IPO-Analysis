@@ -95,7 +95,7 @@ class EmailProvider(NotificationProvider):
                 server.sendmail(msg["From"], [to_addr], msg.as_string())
 
             message_id = f"smtp_{int(__import__('time').time())}"
-            logger.info(f"Email successfully accepted by SMTP server for {to_addr}")
+            logger.info("Email successfully accepted by SMTP server; final inbox delivery is not confirmed.")
             return {
                 "success": True,
                 "accepted": True,

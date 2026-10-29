@@ -129,7 +129,7 @@ class Settings(BaseSettings):
     whatsapp_provider: Literal["cloud_api", "twilio", "console"] = "console"
     whatsapp_phone_number_id: str = ""
     whatsapp_access_token: str = ""
-    whatsapp_api_version: str = "v22.0"
+    whatsapp_api_version: str = "v26.0"
     whatsapp_recipient_phone: str = ""
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""

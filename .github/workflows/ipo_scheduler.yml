@@ -53,7 +53,7 @@ jobs:
           WHATSAPP_PROVIDER: cloud_api
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
-          WHATSAPP_API_VERSION: v22.0
+          WHATSAPP_API_VERSION: v26.0
           WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
           ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL || 'false' }}
           EMAIL_PROVIDER: smtp
@@ -78,7 +78,7 @@ jobs:
           WHATSAPP_PROVIDER: cloud_api
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
-          WHATSAPP_API_VERSION: v22.0
+          WHATSAPP_API_VERSION: v26.0
           WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
           ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL }}
           EMAIL_PROVIDER: smtp

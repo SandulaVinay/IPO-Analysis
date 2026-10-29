@@ -154,3 +154,8 @@ This is an initial adapter, not proof of complete prospectus coverage. NSE/BSE p
 ## Daily IPO digest
 
 The scheduler's second weekday run (14:30 IST) and manual dispatch now invoke `python -m src.cli.digest`. It produces a Markdown artifact listing future-dated or source-conflict IPO records, links to the official NSE/BSE issue pages, and explicitly labels each item `UNABLE_TO_ASSESS` until verified RHP/DRHP financial data is available. It includes the last discovery-run status and warns when the report is based on cached state. It sends WhatsApp first and email fallback only when the corresponding settings/secrets are configured. With both channels disabled, the report is created in report-only mode and no delivery is claimed.
+
+
+## PDF reports and email attachments
+
+Daily IPO status, supported financial-results filing reports, and prospectus evidence reports are rendered to both Markdown and PDF. PDFs are uploaded as short-lived GitHub Actions artifacts. When email fallback is enabled, the daily digest and results monitor attach the corresponding PDF, restricted to existing PDF files inside the generated `reports/` directory with a 10 MB total attachment limit. WhatsApp remains text-first and includes a link to the workflow run so the artifact can be downloaded after the run completes.

@@ -382,3 +382,32 @@ def test_official_issue_parser_extracts_price_band_lot_and_explicit_crore_size()
     assert rows[0]["issue_size_cr"] == 1200.0
     assert rows[0]["lot_size"] == 160
     assert rows[0]["symbol"] == "EXAMPLE"
+
+
+
+@pytest.mark.asyncio
+async def test_portal_scraper_clears_conflicting_price_bands_across_sources(monkeypatch):
+    from src.ingestion import scrapers as scraper_module
+
+    def table(price_band):
+        return f"""
+        <table>
+          <tr><th>Company Name</th><th>Issue Start Date</th><th>Issue End Date</th><th>Price Band</th></tr>
+          <tr><td>Example Industries Ltd</td><td>10-Nov-2026</td><td>14-Nov-2026</td><td>{price_band}</td></tr>
+        </table>
+        """
+
+    responses = iter([
+        SimpleNamespace(text=table("₹ 90 - ₹ 95")),
+        SimpleNamespace(text=table("₹ 100 - ₹ 105")),
+    ])
+
+    async def fake_get(url, headers=None):
+        return next(responses)
+
+    monkeypatch.setattr(scraper_module.http_client, "get", fake_get)
+    rows = await PortalScraper().fetch_upcoming_ipos()
+    assert len(rows) == 1
+    assert rows[0].get("min_price") is None
+    assert rows[0].get("max_price") is None
+    assert {item["field"] for item in rows[0]["field_conflicts"]} == {"min_price", "max_price"}

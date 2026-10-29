@@ -311,3 +311,45 @@ async def test_portal_scraper_reports_partial_when_one_official_layout_is_unreco
     assert rows == []
     assert scraper.last_source_status == "PARTIAL"
     assert any("UNRECOGNIZED_LAYOUT" in error for error in scraper.last_source_errors)
+
+
+
+@pytest.mark.asyncio
+async def test_whatsapp_provider_uploads_and_sends_pdf_document(tmp_path, monkeypatch):
+    from src.notifications.whatsapp import WhatsAppProvider
+    from src.ingestion import client as client_module
+
+    monkeypatch.chdir(tmp_path)
+    report_dir = tmp_path / "reports" / "daily"
+    report_dir.mkdir(parents=True)
+    pdf_path = report_dir / "daily-digest.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 valid test bytes")
+    monkeypatch.setattr(settings, "enable_whatsapp", True)
+    monkeypatch.setattr(settings, "whatsapp_provider", "cloud_api")
+    monkeypatch.setattr(settings, "whatsapp_phone_number_id", "test-phone-id")
+    monkeypatch.setattr(settings, "whatsapp_access_token", "test-token")
+    monkeypatch.setattr(settings, "whatsapp_recipient_phone", "+911234567890")
+    monkeypatch.setattr(settings, "whatsapp_api_version", "v26.0")
+
+    calls = []
+
+    async def fake_post(url, json=None, data=None, files=None, headers=None, retry_transient=True):
+        calls.append({"url": url, "json": json, "data": data, "files": files, "headers": headers})
+        if url.endswith("/media"):
+            return SimpleNamespace(json=lambda: {"id": "media-123"})
+        return SimpleNamespace(json=lambda: {"messages": [{"id": "wamid.test-123"}]})
+
+    monkeypatch.setattr(client_module.http_client, "post", fake_post)
+    result = await WhatsAppProvider().send_notification(
+        recipient="+911234567890",
+        subject="Daily IPO digest",
+        content="UNABLE_TO_ASSESS; full report attached.",
+        metadata={"attachment_path": str(pdf_path)},
+    )
+    assert result["success"] is True
+    assert result["accepted"] is True
+    assert len(calls) == 2
+    assert calls[0]["data"]["type"] == "application/pdf"
+    assert calls[0]["files"]["file"][1] == b"%PDF-1.4 valid test bytes"
+    assert calls[1]["json"]["type"] == "document"
+    assert calls[1]["json"]["document"]["id"] == "media-123"

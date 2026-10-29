@@ -82,3 +82,32 @@ def test_document_url_validation_rejects_local_and_insecure_targets():
         _validate_public_https_url("https://127.0.0.1/example.pdf")
     with pytest.raises(ValueError, match="credentials"):
         _validate_public_https_url("https://user:pass@www.nseindia.com/example.pdf")
+
+
+
+def test_candidate_report_is_explicitly_unverified_and_contains_page_citation(tmp_path, monkeypatch):
+    from src.documents.manager import _write_candidate_report
+
+    monkeypatch.chdir(tmp_path)
+    _write_candidate_report(
+        ipo_id=7,
+        document_type="RHP",
+        document_title="Example RHP",
+        source_url="https://www.nseindia.com/example.pdf",
+        document_hash="c" * 64,
+        extraction={
+            "page_count": 10,
+            "text_pages_extracted": 8,
+            "evidence_count": 1,
+            "evidence": [{
+                "field_name": "revenue_from_operations",
+                "page_number": 4,
+                "evidence_text": "Revenue from operations 100",
+            }],
+        },
+    )
+    report_path = tmp_path / "reports" / "prospectus" / ("7_RHP_" + "c" * 12 + ".md")
+    content = report_path.read_text(encoding="utf-8")
+    assert "UNVERIFIED" in content
+    assert "revenue_from_operations — page 4" in content
+    assert "not an investment recommendation" in content

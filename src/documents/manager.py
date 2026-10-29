@@ -5,6 +5,7 @@ A failed download is never replaced by a fabricated placeholder. The caller must
 real PDF from a verified source; otherwise ingestion fails and the analysis remains gated.
 """
 import hashlib
+import ipaddress
 import os
 from pathlib import Path
 from datetime import datetime, date
@@ -27,6 +28,22 @@ def _safe_component(value: str, fallback: str) -> str:
     cleaned = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in str(value or ""))
     cleaned = cleaned.strip("._-")
     return cleaned[:100] or fallback
+
+
+def _validate_public_https_url(value: str):
+    parsed = urlparse(value or "")
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
+        raise ValueError("IPO filing URL must be HTTPS and must not contain embedded credentials.")
+    if host in {"localhost", "metadata.google.internal"} or host.endswith((".localhost", ".local", ".internal")):
+        raise ValueError("Private/local hosts are not allowed for remote IPO documents.")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address is not None and not address.is_global:
+        raise ValueError("Non-public IP addresses are not allowed for remote IPO documents.")
+    return parsed
 
 
 def _validate_pdf_content(content: bytes) -> None:
@@ -83,14 +100,10 @@ class DocumentManager:
         if local_content is not None:
             content = local_content
         else:
-            parsed = urlparse(source_url or "")
-            if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-                raise ValueError("IPO filing URL must be a valid HTTPS URL without embedded credentials.")
+            _validate_public_https_url(source_url)
             try:
                 response = await http_client.get(source_url, headers={"Accept": "application/pdf,application/octet-stream;q=0.9,*/*;q=0.1"})
-                final_url = urlparse(str(response.url))
-                if final_url.scheme != "https" or not final_url.hostname or final_url.username or final_url.password:
-                    raise ValueError("Filing download redirected to an invalid URL.")
+                _validate_public_https_url(str(response.url))
                 content = response.content
             except Exception as exc:
                 logger.warning("IPO document download failed (%s); no placeholder was created.", type(exc).__name__)

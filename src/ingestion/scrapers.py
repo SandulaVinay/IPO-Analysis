@@ -98,6 +98,10 @@ def _parse_official_issue_tables(html: str, *, source_name: str, source_url: str
     close_aliases = ("issue end date", "close date", "closing date", "issue closing date", "end date")
     type_aliases = ("security type", "issue type", "board", "market")
     status_aliases = ("status", "issue status")
+    price_aliases = ("price band", "price range", "issue price", "offer price")
+    issue_size_aliases = ("issue size", "issue amount", "offer size")
+    lot_size_aliases = ("lot size", "market lot")
+    symbol_aliases = ("trading symbol", "symbol", "nse symbol")
 
     for table in soup.find_all("table"):
         header_row = table.find("tr")
@@ -115,6 +119,10 @@ def _parse_official_issue_tables(html: str, *, source_name: str, source_url: str
         close_idx = find_index(close_aliases)
         type_idx = find_index(type_aliases)
         status_idx = find_index(status_aliases)
+        price_idx = find_index(price_aliases)
+        issue_size_idx = find_index(issue_size_aliases)
+        lot_size_idx = find_index(lot_size_aliases)
+        symbol_idx = find_index(symbol_aliases)
         if company_idx is None or (open_idx is None and close_idx is None):
             continue
 
@@ -144,6 +152,26 @@ def _parse_official_issue_tables(html: str, *, source_name: str, source_url: str
                 "source_url": source_url,
                 "captured_at": datetime.utcnow().isoformat(),
             }
+            if cell_text(symbol_idx):
+                row["symbol"] = cell_text(symbol_idx).upper()
+            if cell_text(price_idx):
+                price_text = cell_text(price_idx)
+                price_values = [float(value.replace(",", "")) for value in re.findall(r"\\d[\\d,]*(?:\\.\\d+)?", price_text)]
+                if len(price_values) >= 2:
+                    row["min_price"], row["max_price"] = price_values[0], price_values[1]
+                elif len(price_values) == 1:
+                    row["min_price"] = row["max_price"] = price_values[0]
+            if cell_text(issue_size_idx):
+                issue_size_text = cell_text(issue_size_idx)
+                issue_size_header = headers[issue_size_idx] if issue_size_idx < len(headers) else ""
+                if re.search(r"\\bcr\\b|crore", issue_size_text + " " + issue_size_header, re.IGNORECASE):
+                    issue_size_values = re.findall(r"\\d[\\d,]*(?:\\.\\d+)?", issue_size_text)
+                    if issue_size_values:
+                        row["issue_size_cr"] = float(issue_size_values[0].replace(",", ""))
+            if cell_text(lot_size_idx):
+                lot_values = re.findall(r"\\d[\\d,]*", cell_text(lot_size_idx))
+                if lot_values:
+                    row["lot_size"] = int(lot_values[0].replace(",", ""))
             if cell_text(open_idx):
                 row["announced_open_date"] = cell_text(open_idx)
                 row["verified_open_date"] = cell_text(open_idx)

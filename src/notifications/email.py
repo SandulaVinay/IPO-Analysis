@@ -52,7 +52,7 @@ class EmailProvider(NotificationProvider):
                     "message_id": None,
                     "error": error,
                 }
-            logger.info(f"[EMAIL MOCK DISPATCH] To: {to_addr} Subject: {subject}")
+            logger.info("Email console stub invoked locally; no email was sent.")
             return {
                 "success": True,
                 "delivered": False,
@@ -105,7 +105,7 @@ class EmailProvider(NotificationProvider):
                 "error": None,
             }
         except Exception as e:
-            logger.error(f"Email dispatch failure: {type(e).__name__}: {e}")
+            logger.error("Email dispatch failure (%s); details redacted.", type(e).__name__)
             return {
                 "success": False,
                 "delivered": False,

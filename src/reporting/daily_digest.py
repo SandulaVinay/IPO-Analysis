@@ -54,8 +54,9 @@ def _ipo_status(ipo: Any) -> str:
     )
 
 
-def _build_report(ipos: Iterable[Any], *, now: datetime) -> tuple[str, str]:
+def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional[Dict[str, Any]]) -> tuple[str, str]:
     today = now.date()
+    discovery_status = discovery_run.get("status", "UNKNOWN") if discovery_run else "NOT_RUN"
     selected = [ipo for ipo in ipos if _include_ipo(ipo, today)]
     selected.sort(key=lambda item: (
         _as_date(getattr(item, "verified_open_date", None))
@@ -67,11 +68,17 @@ def _build_report(ipos: Iterable[Any], *, now: datetime) -> tuple[str, str]:
         "# Daily Indian IPO status digest",
         "",
         f"- **Generated (IST):** {now.strftime('%d %b %Y, %I:%M %p')}",
+        f"- **Latest discovery run status:** {discovery_status}",
         "- **Assessment policy:** no investment recommendation is generated from incomplete or unverified issuer financials.",
         "",
         "## Upcoming / unresolved IPO records",
         "",
     ]
+    if discovery_status != "SUCCESS":
+        lines.extend([
+            "**Warning:** the latest discovery run did not complete successfully. Any listed records are cached state and may be stale; verify the official source pages before acting.",
+            "",
+        ])
     if not selected:
         lines.extend([
             "No future-dated IPO records or date-conflict records are currently present in persisted state.",
@@ -115,7 +122,10 @@ def _build_report(ipos: Iterable[Any], *, now: datetime) -> tuple[str, str]:
     ])
     message = (
         f"Daily IPO status digest — {now.strftime('%d %b %Y')} (IST)\n"
-        f"Upcoming/unresolved records: {len(selected)}\n\n"
+        f"Upcoming/unresolved records: {len(selected)}\n"
+        f"Latest discovery status: {discovery_status}\n"
+        + ("WARNING: discovery data may be stale. " if discovery_status != "SUCCESS" else "")
+        + "\n"
         + "\n\n".join(
             f"{getattr(ipo, 'company_name', getattr(ipo, 'symbol', 'UNKNOWN'))} "
             f"({getattr(ipo, 'symbol', 'UNKNOWN')}): {_ipo_status(ipo)} "
@@ -133,11 +143,13 @@ def _build_report(ipos: Iterable[Any], *, now: datetime) -> tuple[str, str]:
 async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateStore] = None) -> Dict[str, Any]:
     """Create a daily artifact and send WhatsApp-first/email-fallback if configured."""
     store = store or StateStore()
+    ipos = list(ipos)
     now = datetime.now(IST)
     event_key = f"IPO_DAILY_DIGEST_{now.strftime('%Y-%m-%d')}"
     report_dir = Path("reports/daily")
     report_dir.mkdir(parents=True, exist_ok=True)
-    report_text, message = _build_report(ipos, now=now)
+    discovery_run = store.latest_run("discover")
+    report_text, message = _build_report(ipos, now=now, discovery_run=discovery_run)
     report_path = report_dir / f"ipo_digest_{now.strftime('%Y%m%d')}.md"
     report_path.write_text(report_text, encoding="utf-8")
 

@@ -1,5 +1,6 @@
 """Daily IPO digest: evidence-linked status summary without unsupported recommendations."""
 
+import os
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional

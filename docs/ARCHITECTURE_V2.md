@@ -167,3 +167,6 @@ The IPO discovery adapter now distinguishes a recognized-but-empty official issu
 
 
 When a generated PDF exists, the WhatsApp adapter now uploads it through the Cloud API media endpoint and sends a document message with a short caption. The attachment must be a valid PDF inside the generated `reports/` directory and remain under 10 MB. If upload or document delivery is rejected, the email fallback receives the PDF attachment instead.
+
+
+The completeness engine now counts only explicit verified date fields and provenance-bearing facts marked `VERIFIED`; non-null but unverified numeric IPO fields no longer inflate completeness or confidence. A zero count of verified sources remains zero rather than being reported as one.

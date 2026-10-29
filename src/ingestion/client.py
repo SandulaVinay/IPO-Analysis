@@ -16,13 +16,13 @@ class HTTPClient:
         self.timeout = timeout
         self.max_retries = max_retries
 
-    async def _request(self, method: str, url: str, *, params=None, json=None, data=None, headers=None, retry_transient: bool = True):
+    async def _request(self, method: str, url: str, *, params=None, json=None, data=None, files=None, headers=None, retry_transient: bool = True):
         req_headers = {**DEFAULT_HEADERS, **(headers or {})}
         attempts = self.max_retries if retry_transient else 1
         async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
             for attempt in range(1, attempts + 1):
                 try:
-                    response = await client.request(method, url, params=params, json=json, data=data, headers=req_headers)
+                    response = await client.request(method, url, params=params, json=json, data=data, files=files, headers=req_headers)
                     if response.status_code == 429 or response.status_code >= 500:
                         if attempt == attempts:
                             response.raise_for_status()
@@ -49,9 +49,9 @@ class HTTPClient:
         """Execute GET with transient-error retries."""
         return await self._request("GET", url, params=params, headers=headers)
 
-    async def post(self, url: str, *, json: Optional[Dict[str, Any]] = None, data: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None, retry_transient: bool = True) -> httpx.Response:
-        """Execute POST; disable retries for providers without request idempotency."""
-        return await self._request("POST", url, json=json, data=data, headers=headers, retry_transient=retry_transient)
+    async def post(self, url: str, *, json: Optional[Dict[str, Any]] = None, data: Optional[Dict[str, Any]] = None, files=None, headers: Optional[Dict[str, str]] = None, retry_transient: bool = True) -> httpx.Response:
+        """Execute POST, optionally multipart; disable retries for non-idempotent provider requests."""
+        return await self._request("POST", url, json=json, data=data, files=files, headers=headers, retry_transient=retry_transient)
 
     async def download_file(self, url: str, destination_path: str) -> str:
         """Download binary content to a local path."""

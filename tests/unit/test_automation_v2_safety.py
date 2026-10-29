@@ -125,3 +125,32 @@ def test_official_issue_parser_extracts_only_labeled_prospectus_links():
     assert len(links) == 1
     assert links[0]["document_type"] == "RHP"
     assert links[0]["source_url"] == "https://www.nseindia.com/corporate/example-rhp.pdf"
+
+
+
+@pytest.mark.asyncio
+async def test_console_provider_never_claims_delivery_in_production(monkeypatch):
+    from src.notifications.console import ConsoleProvider
+
+    monkeypatch.setattr(settings, "app_env", "production")
+    result = await ConsoleProvider().send_notification(
+        recipient="private-recipient",
+        subject="test subject",
+        content="private body",
+    )
+    assert result["success"] is False
+    assert result["delivered"] is False
+
+
+@pytest.mark.asyncio
+async def test_sms_stub_never_claims_delivery(monkeypatch):
+    from src.notifications.sms import SMSProvider
+
+    monkeypatch.setattr(settings, "enable_sms", True)
+    result = await SMSProvider().send_notification(
+        recipient="private-recipient",
+        subject="test subject",
+        content="private body",
+    )
+    assert result["success"] is False
+    assert result["delivered"] is False

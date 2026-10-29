@@ -17,6 +17,7 @@ def test_financial_table_rows_are_candidates_not_parsed_values():
     assert "FY 2024" in revenue["evidence_text"]
     assert "100.00" in revenue["evidence_text"]
     assert "120.00" in revenue["evidence_text"]
+    assert "10.00" not in revenue["evidence_text"]
     assert revenue["extraction_method"] == "TABLE_ROW_CANDIDATE"
     assert revenue["extraction_status"] == "CANDIDATE_UNVERIFIED"
     assert revenue["value"] is None

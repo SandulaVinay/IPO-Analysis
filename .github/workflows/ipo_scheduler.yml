@@ -3,7 +3,8 @@ name: Automated IPO Discovery & Alert Scheduler
 on:
   schedule:
     # 08:30 IST and 14:30 IST weekdays; scheduled runs can be delayed by GitHub.
-    - cron: '0 3,9 * * 1-5'
+    - cron: '0 3 * * 1-5'
+    - cron: '0 9 * * 1-5'
   workflow_dispatch:
 
 permissions:

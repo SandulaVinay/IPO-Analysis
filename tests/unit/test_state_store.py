@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 
 from src.state.store import StateStore
 
@@ -58,3 +59,31 @@ def test_watchlist_symbols_are_validated_before_use(tmp_path):
     import pytest
     with pytest.raises(RuntimeError, match="unsupported characters"):
         store.load_watchlist()
+
+
+
+def test_document_registry_deduplicates_versions_and_rechecks_after_seven_days(tmp_path):
+    store = StateStore(str(tmp_path))
+    common = {
+        "symbol": "EXAMPLE",
+        "company_name": "Example Limited",
+        "document_type": "RHP",
+        "document_title": "Red Herring Prospectus",
+        "source_url": "https://www.nseindia.com/example-rhp.pdf",
+        "page_count": 100,
+        "text_pages_extracted": 90,
+        "evidence_count": 5,
+        "processing_status": "PARSED",
+    }
+    first_label = store.record_document(**common, document_hash="a" * 64, version_label="v1")
+    assert first_label == "v1"
+    assert store.has_document_url(common["source_url"]) is True
+
+    second_label = store.record_document(**common, document_hash="b" * 64, version_label="v1")
+    assert second_label == "v2"
+    payload = json.loads((tmp_path / "document_registry.json").read_text(encoding="utf-8"))
+    assert len(payload["documents"]) == 2
+
+    payload["documents"][-1]["last_checked_at"] = (datetime.now(timezone.utc) - timedelta(days=8)).isoformat()
+    (tmp_path / "document_registry.json").write_text(json.dumps(payload), encoding="utf-8")
+    assert store.has_document_url(common["source_url"]) is False

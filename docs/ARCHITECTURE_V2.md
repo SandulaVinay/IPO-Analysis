@@ -159,3 +159,8 @@ The scheduler's second weekday run (14:30 IST) and manual dispatch now invoke `p
 ## PDF reports and email attachments
 
 Daily IPO status, supported financial-results filing reports, and prospectus evidence reports are rendered to both Markdown and PDF. PDFs are uploaded as short-lived GitHub Actions artifacts. When email fallback is enabled, the daily digest and results monitor attach the corresponding PDF, restricted to existing PDF files inside the generated `reports/` directory with a 10 MB total attachment limit. WhatsApp remains text-first and includes a link to the workflow run so the artifact can be downloaded after the run completes.
+
+
+## Source coverage status
+
+The IPO discovery adapter now distinguishes a recognized-but-empty official issue table from an unrecognized page layout. If both exchange layouts are unrecognized or both requests fail, discovery fails instead of reporting success. If one source remains usable while another fails or changes layout, the run is recorded as `PARTIAL`; the daily digest warns that cached state may be stale or incomplete.

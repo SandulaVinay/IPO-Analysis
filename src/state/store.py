@@ -179,6 +179,14 @@ class StateStore:
         outbox["updated_at"] = _utc_now()
         self._write("notification_outbox.json", outbox)
 
+    def latest_run(self, command: str) -> Optional[Dict[str, Any]]:
+        """Return the latest sanitized run record for a command."""
+        history = self._read("run_history.json", {"schema_version": 1, "runs": []})
+        runs = history.get("runs", [])
+        if not isinstance(runs, list):
+            raise RuntimeError("Run history is malformed.")
+        return next((run for run in reversed(runs) if isinstance(run, dict) and run.get("command") == command), None)
+
     def record_run(self, *, command: str, status: str, detail: str = "") -> None:
         history = self._read("run_history.json", {"schema_version": 1, "runs": []})
         runs = history.get("runs", [])

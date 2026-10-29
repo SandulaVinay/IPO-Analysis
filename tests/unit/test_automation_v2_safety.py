@@ -353,3 +353,32 @@ async def test_whatsapp_provider_uploads_and_sends_pdf_document(tmp_path, monkey
     assert calls[0]["files"]["file"][1] == b"%PDF-1.4 valid test bytes"
     assert calls[1]["json"]["type"] == "document"
     assert calls[1]["json"]["document"]["id"] == "media-123"
+
+
+
+def test_official_issue_parser_extracts_price_band_lot_and_explicit_crore_size():
+    html = """
+    <table>
+      <tr>
+        <th>Company Name</th><th>Issue Start Date</th><th>Issue End Date</th>
+        <th>Security Type</th><th>Price Band</th><th>Issue Size (INR Cr)</th>
+        <th>Lot Size</th><th>Trading Symbol</th>
+      </tr>
+      <tr>
+        <td>Example Industries Ltd</td><td>10-Nov-2026</td><td>14-Nov-2026</td>
+        <td>Mainboard</td><td>₹ 90 - ₹ 95</td><td>₹ 1,200 Cr</td>
+        <td>160</td><td>EXAMPLE</td>
+      </tr>
+    </table>
+    """
+    rows = _parse_official_issue_tables(
+        html,
+        source_name="NSE India",
+        source_url="https://www.nseindia.com/market-data/all-upcoming-issues-ipo",
+    )
+    assert len(rows) == 1
+    assert rows[0]["min_price"] == 90.0
+    assert rows[0]["max_price"] == 95.0
+    assert rows[0]["issue_size_cr"] == 1200.0
+    assert rows[0]["lot_size"] == 160
+    assert rows[0]["symbol"] == "EXAMPLE"

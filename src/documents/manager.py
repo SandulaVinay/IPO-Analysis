@@ -340,14 +340,6 @@ class DocumentManager:
                 verification_status="UNVERIFIED",
             ))
         await self.session.flush()
-        _write_candidate_report(
-            ipo_id=ipo_id,
-            document_type=safe_type,
-            document_title=document_title,
-            source_url=source_url,
-            document_hash=doc_hash,
-            extraction=extraction,
-        )
         ipo_result = await self.session.execute(select(IPO).where(IPO.id == ipo_id))
         ipo_row = ipo_result.scalars().first()
         if ipo_row is None:
@@ -368,6 +360,28 @@ class DocumentManager:
         version.version_label = persisted_label
         doc.latest_version = persisted_label
         await self.session.flush()
+        report_path = _write_candidate_report(
+            ipo_id=ipo_id,
+            document_type=safe_type,
+            document_title=document_title,
+            source_url=source_url,
+            document_hash=doc_hash,
+            version_label=persisted_label,
+            extraction=extraction,
+        )
+        await _notify_new_document(
+            store=StateStore(),
+            symbol=ipo_row.symbol,
+            company_name=ipo_row.company_name,
+            document_type=safe_type,
+            document_title=document_title,
+            source_url=source_url,
+            document_hash=doc_hash,
+            version_label=persisted_label,
+            page_count=extraction["page_count"],
+            evidence_count=extraction["evidence_count"],
+            report_pdf=report_path.with_suffix(".pdf"),
+        )
         logger.info(
             "Registered validated %s PDF version %s (SHA-256 %s...); pages=%s candidates=%s. Candidate facts remain UNVERIFIED.",
             safe_type, safe_version, doc_hash[:16], extraction["page_count"], extraction["evidence_count"],

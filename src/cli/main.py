@@ -22,6 +22,7 @@ from src.web.app import run_pipeline_for_ipo
 from src.notifications.orchestrator import NotificationOrchestrator
 from src.monitoring.health import HealthMonitor
 from src.state.store import StateStore
+from src.results.monitor import monitor_financial_results
 
 console = Console(legacy_windows=False, force_terminal=True, safe_box=True, highlight=False)
 
@@ -123,6 +124,22 @@ async def cmd_notify(symbol: str):
             console.print(f"[bold red]Alert dispatch failed for {symbol}.[/bold red]")
 
 
+async def cmd_results():
+    """Check official NSE financial-results filings for the configured watchlist."""
+    result = await monitor_financial_results()
+    table = Table(title="Official Financial Results Monitor", header_style="bold cyan")
+    table.add_column("Metric", style="white")
+    table.add_column("Value", style="bold")
+    for key in ("status", "watchlist_size", "symbols_checked", "new_filings", "notifications_accepted", "errors"):
+        if key in result:
+            table.add_row(key.replace("_", " ").title(), str(result[key]))
+    console.print(table)
+    if result.get("reports_dir"):
+        console.print(f"Reports generated in: {result['reports_dir']}")
+    if result.get("status") == "PARTIAL":
+        raise SystemExit(1)
+
+
 async def cmd_health():
     """Check health status."""
     await init_db()
@@ -159,6 +176,9 @@ def main():
     p_notify = subparsers.add_parser("notify", help="Trigger T-2 notification dispatch")
     p_notify.add_argument("symbol", type=str, help="IPO symbol")
 
+    # results
+    subparsers.add_parser("results", help="Monitor official quarterly/annual results for watchlist symbols")
+
     # health
     subparsers.add_parser("health", help="Check subsystem health")
 
@@ -176,6 +196,8 @@ def main():
         asyncio.run(cmd_analyze(args.symbol, args.format))
     elif args.command == "notify":
         asyncio.run(cmd_notify(args.symbol))
+    elif args.command == "results":
+        asyncio.run(cmd_results())
     elif args.command == "health":
         asyncio.run(cmd_health())
     elif args.command == "serve":

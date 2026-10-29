@@ -50,6 +50,9 @@ python -m src.cli.main analyze HEXAGON_TECH --format copy
 # Trigger T-2 Notification Alert
 python -m src.cli.main notify HEXAGON_TECH
 
+# Monitor quarterly/annual result filings for symbols in the public state watchlist
+python -m src.cli.main results
+
 # Check Subsystems Health
 python -m src.cli.main health
 ```
@@ -84,3 +87,15 @@ Run the complete test suite (Unit, Integration, and 11 Realistic Scenario Fixtur
 - [OPERATIONS.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/OPERATIONS.md): Local runbook, Docker, and GitHub Actions cron workflows.
 - [FAILURE_HANDLING.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/FAILURE_HANDLING.md): Resilience, retry backoffs, and stale data handling.
 - [TESTING.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/TESTING.md): Test execution guide and 11 scenario definitions.
+
+
+## Automation v2 rollout notes
+
+The `automation-v2` branch and draft pull request are being used to validate the safer scheduled architecture before anything is merged into `main`.
+
+- The scheduled workflow persists only sanitized public IPO metadata and event keys on the public `state` branch.
+- Add NSE symbols to `state/watchlist.json` on the `state` branch to monitor official financial-results filings. The list is intentionally empty by default.
+- Result reports are generated as short-lived GitHub Actions artifacts. XBRL values are extracted only when the attachment is a supported XBRL instance; other formats are reported as unavailable rather than guessed.
+- `ENABLE_DEMO_ANALYSIS` defaults to `false`. Never enable demo analysis in production.
+- Configure WhatsApp and email values through GitHub repository Actions Secrets, not in files or chat. The application defaults recipient fields to blank to prevent accidental sends.
+- This is not yet a full investment recommendation service: verified RHP/DRHP financial extraction, full IPO scoring on real issuer data, and broader results-format coverage remain rollout gates. Production analysis returns `UNABLE_TO_ASSESS` until verified inputs are wired into the analysis pipeline.

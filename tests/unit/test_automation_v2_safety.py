@@ -101,3 +101,27 @@ def test_document_ingestion_accepts_pdf_header_and_sanitizes_path_components():
 
     _validate_pdf_content(b"%PDF-1.7\\nminimal test fixture")
     assert _safe_component("../../RHP/2026", "filing") == "RHP_2026"
+
+
+
+def test_official_issue_parser_extracts_only_labeled_prospectus_links():
+    html = """
+    <table>
+      <tr><th>Company Name</th><th>Issue Start Date</th><th>Issue End Date</th><th>Security Type</th></tr>
+      <tr>
+        <td>Example Industries Ltd</td><td>17-Sep-2026</td><td>21-Sep-2026</td><td>SME</td>
+        <td><a href="/corporate/example-rhp.pdf">Red Herring Prospectus</a></td>
+        <td><a href="https://www.nseindia.com/quote">Quote</a></td>
+      </tr>
+    </table>
+    """
+    rows = _parse_official_issue_tables(
+        html,
+        source_name="NSE India",
+        source_url="https://www.nseindia.com/market-data/all-upcoming-issues-ipo",
+    )
+    assert len(rows) == 1
+    links = rows[0]["document_links"]
+    assert len(links) == 1
+    assert links[0]["document_type"] == "RHP"
+    assert links[0]["source_url"] == "https://www.nseindia.com/corporate/example-rhp.pdf"

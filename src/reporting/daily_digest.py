@@ -49,7 +49,7 @@ def _include_ipo(ipo: Any, today: date) -> bool:
 
 def _ipo_status(ipo: Any) -> str:
     if getattr(ipo, "status", "") == "SOURCE_CONFLICT":
-        return "WAIT — conflicting official-source dates; do not rely on the timeline until resolved."
+        return "WAIT — conflicting official-source dates or pricing metadata; verify the conflicting field before relying on it."
     return (
         "UNABLE_TO_ASSESS — verified RHP/DRHP financial inputs are not yet connected. "
         "No APPLY/AVOID or buy/sell recommendation is issued."

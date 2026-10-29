@@ -17,6 +17,7 @@ from src.notifications.email import EmailProvider
 from src.notifications.sms import SMSProvider
 from src.notifications.console import ConsoleProvider
 from src.reporting.generator import ReportGenerator
+from src.state.store import StateStore
 
 
 class NotificationOrchestrator:
@@ -39,6 +40,10 @@ class NotificationOrchestrator:
             return False
 
         idempotency_key = f"T2_{ipo.symbol}_{ipo.verified_open_date}"
+        state_store = StateStore()
+        if state_store.has_processed_event(idempotency_key):
+            logger.info("T-2 event already recorded in persistent state for %s; skipping.", ipo.symbol)
+            return True
         alert = await self.repo.schedule_alert(
             ipo_id=ipo_id,
             alert_type="T_MINUS_2",
@@ -64,6 +69,14 @@ class NotificationOrchestrator:
                 notes=f"T-2 Alert dispatched successfully on {format_ist(get_current_ist_time())}",
             )
             await self.session.commit()
+            state_store.record_event(
+                idempotency_key,
+                event_type="T_MINUS_2",
+                symbol=ipo.symbol,
+                event_date=str(ipo.verified_open_date) if ipo.verified_open_date else None,
+                status="ACCEPTED",
+                channel="PROVIDER_ACCEPTED",
+            )
 
         return success
 
@@ -74,6 +87,10 @@ class NotificationOrchestrator:
             return False
 
         idempotency_key = f"REM_6HR_{ipo.symbol}_{ipo.verified_open_date}"
+        state_store = StateStore()
+        if state_store.has_processed_event(idempotency_key):
+            logger.info("6-hour reminder already recorded in persistent state for %s; skipping.", ipo.symbol)
+            return True
         alert = await self.repo.schedule_alert(
             ipo_id=ipo_id,
             alert_type="SIX_HOUR_REMINDER",
@@ -109,6 +126,14 @@ Review the full analysis before making your decision."""
             alert.dispatched_at = datetime.utcnow()
             await self.repo.transition_state(ipo_id=ipo_id, new_status="SIX_HOUR_REMINDER_SENT", trigger="NOTIFICATION_ORCHESTRATOR", notes="6-Hour reminder dispatched")
             await self.session.commit()
+            state_store.record_event(
+                idempotency_key,
+                event_type="SIX_HOUR_REMINDER",
+                symbol=ipo.symbol,
+                event_date=str(ipo.verified_open_date) if ipo.verified_open_date else None,
+                status="ACCEPTED",
+                channel="PROVIDER_ACCEPTED",
+            )
         return success
 
     async def trigger_day_before_reminder(self, ipo_id: int, analysis_data: Dict[str, Any]) -> bool:
@@ -118,6 +143,10 @@ Review the full analysis before making your decision."""
             return False
 
         idempotency_key = f"T1_{ipo.symbol}_{ipo.verified_open_date}"
+        state_store = StateStore()
+        if state_store.has_processed_event(idempotency_key):
+            logger.info("T-1 reminder already recorded in persistent state for %s; skipping.", ipo.symbol)
+            return True
         alert = await self.repo.schedule_alert(ipo_id=ipo_id, alert_type="T_MINUS_1", scheduled_for=datetime.utcnow(), idempotency_key=idempotency_key)
         if alert.is_dispatched:
             return True
@@ -150,6 +179,14 @@ Review the analysis before deciding."""
             alert.dispatched_at = datetime.utcnow()
             await self.repo.transition_state(ipo_id=ipo_id, new_status="T_MINUS_1_REMINDER_SENT", trigger="NOTIFICATION_ORCHESTRATOR", notes="T-1 day-before reminder dispatched")
             await self.session.commit()
+            state_store.record_event(
+                idempotency_key,
+                event_type="T_MINUS_1",
+                symbol=ipo.symbol,
+                event_date=str(ipo.verified_open_date) if ipo.verified_open_date else None,
+                status="ACCEPTED",
+                channel="PROVIDER_ACCEPTED",
+            )
         return success
 
     @staticmethod

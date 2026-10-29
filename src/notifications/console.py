@@ -4,6 +4,7 @@ Console / Terminal Notification Provider.
 
 from typing import Dict, Any, Optional
 from src.common.logging import logger
+from src.common.config import settings
 from src.notifications.provider import NotificationProvider
 
 
@@ -21,11 +22,9 @@ class ConsoleProvider(NotificationProvider):
         content: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Output notification cleanly to console logs."""
-        border = "=" * 60
-        logger.info(f"\n{border}\n📢 [NOTIFICATION DISPATCH: {subject}]\nTo: {recipient}\n{border}\n{content}\n{border}\n")
-        return {
-            "success": True,
-            "message_id": f"console_{int(__import__('time').time())}",
-            "error": None,
-        }
+        """Never treat console logging as notification delivery."""
+        if settings.app_env == "production":
+            logger.warning("Console notifications are disabled in production; no message was sent.")
+            return {"success": False, "delivered": False, "mocked": False, "message_id": None, "error": "Console notifications are disabled in production"}
+        logger.info("Console notification provider is a local-only stub; no message was sent.")
+        return {"success": False, "delivered": False, "mocked": True, "message_id": None, "error": "Console provider does not deliver messages"}

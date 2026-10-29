@@ -136,8 +136,12 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
         )
         + f"\n\nOfficial NSE: {NSE_IPO_URL}\nOfficial BSE: {BSE_IPO_URL}"
     )
+    run_id = os.getenv("GITHUB_RUN_ID")
+    repository = os.getenv("GITHUB_REPOSITORY", "SandulaVinay/IPO-Analysis")
+    if run_id:
+        message += f"\n\nFull PDF report: https://github.com/{repository}/actions/runs/{run_id} (open the run and download the daily-ipo-digest artifact)."
     if len(message) > 3500:
-        message = message[:3450].rstrip() + "\n\n[Truncated; full report is in the GitHub Actions artifact.]"
+        message = message[:3450].rstrip() + "\n\n[Truncated; full PDF report is in the GitHub Actions artifact.]"
     return "\n".join(lines), message
 
 
@@ -177,7 +181,8 @@ async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateSt
         email = await EmailProvider().send_notification(
             recipient=settings.email_to,
             subject=f"Daily IPO status digest — {now.strftime('%d %b %Y')}",
-            content=message + f"\n\nFull Markdown report: {report_path}",
+            content=message,
+            metadata={"attachments": [str(report_path.with_suffix(".pdf"))]},
         )
         if email.get("success") and (email.get("accepted") or email.get("delivered")):
             accepted = True

@@ -46,7 +46,7 @@ class VerificationEngine:
         completeness_pct = round(completeness_ratio * 100.0, 1)
 
         # Count verified distinct sources
-        verified_sources = set(f.get("source_name") for f in facts if f.get("verification_status") == "VERIFIED")
+        verified_sources = {f.get("source_name") for f in facts if f.get("verification_status") == "VERIFIED" and f.get("source_name")}
 
         # Determine confidence
         if completeness_pct >= 90.0 and len(missing_critical) == 0:

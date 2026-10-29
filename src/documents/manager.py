@@ -21,6 +21,8 @@ from src.database.models import IPO, IPODocument, DocumentVersion, Fact
 from src.state.store import StateStore
 from src.documents.extractor import extract_pdf_candidate_evidence
 from src.reporting.pdf import markdown_to_pdf
+from src.notifications.email import EmailProvider
+from src.notifications.whatsapp import WhatsAppProvider
 from src.ingestion.client import http_client
 
 MAX_DOCUMENT_BYTES = 50 * 1024 * 1024
@@ -66,8 +68,9 @@ def _write_candidate_report(
     document_title: str,
     source_url: str,
     document_hash: str,
+    version_label: str,
     extraction: dict,
-) -> None:
+) -> Path:
     """Write a review artifact; it contains candidate evidence, never a recommendation."""
     report_dir = Path("reports/prospectus")
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -79,6 +82,7 @@ def _write_candidate_report(
         "",
         f"- IPO database ID: {ipo_id}",
         f"- Document type: {document_type}",
+        f"- Document version: {version_label}",
         f"- Document title: {document_title}",
         f"- Source URL: {source_url}",
         f"- SHA-256: {document_hash}",
@@ -103,6 +107,7 @@ def _write_candidate_report(
     report_content = "\n".join(lines) + "\n"
     report_path.write_text(report_content, encoding="utf-8")
     markdown_to_pdf(report_content, report_path.with_suffix(".pdf"), title="Prospectus Evidence Candidates")
+    return report_path
 
 
 class DocumentManager:

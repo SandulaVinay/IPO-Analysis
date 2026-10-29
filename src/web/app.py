@@ -139,11 +139,11 @@ async def trigger_notification(symbol: str, session: AsyncSession = Depends(get_
 
 
 async def run_pipeline_for_ipo(ipo, session: AsyncSession) -> Dict[str, Any]:
-    """Run analysis; production must not use the demo financial inputs below."""
-    if settings.app_env == "production":
+    """Run analysis; synthetic financial inputs require an explicit non-production opt-in."""
+    if settings.app_env == "production" or not settings.enable_demo_analysis:
         reason = (
-            "Production analysis is fail-closed because verified issuer financials and live official-source "
-            "adapters are not yet connected. No investment recommendation was generated."
+            "Analysis is fail-closed because verified issuer financials and live official-source adapters "
+            "are not yet connected, or demo analysis is disabled. No investment recommendation was generated."
         )
         safe_report = (
             f"ASSESSMENT: UNABLE TO ASSESS\n\n{ipo.company_name} ({ipo.symbol})\n\n"

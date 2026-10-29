@@ -27,7 +27,7 @@ def _inline_markup(value: str) -> str:
     safe = escape(_ascii_safe(value))
     safe = re.sub(
         r"\[([^\]]+)\]\((https://[^\s)]+)\)",
-        lambda match: f'<link href="{escape(match.group(2), {chr(34): "&quot;"})}" color="#1D4ED8">{match.group(1)}</link>',
+        lambda match: f'<link href="{match.group(2)}" color="#1D4ED8">{match.group(1)}</link>',
         safe,
     )
     safe = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", safe)

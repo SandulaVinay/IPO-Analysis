@@ -9,6 +9,7 @@ from src.common.config import settings
 from src.notifications.email import EmailProvider
 from src.notifications.whatsapp import WhatsAppProvider
 from src.state.store import StateStore
+from src.reporting.pdf import markdown_to_pdf
 
 NSE_IPO_URL = "https://www.nseindia.com/market-data/all-upcoming-issues-ipo"
 BSE_IPO_URL = "https://www.bseindia.com/markets/PublicIssues/IPOIssues_new.aspx?id=1&Type=p"
@@ -152,6 +153,7 @@ async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateSt
     report_text, message = _build_report(ipos, now=now, discovery_run=discovery_run)
     report_path = report_dir / f"ipo_digest_{now.strftime('%Y%m%d')}.md"
     report_path.write_text(report_text, encoding="utf-8")
+    markdown_to_pdf(report_text, report_path.with_suffix(".pdf"), title="Daily Indian IPO Status Digest")
 
     if store.has_processed_event(event_key):
         return {

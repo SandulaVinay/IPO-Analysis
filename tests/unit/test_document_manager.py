@@ -112,3 +112,42 @@ def test_candidate_report_is_explicitly_unverified_and_contains_page_citation(tm
     assert "UNVERIFIED" in content
     assert "revenue_from_operations — page 4" in content
     assert "not an investment recommendation" in content
+
+
+
+@pytest.mark.asyncio
+async def test_prospectus_notification_is_idempotent_by_document_hash(tmp_path, monkeypatch):
+    from src.documents.manager import _notify_new_document
+    import src.documents.manager as manager_module
+
+    monkeypatch.setenv("STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setattr(settings, "enable_whatsapp", True)
+    monkeypatch.setattr(settings, "enable_email", False)
+    report_dir = tmp_path / "reports" / "prospectus"
+    report_dir.mkdir(parents=True)
+    report_pdf = report_dir / "evidence.pdf"
+    report_pdf.write_bytes(b"%PDF-1.4 test")
+    calls = []
+
+    async def fake_send(self, recipient, subject, content, metadata=None):
+        calls.append(metadata)
+        return {"success": True, "accepted": True, "delivered": False, "message_id": "wamid.test"}
+
+    monkeypatch.setattr(manager_module.WhatsAppProvider, "send_notification", fake_send)
+    store = StateStore(root=str(tmp_path / "state"))
+    kwargs = {
+        "store": store,
+        "symbol": "EXAMPLE",
+        "company_name": "Example Limited",
+        "document_type": "RHP",
+        "document_title": "Example RHP",
+        "source_url": "https://www.nseindia.com/example-rhp.pdf",
+        "document_hash": "a" * 64,
+        "version_label": "v1",
+        "page_count": 100,
+        "evidence_count": 3,
+        "report_pdf": report_pdf,
+    }
+    await _notify_new_document(**kwargs)
+    await _notify_new_document(**kwargs)
+    assert len(calls) == 1

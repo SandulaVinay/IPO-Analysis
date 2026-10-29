@@ -143,7 +143,17 @@ def extract_candidate_evidence_from_tables(
             rows = [row for row in rows if any(row)]
             if not rows:
                 continue
-            header_context = " / ".join(" | ".join(row) for row in rows[:3])[:400]
+            header_rows = rows[:1]
+            if len(rows) > 1:
+                second_row_text = " | ".join(rows[1])
+                second_row_is_data = any(
+                    pattern.search(second_row_text)
+                    for patterns in compiled.values()
+                    for pattern in patterns
+                )
+                if not second_row_is_data:
+                    header_rows = rows[:2]
+            header_context = " / ".join(" | ".join(row) for row in header_rows)[:400]
             for row_index, row in enumerate(rows):
                 row_text = " | ".join(row).strip()
                 if len(row) < 2 or not row_text:

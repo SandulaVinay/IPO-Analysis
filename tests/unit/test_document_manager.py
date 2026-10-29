@@ -118,6 +118,7 @@ def test_candidate_report_is_explicitly_unverified_and_contains_page_citation(tm
 @pytest.mark.asyncio
 async def test_prospectus_notification_is_idempotent_by_document_hash(tmp_path, monkeypatch):
     from src.documents.manager import _notify_new_document
+    from src.state.store import StateStore
     import src.documents.manager as manager_module
 
     monkeypatch.setenv("STATE_DIR", str(tmp_path / "state"))

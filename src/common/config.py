@@ -91,7 +91,7 @@ class Settings(BaseSettings):
         return v
 
     # General App Settings
-    app_env: Literal["development", "staging", "production"] = "development"
+    app_env: Literal["development", "staging", "production", "test"] = "development"
     log_level: str = "INFO"
     timezone: str = "Asia/Kolkata"
 
@@ -127,6 +127,7 @@ class Settings(BaseSettings):
     whatsapp_provider: Literal["cloud_api", "twilio", "console"] = "console"
     whatsapp_phone_number_id: str = ""
     whatsapp_access_token: str = ""
+    whatsapp_api_version: str = "v22.0"
     whatsapp_recipient_phone: str = "+919876543210"
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""

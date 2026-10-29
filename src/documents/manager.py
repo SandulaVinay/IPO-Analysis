@@ -7,6 +7,7 @@ real PDF from a verified source; otherwise ingestion fails and the analysis rema
 import hashlib
 import ipaddress
 import os
+import re
 from pathlib import Path
 from datetime import datetime, date, timezone
 from typing import Optional

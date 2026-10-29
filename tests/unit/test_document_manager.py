@@ -20,6 +20,7 @@ def _blank_pdf(width: float) -> bytes:
 
 @pytest.mark.asyncio
 async def test_document_ingestion_is_idempotent_and_keeps_revisions_immutable(tmp_path, monkeypatch):
+    monkeypatch.setenv("STATE_DIR", str(tmp_path / "state"))
     monkeypatch.setattr(settings, "document_storage_dir", tmp_path)
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     try:

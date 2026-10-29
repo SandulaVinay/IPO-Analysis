@@ -11,6 +11,7 @@ from io import BytesIO
 from typing import Any, Dict, List, Optional
 
 from pypdf import PdfReader
+import pdfplumber
 
 MAX_PDF_BYTES = 50 * 1024 * 1024
 MAX_PDF_PAGES = 1500
@@ -118,6 +119,62 @@ def extract_candidate_evidence_from_pages(
     return output
 
 
+def extract_candidate_evidence_from_tables(
+    tables_by_page: List[List[List[List[Optional[str]]]]],
+    *,
+    source_url: str,
+    document_hash: str,
+    extracted_at: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Capture financial table rows as review candidates without assigning values to periods."""
+    timestamp = extracted_at or datetime.now(timezone.utc).isoformat()
+    output: List[Dict[str, Any]] = []
+    seen = set()
+    compiled = {
+        field: [re.compile(pattern, re.IGNORECASE) for pattern in patterns]
+        for field, patterns in EVIDENCE_PATTERNS.items()
+    }
+    for page_number, tables in enumerate(tables_by_page, start=1):
+        for table_index, table in enumerate(tables or [], start=1):
+            rows = [
+                [re.sub(r"\\s+", " ", str(cell or "")).strip() for cell in (row or [])]
+                for row in (table or [])
+            ]
+            rows = [row for row in rows if any(row)]
+            if not rows:
+                continue
+            header_context = " / ".join(" | ".join(row) for row in rows[:3])[:400]
+            for row_index, row in enumerate(rows):
+                row_text = " | ".join(row).strip()
+                if len(row) < 2 or not row_text:
+                    continue
+                matched_fields = [
+                    field for field, patterns in compiled.items()
+                    if any(pattern.search(row_text) for pattern in patterns)
+                ]
+                if not matched_fields:
+                    continue
+                snippet = f"TABLE {table_index}; HEADER: {header_context}; ROW: {row_text}"[:1000]
+                for field in matched_fields:
+                    key = (field, page_number, snippet.casefold())
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    output.append({
+                        "field_name": field,
+                        "source_url": source_url,
+                        "document_hash": document_hash,
+                        "page_number": page_number,
+                        "evidence_text": snippet,
+                        "extraction_status": "CANDIDATE_UNVERIFIED",
+                        "extraction_method": "TABLE_ROW_CANDIDATE",
+                        "table_row_index": row_index + 1,
+                        "value": None,
+                        "extracted_at": timestamp,
+                    })
+    return output
+
+
 def extract_pdf_candidate_evidence(pdf_bytes: bytes, *, source_url: str) -> Dict[str, Any]:
     """Extract candidate passages from a validated PDF byte stream with strict limits."""
     if not pdf_bytes:
@@ -151,6 +208,43 @@ def extract_pdf_candidate_evidence(pdf_bytes: bytes, *, source_url: str) -> Dict
         source_url=source_url,
         document_hash=document_hash,
     )
+    # Table extraction is best-effort and still candidate-only. Restrict it to pages whose
+    # text contains a relevant label to avoid expensive layout analysis across every page.
+    try:
+        tables_by_page = [[] for _ in page_texts]
+        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+            for page_index, page in enumerate(pdf.pages):
+                page_text = page_texts[page_index] if page_index < len(page_texts) else ""
+                if not page_text or not any(
+                    pattern.search(page_text)
+                    for patterns in (
+                        re.compile(pattern, re.IGNORECASE)
+                        for field_patterns in EVIDENCE_PATTERNS.values()
+                        for pattern in field_patterns
+                    )
+                ):
+                    continue
+                try:
+                    tables_by_page[page_index] = page.extract_tables() or []
+                except Exception:
+                    tables_by_page[page_index] = []
+        table_evidence = extract_candidate_evidence_from_tables(
+            tables_by_page,
+            source_url=source_url,
+            document_hash=document_hash,
+        )
+        existing_keys = {
+            (item["field_name"], item["page_number"], item["evidence_text"].casefold())
+            for item in evidence
+        }
+        for item in table_evidence:
+            key = (item["field_name"], item["page_number"], item["evidence_text"].casefold())
+            if key not in existing_keys:
+                evidence.append(item)
+                existing_keys.add(key)
+    except Exception:
+        # Linear page text remains available if table-layout extraction fails.
+        pass
     return {
         "document_hash": document_hash,
         "page_count": len(reader.pages),

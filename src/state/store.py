@@ -1,6 +1,6 @@
 """Sanitized JSON state persistence for ephemeral GitHub Actions runners.
 
-Only public IPO metadata and operational event keys belong here. Never write
+Only public IPO and document metadata plus operational event keys belong here. Never write
 recipient details, credentials, or notification message bodies to this store.
 """
 import json

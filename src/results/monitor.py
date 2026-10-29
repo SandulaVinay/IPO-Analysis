@@ -54,6 +54,13 @@ def _key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
 
+def _matches_watchlist_company(filing: Dict[str, Any], company: Dict[str, Any]) -> bool:
+    """Match only an explicitly configured issuer name/alias; never infer symbol from a page-wide table."""
+    expected = [company.get("company_name"), *(company.get("company_name_aliases") or [])]
+    expected_keys = {_key(value) for value in expected if isinstance(value, str) and value.strip()}
+    return bool(expected_keys and _key(str(filing.get("company_name", ""))) in expected_keys)
+
+
 def parse_financial_results_page(html: str, symbol: str, page_url: str) -> List[Dict[str, Any]]:
     """Extract filing metadata and attachment links from the official NSE results table."""
     soup = BeautifulSoup(html, "lxml")
@@ -278,14 +285,21 @@ async def monitor_financial_results() -> Dict[str, Any]:
     for company in watchlist:
         symbol = company["symbol"]
         checked += 1
-        page_url = f"{NSE_RESULTS_URL}?symbol={symbol}"
+        company_name = company.get("company_name")
+        if not isinstance(company_name, str) or not company_name.strip():
+            errors += 1
+            logger.warning("Skipping %s: state/watchlist.json must provide the exact official company_name.", symbol)
+            continue
+        page_url = NSE_RESULTS_URL
         try:
             response = await http_client.get(
                 NSE_RESULTS_URL,
-                params={"symbol": symbol},
                 headers={"Referer": "https://www.nseindia.com/companies-listing/corporate-filings-application"},
             )
-            filings = parse_financial_results_page(response.text, symbol, page_url)
+            all_page_rows = parse_financial_results_page(response.text, symbol, page_url)
+            filings = [item for item in all_page_rows if _matches_watchlist_company(item, company)]
+            if not filings:
+                logger.info("No exact company-name match found on NSE financial-results page for %s; no alert emitted.", symbol)
             if filings:
                 parsed_periods = [(Normalizer.parse_date(item.get("period_ended")), item) for item in filings]
                 valid_periods = [period for period, _ in parsed_periods if period is not None]

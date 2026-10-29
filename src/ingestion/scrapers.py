@@ -12,7 +12,6 @@ from bs4 import BeautifulSoup
 
 from src.common.logging import logger
 from src.ingestion.client import http_client
-from src.discovery.normalizer import Normalizer
 
 
 NSE_IPO_URL = "https://www.nseindia.com/market-data/all-upcoming-issues-ipo"
@@ -21,6 +20,17 @@ BSE_IPO_URL = "https://www.bseindia.com/markets/PublicIssues/IPOIssues_new.aspx?
 
 def _norm(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip().lower()
+
+def _parse_date_value(value: str):
+    if not value:
+        return None
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d-%b-%Y", "%d-%b-%y", "%d/%m/%Y", "%d %b %Y", "%d %B %Y"):
+        try:
+            return datetime.strptime(value.strip(), fmt).date()
+        except ValueError:
+            continue
+    return None
+
 
 
 def _parse_official_issue_tables(html: str, *, source_name: str, source_url: str) -> List[Dict[str, Any]]:
@@ -141,8 +151,8 @@ class PortalScraper(BaseScraper):
                     existing_value = previous.get(date_key)
                     incoming_value = row.get(date_key)
                     if existing_value and incoming_value:
-                        existing_date = Normalizer.parse_date(existing_value)
-                        incoming_date = Normalizer.parse_date(incoming_value)
+                        existing_date = _parse_date_value(existing_value)
+                        incoming_date = _parse_date_value(incoming_value)
                         if existing_date and incoming_date and existing_date != incoming_date:
                             conflicts.append({
                                 "field": date_key,

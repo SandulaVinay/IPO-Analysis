@@ -35,6 +35,16 @@ def _format_date(value: Any) -> str:
     return parsed.strftime("%d %b %Y") if parsed else "Not verified"
 
 
+def _format_ipo_date(ipo: Any, side: str) -> str:
+    verified = _as_date(getattr(ipo, f"verified_{side}_date", None))
+    announced = _as_date(getattr(ipo, f"announced_{side}_date", None))
+    if verified:
+        return f"{verified.strftime('%d %b %Y')} (official-source date)"
+    if announced:
+        return f"{announced.strftime('%d %b %Y')} (announced; not verified)"
+    return "Not verified"
+
+
 def _include_ipo(ipo: Any, today: date) -> bool:
     if getattr(ipo, "status", "") == "SOURCE_CONFLICT":
         return True
@@ -90,8 +100,6 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
     for ipo in selected[:20]:
         symbol = str(getattr(ipo, "symbol", "UNKNOWN"))
         name = str(getattr(ipo, "company_name", symbol))
-        open_date = getattr(ipo, "verified_open_date", None) or getattr(ipo, "announced_open_date", None)
-        close_date = getattr(ipo, "verified_close_date", None) or getattr(ipo, "announced_close_date", None)
         price_min = getattr(ipo, "min_price", None)
         price_max = getattr(ipo, "max_price", None)
         price_band = (
@@ -102,8 +110,8 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
         lines.extend([
             f"### {name} ({symbol})",
             "",
-            f"- Open date: {_format_date(open_date)}",
-            f"- Close date: {_format_date(close_date)}",
+            f"- Open date: {_format_ipo_date(ipo, 'open')}",
+            f"- Close date: {_format_ipo_date(ipo, 'close')}",
             f"- Price band: {price_band}",
             f"- Issue size: ₹{getattr(ipo, 'issue_size_cr', None):,.2f} Cr" if getattr(ipo, "issue_size_cr", None) is not None else "- Issue size: Not available",
             f"- Status: {_ipo_status(ipo)}",
@@ -131,8 +139,8 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
         + "\n\n".join(
             f"{getattr(ipo, 'company_name', getattr(ipo, 'symbol', 'UNKNOWN'))} "
             f"({getattr(ipo, 'symbol', 'UNKNOWN')}): {_ipo_status(ipo)} "
-            f"Open {_format_date(getattr(ipo, 'verified_open_date', None) or getattr(ipo, 'announced_open_date', None))}; "
-            f"close {_format_date(getattr(ipo, 'verified_close_date', None) or getattr(ipo, 'announced_close_date', None))}."
+            f"Open {_format_ipo_date(ipo, 'open')}; "
+            f"close {_format_ipo_date(ipo, 'close')}."
             for ipo in selected[:8]
         )
         + f"\n\nOfficial NSE: {NSE_IPO_URL}\nOfficial BSE: {BSE_IPO_URL}"

@@ -15,7 +15,7 @@ The GitHub Actions workflow runs official-source checks on weekdays at approxima
 
 GitHub may delay scheduled runs. The workflow is designed for repeatable, at-least-once execution, not exact-time delivery.
 
-The financial-results monitor checks the public `state/watchlist.json` list. NSE entries use an NSE symbol; BSE entries must also include `exchange: \"BSE\"` and a six-digit `bse_scrip_code`. All entries require an exact official issuer name (plus verified aliases where required).
+The financial-results monitor checks the public `state/watchlist.json` list. NSE entries use an NSE symbol and the official NSE corporate financial-results JSON feed (quarterly and annual metadata). BSE entries must also include `exchange: \"BSE\"` and a six-digit `bse_scrip_code`, and are checked through BSE's announcement API. All entries require an exact official issuer name (plus verified aliases where required).
 
 ## 2. Current notification chain
 
@@ -26,7 +26,7 @@ Only two real channels are part of the production workflow:
 
 A successful provider API response means the provider accepted the request. It does not prove that the message reached the user's handset or inbox. Final delivery requires provider delivery-status evidence, which is not currently wired into this project.
 
-If both channels are disabled or unconfigured, reports are still generated and uploaded as GitHub Actions artifacts. The system must not log or report that a notification was sent.
+If both channels are disabled or unconfigured, reports are still generated and uploaded as GitHub Actions artifacts. The system must not log or report that a notification was sent. Gmail app-password whitespace is normalized before SMTP authentication; both STARTTLS/587 and implicit TLS/465 are attempted when appropriate.
 
 WhatsApp use, template requirements, eligibility and charges depend on Meta/provider terms. Do not assume it is free. Gmail SMTP generally requires an app password rather than an account password.
 

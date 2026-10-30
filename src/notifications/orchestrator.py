@@ -49,7 +49,7 @@ class NotificationOrchestrator:
             logger.info(f"T-2 alert already dispatched for {ipo.symbol} (Key: {idempotency_key}). Skipping duplicate.")
             return True
 
-        subject = f"🚨 IPO Alert: {ipo.company_name} — Opens {ipo.verified_open_date} | {analysis_data.get('score_data', {}).get('verdict', 'ATTRACTIVE')}"
+        subject = f"🚨 IPO Alert: {ipo.company_name} — Opens {ipo.verified_open_date} | {analysis_data.get('score_data', {}).get('verdict', 'UNABLE_TO_ASSESS')}"
         content = ReportGenerator.generate_copy_mode(analysis_data)
 
         success = await self._dispatch_with_fallback(alert=alert, subject=subject, content=content)

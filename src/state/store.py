@@ -157,7 +157,7 @@ class StateStore:
             entry["exchange"] = exchange
             if exchange == "BSE":
                 scrip_code = str(entry.get("bse_scrip_code", "")).strip()
-                if not re.fullmatch(r"\\d{6}", scrip_code):
+                if not re.fullmatch(r"\d{6}", scrip_code):
                     raise RuntimeError("BSE watchlist entries require a six-digit bse_scrip_code.")
                 entry["bse_scrip_code"] = scrip_code
             normalized.append(entry)

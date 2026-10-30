@@ -270,15 +270,32 @@ def extract_pdf_candidate_evidence(pdf_bytes: bytes, *, source_url: str) -> Dict
         with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
             for page_index, page in enumerate(pdf.pages):
                 page_text = page_texts[page_index] if page_index < len(page_texts) else ""
-                if not page_text or not any(
-                    pattern.search(page_text)
-                    for patterns in (
-                        re.compile(pattern, re.IGNORECASE)
-                        for field_patterns in EVIDENCE_PATTERNS.values()
-                        for pattern in field_patterns
-                    )
-                ):
-                    continue
+                evidence_patterns = [
+                    re.compile(pattern, re.IGNORECASE)
+                    for field_patterns in EVIDENCE_PATTERNS.values()
+                    for pattern in field_patterns
+                ]
+                # pypdf and pdfplumber do not always extract identical text from
+                # the same PDF. Use pdfplumber's own text/word layer to decide whether
+                # a page merits table analysis when pypdf's text is absent or incomplete.
+                if not any(pattern.search(page_text) for pattern in evidence_patterns):
+                    try:
+                        layout_text = page.extract_text() or ""
+                    except Exception:
+                        layout_text = ""
+                    if any(pattern.search(layout_text) for pattern in evidence_patterns):
+                        page_text = layout_text
+                    else:
+                        try:
+                            layout_words = page.extract_words(use_text_flow=False)
+                            word_text = " ".join(str(word.get("text", "")) for word in layout_words)
+                        except Exception:
+                            word_text = ""
+                        if not any(pattern.search(word_text) for pattern in evidence_patterns):
+                            continue
+                        page_text = word_text
+                if page_index < len(page_texts) and not page_texts[page_index]:
+                    page_texts[page_index] = page_text
                 try:
                     detected_tables = page.extract_tables() or []
                 except Exception:

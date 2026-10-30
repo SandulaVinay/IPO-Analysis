@@ -73,8 +73,8 @@ Example watchlist entry (use the exact issuer name displayed on the NSE filing p
 
 ## Financial-results workflow
 
-1. For NSE watchlist entries, fetch the official NSE financial-results page once per run. For BSE entries, query the official BSE announcement API by the configured six-digit scrip code.
-2. Parse only recognizable source rows; retain the official page URL and any official attachment URL.
+1. For NSE watchlist entries, use the official NSE `corporates-financial-results` JSON feed for quarterly and annual metadata with a cookie-bearing HTTP session. For BSE entries, query the official BSE announcement API by the configured six-digit scrip code.
+2. Parse only recognized JSON announcement rows; retain the official source URL and any official attachment URL.
 3. Match each row to the configured issuer name/aliases and, for BSE, require the exact scrip code.
 4. Prefer the latest period end available for that issuer and prefer consolidated results when present. Preserve audit status, cumulative status, period type, submission type, and broadcast time.
 5. If an XBRL instance is linked and matches supported tags/contexts/units, extract only supported revenue, PAT, EPS, and operating cash-flow facts. Compare current and prior-year matching periods when both are present.

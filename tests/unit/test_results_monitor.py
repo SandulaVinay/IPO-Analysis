@@ -204,3 +204,74 @@ def test_nse_results_layout_recognition_uses_required_headers():
     """
     assert has_recognized_financial_results_table(valid) is True
     assert has_recognized_financial_results_table("<html><p>Access denied</p></html>") is False
+
+
+
+def test_nse_json_results_parser_requires_symbol_and_exact_issuer_name():
+    from src.results.monitor import parse_nse_financial_results_payload
+
+    company = {
+        "symbol": "RELIANCE",
+        "company_name": "Reliance Industries Limited",
+        "company_name_aliases": ["Reliance Industries Ltd"],
+    }
+    payload = [
+        {
+            "symbol": "RELIANCE",
+            "companyName": "Reliance Industries Limited",
+            "toDate": "30-Sep-2026",
+            "relatingTo": "Second Quarter",
+            "broadCastDate": "29-Oct-2026 18:15:00",
+            "audited": "Un-Audited",
+            "cumulative": "Non-cumulative",
+            "consolidated": "Consolidated",
+            "period": "Quarterly",
+            "format": "New",
+            "xbrl": "https://nsearchives.nseindia.com/corporate/reliance.xml",
+        },
+        {
+            "symbol": "TCS",
+            "companyName": "Reliance Industries Limited",
+            "toDate": "30-Sep-2026",
+            "relatingTo": "Second Quarter",
+            "broadCastDate": "29-Oct-2026 18:16:00",
+        },
+        {
+            "symbol": "RELIANCE",
+            "companyName": "Different Issuer Limited",
+            "toDate": "30-Sep-2026",
+            "relatingTo": "Second Quarter",
+            "broadCastDate": "29-Oct-2026 18:17:00",
+        },
+    ]
+
+    rows = parse_nse_financial_results_payload(payload, "RELIANCE", company, "Quarterly")
+
+    assert len(rows) == 1
+    assert rows[0]["symbol"] == "RELIANCE"
+    assert rows[0]["company_name"] == "Reliance Industries Limited"
+    assert rows[0]["period_ended"] == "30-Sep-2026"
+    assert rows[0]["xbrl_url"] == "https://nsearchives.nseindia.com/corporate/reliance.xml"
+    assert rows[0]["consolidation"] == "Consolidated"
+    assert rows[0]["event_key"].startswith("RESULT_")
+
+
+def test_bse_api_request_uses_browser_headers_and_default_result_filters():
+    from datetime import date
+    from src.results.monitor import bse_api_headers, bse_results_request_params
+
+    headers = bse_api_headers()
+    params = bse_results_request_params(1, "517286", date(2026, 10, 23), date(2026, 10, 30))
+
+    assert headers["Host"] == "api.bseindia.com"
+    assert headers["Origin"] == "https://www.bseindia.com"
+    assert headers["Referer"] == "https://www.bseindia.com/"
+    assert headers["Sec-Fetch-Site"] == "same-site"
+    assert params == {
+        "pageno": 1,
+        "strPrevDate": "20261023",
+        "strToDate": "20261030",
+        "strSearch": "P",
+        "strScrip": "517286",
+        "strType": "C",
+    }

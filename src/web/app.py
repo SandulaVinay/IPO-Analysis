@@ -96,7 +96,7 @@ async def list_ipos(session: AsyncSession = Depends(get_db)):
             "ofs_cr": ipo.ofs_cr,
             "verdict": latest_run.verdict if latest_run else "PENDING_ANALYSIS",
             "overall_score": latest_run.overall_score if latest_run else None,
-            "confidence_level": latest_run.confidence_level if latest_run else "HIGH",
+            "confidence_level": latest_run.confidence_level if latest_run else "NOT_ASSESSED",
             "latest_gmp": latest_gmp.gmp_value if latest_gmp else None,
             "potential_listing_gain_pct": latest_gmp.potential_listing_gain_pct if latest_gmp else None,
         })

@@ -7,7 +7,8 @@ import hashlib
 import os
 import re
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
@@ -24,6 +25,9 @@ from src.state.store import StateStore
 from src.reporting.pdf import markdown_to_pdf
 
 NSE_RESULTS_URL = "https://www.nseindia.com/companies-listing/corporate-filings-financial-results"
+BSE_RESULTS_API_URL = "https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w"
+BSE_RESULTS_PAGE_URL = "https://www.bseindia.com/corporates/ann.html"
+BSE_ATTACHMENT_BASE_URL = "https://www.bseindia.com/xml-data/corpfiling/AttachLive/"
 CRORE = 10_000_000
 
 METRIC_TAGS = {
@@ -61,6 +65,22 @@ def _matches_watchlist_company(filing: Dict[str, Any], company: Dict[str, Any]) 
     expected = [company.get("company_name"), *(company.get("company_name_aliases") or [])]
     expected_keys = {_key(value) for value in expected if isinstance(value, str) and value.strip()}
     return bool(expected_keys and _key(str(filing.get("company_name", ""))) in expected_keys)
+
+
+def has_recognized_financial_results_table(html: str) -> bool:
+    """Return True only when the NSE response contains the expected filing columns."""
+    soup = BeautifulSoup(html, "lxml")
+    for table in soup.find_all("table"):
+        first_row = table.find("tr")
+        if not first_row:
+            continue
+        headers = [_key(cell.get_text(" ", strip=True)) for cell in first_row.find_all(["th", "td"])]
+        company_ok = any("company name" in header or header == "company" for header in headers)
+        period_ok = any("period ended" in header or "period end" in header for header in headers)
+        broadcast_ok = any("broadcast date" in header or "broadcast time" in header for header in headers)
+        if company_ok and period_ok and broadcast_ok:
+            return True
+    return False
 
 
 def parse_financial_results_page(html: str, symbol: str, page_url: str) -> List[Dict[str, Any]]:
@@ -263,6 +283,69 @@ def extract_xbrl_metrics(xml_content: bytes, period_ended: str, relating_to: str
     return result
 
 
+def parse_bse_financial_results_payload(
+    payload: Dict[str, Any],
+    symbol: str,
+    company: Dict[str, Any],
+    scrip_code: str,
+) -> List[Dict[str, Any]]:
+    """Normalize BSE result-category announcements for a precisely matched watchlist issuer."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("Table"), list):
+        raise ValueError("BSE results API response did not contain a Table list.")
+
+    output: List[Dict[str, Any]] = []
+    for row in payload["Table"]:
+        if not isinstance(row, dict):
+            continue
+        row_code = str(row.get("SCRIP_CD") or row.get("SCRIPCODE") or "").strip()
+        if row_code and row_code != str(scrip_code):
+            continue
+
+        company_name = _clean(str(row.get("SLONGNAME") or row.get("COMPANYNAME") or ""))
+        if not company_name or not _matches_watchlist_company({"company_name": company_name}, company):
+            continue
+
+        headline = _clean(str(row.get("NEWSSUB") or row.get("HEADLINE") or "Financial results filing"))
+        category = _clean(str(row.get("SUBCATNAME") or row.get("CATEGORYNAME") or "Financial results"))
+        broadcast = _clean(str(row.get("DT_TM") or row.get("NEWS_DT") or row.get("News_submission_dt") or ""))
+        news_id = str(row.get("NEWSID") or row.get("XML_NAME") or "").strip()
+        attachment_name = str(row.get("ATTACHMENTNAME") or "").strip()
+        attachment_url = None
+        if attachment_name:
+            attachment_url = attachment_name if attachment_name.lower().startswith("https://") else urljoin(
+                BSE_ATTACHMENT_BASE_URL, attachment_name.lstrip("/")
+            )
+
+        source_url = str(row.get("NSURL") or BSE_RESULTS_PAGE_URL).strip()
+        if not source_url.startswith("https://"):
+            source_url = BSE_RESULTS_PAGE_URL
+        event_material = "|".join([
+            str(scrip_code), news_id, broadcast, headline, attachment_url or source_url
+        ])
+        event_key = "RESULT_" + hashlib.sha256(event_material.encode("utf-8")).hexdigest()[:32]
+        output.append({
+            "event_key": event_key,
+            "symbol": symbol.upper(),
+            "exchange": "BSE",
+            "company_name": company_name,
+            "period_ended": None,
+            "relating_to": category,
+            "broadcast_time": broadcast or "Not provided by BSE",
+            "audit_status": None,
+            "cumulative_status": None,
+            "period_type": None,
+            "submission_type": None,
+            "consolidation": None,
+            "source_url": source_url,
+            "attachment_url": attachment_url,
+            "xbrl_url": None,
+            "details_url": None,
+            "headline": headline,
+            "bse_scrip_code": str(scrip_code),
+        })
+    return output
+
+
 def _format_metric(value: Optional[float], suffix: str = "") -> str:
     return "Not available" if value is None else f"{value:,.2f}{suffix}"
 
@@ -284,7 +367,8 @@ def _report_text(item: Dict[str, Any], metrics: Dict[str, Any]) -> str:
         analysis_note = "No financial-performance conclusion or investment recommendation is generated from filing metadata alone."
     return (
         f"# Official financial-results filing: {item['company_name']} ({item['symbol']})\n\n"
-        f"- **Period ended:** {item['period_ended']}\n"
+        f"- **Exchange:** {item.get('exchange') or 'NSE'}\n"
+        f"- **Period ended:** {item.get('period_ended') or 'Not specified in the filing notice'}\n"
         f"- **Period / quarter:** {item.get('relating_to') or 'Not specified in the table'}\n"
         f"- **Broadcast time:** {item['broadcast_time']}\n"
         f"- **Audited status:** {item.get('audit_status') or 'Not specified'}\n"
@@ -297,6 +381,7 @@ def _report_text(item: Dict[str, Any], metrics: Dict[str, Any]) -> str:
 
 
 async def monitor_financial_results() -> Dict[str, Any]:
+    """Check the NSE results table once and BSE result announcements per configured scrip."""
     store = StateStore()
     watchlist = store.load_watchlist()
     if not watchlist:
@@ -311,41 +396,122 @@ async def monitor_financial_results() -> Dict[str, Any]:
     accepted_count = 0
     errors = 0
 
-    for company in watchlist:
-        symbol = company["symbol"]
-        checked += 1
-        company_name = company.get("company_name")
-        if not isinstance(company_name, str) or not company_name.strip():
-            errors += 1
-            logger.warning("Skipping %s: state/watchlist.json must provide the exact official company_name.", symbol)
-            continue
-        page_url = NSE_RESULTS_URL
+    nse_companies = [company for company in watchlist if str(company.get("exchange", "NSE")).upper() == "NSE"]
+    bse_companies = [company for company in watchlist if str(company.get("exchange", "NSE")).upper() == "BSE"]
+    nse_rows_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
+    nse_source_error: Optional[str] = None
+
+    # NSE publishes one market-wide table. Fetch it once rather than repeating the same
+    # request for every watchlist company.
+    if nse_companies:
         try:
             response = await http_client.get(
                 NSE_RESULTS_URL,
-                headers={"Referer": "https://www.nseindia.com/companies-listing/corporate-filings-application"},
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Referer": "https://www.nseindia.com/companies-listing/corporate-filings-application",
+                },
+                timeout=45.0,
             )
-            all_page_rows = parse_financial_results_page(response.text, symbol, page_url)
-            if not all_page_rows:
-                errors += 1
-                logger.warning("NSE financial-results page returned no recognizable filing rows; parser/source response may have changed.")
-                continue
-            filings = [item for item in all_page_rows if _matches_watchlist_company(item, company)]
-            if not filings:
-                logger.info("No exact company-name match found on NSE financial-results page for %s; no alert emitted.", symbol)
-            if filings:
-                parsed_periods = [(Normalizer.parse_date(item.get("period_ended")), item) for item in filings]
-                valid_periods = [period for period, _ in parsed_periods if period is not None]
-                if valid_periods:
-                    latest_period = max(valid_periods)
-                    filings = [item for period, item in parsed_periods if period == latest_period]
-                consolidated = [item for item in filings if "consolidated" in (item.get("consolidation") or "").lower() and "non-consolidated" not in (item.get("consolidation") or "").lower()]
-                if consolidated:
-                    filings = consolidated
+            if not has_recognized_financial_results_table(response.text):
+                raise ValueError("NSE financial-results page layout was not recognized.")
+            for company in nse_companies:
+                symbol = company["symbol"]
+                if not company.get("company_name"):
+                    errors += 1
+                    logger.warning("Skipping %s: exact official company_name is required.", symbol)
+                    continue
+                rows = parse_financial_results_page(response.text, symbol, NSE_RESULTS_URL)
+                filings = [item for item in rows if _matches_watchlist_company(item, company)]
+                if filings:
+                    parsed_periods = [(Normalizer.parse_date(item.get("period_ended")), item) for item in filings]
+                    valid_periods = [period for period, _ in parsed_periods if period is not None]
+                    if valid_periods:
+                        latest_period = max(valid_periods)
+                        filings = [item for period, item in parsed_periods if period == latest_period]
+                    consolidated = [
+                        item for item in filings
+                        if "consolidated" in (item.get("consolidation") or "").lower()
+                        and "non-consolidated" not in (item.get("consolidation") or "").lower()
+                    ]
+                    if consolidated:
+                        filings = consolidated
+                nse_rows_by_symbol[symbol] = filings
         except Exception as exc:
             errors += 1
-            logger.warning("NSE results check failed for %s (%s).", symbol, type(exc).__name__)
+            nse_source_error = type(exc).__name__
+            logger.warning("NSE financial-results source check failed (%s).", nse_source_error)
+
+    bse_rows_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
+    for company in bse_companies:
+        symbol = company["symbol"]
+        scrip_code = str(company.get("bse_scrip_code") or "").strip()
+        if not company.get("company_name") or not scrip_code:
+            errors += 1
+            logger.warning("Skipping BSE symbol %s: company_name and bse_scrip_code are required.", symbol)
             continue
+        try:
+            today_ist = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Kolkata")).date()
+            from_date = today_ist - timedelta(days=7)
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://www.bseindia.com/",
+                "Origin": "https://www.bseindia.com",
+            }
+            raw_rows: List[Dict[str, Any]] = []
+            for page_no in range(1, 6):
+                response = await http_client.get(
+                    BSE_RESULTS_API_URL,
+                    params={
+                        "pageno": page_no,
+                        "strCat": "Result",
+                        "strPrevDate": from_date.strftime("%Y%m%d"),
+                        "strScrip": scrip_code,
+                        "strSearch": "P",
+                        "strToDate": today_ist.strftime("%Y%m%d"),
+                        "strType": "C",
+                        "subcategory": "-1",
+                    },
+                    headers=headers,
+                    timeout=30.0,
+                )
+                payload = response.json()
+                if not isinstance(payload, dict) or not isinstance(payload.get("Table"), list):
+                    raise ValueError("BSE results API response did not contain a Table list.")
+                page_rows = payload["Table"]
+                raw_rows.extend(row for row in page_rows if isinstance(row, dict))
+                total_rows = 0
+                table1 = payload.get("Table1")
+                if isinstance(table1, list) and table1 and isinstance(table1[0], dict):
+                    try:
+                        total_rows = int(table1[0].get("ROWCNT") or 0)
+                    except (TypeError, ValueError):
+                        total_rows = 0
+                if not page_rows or len(raw_rows) >= total_rows or len(page_rows) < 50:
+                    break
+            bse_payload = {"Table": raw_rows}
+            bse_rows_by_symbol[symbol] = parse_bse_financial_results_payload(
+                bse_payload, symbol, company, scrip_code
+            )
+        except Exception as exc:
+            errors += 1
+            logger.warning("BSE results check failed for %s (%s).", symbol, type(exc).__name__)
+            bse_rows_by_symbol[symbol] = []
+
+    for company in watchlist:
+        symbol = company["symbol"]
+        checked += 1
+        exchange = str(company.get("exchange", "NSE")).upper()
+        if exchange == "BSE":
+            filings = bse_rows_by_symbol.get(symbol, [])
+        elif nse_source_error:
+            filings = []
+        else:
+            filings = nse_rows_by_symbol.get(symbol, [])
 
         for item in filings:
             if store.has_processed_event(item["event_key"]):
@@ -355,13 +521,21 @@ async def monitor_financial_results() -> Dict[str, Any]:
             attachment = item.get("xbrl_url") or item.get("attachment_url") or ""
             if attachment.lower().endswith((".xml", ".xbrl")) or "/xbrl/" in attachment.lower():
                 try:
-                    xbrl_response = await http_client.get(attachment, headers={"Referer": "https://www.nseindia.com/"})
-                    metrics = extract_xbrl_metrics(xbrl_response.content, item["period_ended"], item.get("relating_to") or "")
+                    xbrl_response = await http_client.get(
+                        attachment,
+                        headers={"Referer": "https://www.nseindia.com/"},
+                        timeout=30.0,
+                    )
+                    if item.get("period_ended"):
+                        metrics = extract_xbrl_metrics(
+                            xbrl_response.content, item["period_ended"], item.get("relating_to") or ""
+                        )
                 except Exception as exc:
                     metrics = {"status": "UNAVAILABLE", "reason": f"XBRL extraction failed ({type(exc).__name__})."}
                     logger.warning("XBRL extraction failed for %s (%s).", symbol, type(exc).__name__)
 
-            safe_period = re.sub(r"[^0-9A-Za-z_-]+", "_", item["period_ended"])
+            safe_period_value = item.get("period_ended") or item.get("broadcast_time") or "filing"
+            safe_period = re.sub(r"[^0-9A-Za-z_-]+", "_", str(safe_period_value))
             safe_symbol = re.sub(r"[^0-9A-Za-z_-]+", "_", symbol)
             report_path = report_dir / f"{safe_symbol}_{safe_period}_{item['event_key'][-8:]}.md"
             report_content = _report_text(item, metrics)
@@ -369,14 +543,17 @@ async def monitor_financial_results() -> Dict[str, Any]:
             markdown_to_pdf(report_content, report_path.with_suffix(".pdf"), title=f"Financial Results - {symbol}")
             subject = f"Official results filing: {item['company_name']} ({symbol})"
             content = (
-                f"Official NSE financial-results filing detected.\n\n"
+                f"Official {exchange} financial-results filing detected.\n\n"
                 f"Company: {item['company_name']} ({symbol})\n"
-                f"Period ended: {item['period_ended']}\n"
-                f"Period: {item.get('relating_to') or 'Not specified'}\n"
-                f"Broadcast: {item['broadcast_time']}\n"
+                f"Exchange: {exchange}\n"
+                f"Period ended: {item.get('period_ended') or 'Not disclosed in the filing notice'}\n"
+                f"Period/category: {item.get('relating_to') or 'Not specified'}\n"
+                f"Broadcast: {item.get('broadcast_time') or 'Not specified'}\n"
                 f"Official filing: {attachment or item['source_url']}\n"
                 + (f"Details PDF: {item['details_url']}\n" if item.get("details_url") else "")
             )
+            if item.get("headline"):
+                content += f"Announcement: {item['headline']}\n"
             run_id = os.getenv("GITHUB_RUN_ID")
             repository = os.getenv("GITHUB_REPOSITORY", "SandulaVinay/IPO-Analysis")
             if run_id:
@@ -415,7 +592,7 @@ async def monitor_financial_results() -> Dict[str, Any]:
                     item["event_key"],
                     event_type="FINANCIAL_RESULTS_FILING",
                     symbol=symbol,
-                    event_date=item["period_ended"],
+                    event_date=str(item.get("period_ended") or item.get("broadcast_time") or ""),
                     status="ACCEPTED",
                     channel=channel,
                 )
@@ -424,7 +601,7 @@ async def monitor_financial_results() -> Dict[str, Any]:
                     item["event_key"],
                     event_type="FINANCIAL_RESULTS_FILING",
                     symbol=symbol,
-                    event_date=item["period_ended"],
+                    event_date=str(item.get("period_ended") or item.get("broadcast_time") or ""),
                     status="FAILED",
                     channel=None,
                 )

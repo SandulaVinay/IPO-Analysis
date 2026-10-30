@@ -1,4 +1,15 @@
 {
+  "events": [
+    {
+      "channel": null,
+      "event_date": "2026-10-30",
+      "event_key": "IPO_DAILY_DIGEST_2026-10-30",
+      "event_type": "DAILY_IPO_DIGEST",
+      "status": "FAILED",
+      "symbol": "ALL",
+      "updated_at": "2026-10-30T12:27:30.205436+00:00"
+    }
+  ],
   "schema_version": 1,
-  "events": []
+  "updated_at": "2026-10-30T12:27:30.205447+00:00"
 }

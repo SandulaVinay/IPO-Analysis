@@ -5,6 +5,18 @@
       "detail": "RuntimeError",
       "status": "FAILED",
       "timestamp": "2026-10-30T12:13:04.797164+00:00"
+    },
+    {
+      "command": "discover",
+      "detail": "RuntimeError",
+      "status": "FAILED",
+      "timestamp": "2026-10-30T12:27:28.988361+00:00"
+    },
+    {
+      "command": "digest",
+      "detail": "records=0; channel=NONE",
+      "status": "FAILED",
+      "timestamp": "2026-10-30T12:27:30.206455+00:00"
     }
   ],
   "schema_version": 1

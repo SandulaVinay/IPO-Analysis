@@ -188,12 +188,23 @@ class EmailProvider(NotificationProvider):
                 "message_id": message_id,
                 "error": None,
             }
-        except Exception as e:
-            logger.error("Email dispatch failure (%s); details redacted.", type(e).__name__)
+        except ValueError as exc:
+            # These are fixed validation messages (for example, invalid PDF path,
+            # size, or signature); they contain no credentials or recipient data.
+            logger.error("Email attachment/message validation failed (ValueError).")
             return {
                 "success": False,
                 "delivered": False,
                 "mocked": False,
                 "message_id": None,
-                "error": f"Email message preparation failed ({type(e).__name__}).",
+                "error": str(exc),
+            }
+        except Exception as exc:
+            logger.error("Email dispatch failure (%s); details redacted.", type(exc).__name__)
+            return {
+                "success": False,
+                "delivered": False,
+                "mocked": False,
+                "message_id": None,
+                "error": f"Email message preparation failed ({type(exc).__name__}).",
             }

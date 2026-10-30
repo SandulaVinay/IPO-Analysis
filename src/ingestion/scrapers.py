@@ -212,7 +212,15 @@ class PortalScraper(BaseScraper):
         )
         for source_name, url in sources:
             try:
-                response = await http_client.get(url, headers={"Referer": "https://www.nseindia.com/" if source_name == "NSE India" else "https://www.bseindia.com/"})
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Referer": "https://www.nseindia.com/" if source_name == "NSE India" else "https://www.bseindia.com/",
+                }
+                if source_name == "BSE India":
+                    headers["Origin"] = "https://www.bseindia.com"
+                response = await http_client.get(url, headers=headers, timeout=45.0)
                 successful_sources += 1
                 if _has_recognized_issue_table(response.text):
                     recognized_sources += 1

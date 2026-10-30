@@ -151,6 +151,15 @@ class StateStore:
                 raise RuntimeError("Each watchlist company must be a symbol string or an object with a symbol.")
             if not re.fullmatch(r"[A-Z0-9&._-]{1,30}", entry["symbol"]):
                 raise RuntimeError("Watchlist symbol contains unsupported characters.")
+            exchange = str(entry.get("exchange", "NSE")).strip().upper()
+            if exchange not in {"NSE", "BSE"}:
+                raise RuntimeError("Watchlist exchange must be NSE or BSE.")
+            entry["exchange"] = exchange
+            if exchange == "BSE":
+                scrip_code = str(entry.get("bse_scrip_code", "")).strip()
+                if not re.fullmatch(r"\d{6}", scrip_code):
+                    raise RuntimeError("BSE watchlist entries require a six-digit bse_scrip_code.")
+                entry["bse_scrip_code"] = scrip_code
             normalized.append(entry)
         return normalized
 

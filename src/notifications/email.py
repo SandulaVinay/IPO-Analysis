@@ -4,6 +4,7 @@ Supports plain-text research reports and validated PDF attachments.
 """
 
 import smtplib
+import ssl
 from pathlib import Path
 from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
@@ -108,12 +109,74 @@ class EmailProvider(NotificationProvider):
                 part.add_header("Content-Disposition", "attachment", filename=path.name)
                 msg.attach(part)
 
-            with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-                server.login(settings.smtp_user, settings.smtp_password)
-                server.sendmail(msg["From"], [to_addr], msg.as_string())
+            preferred_port = int(settings.smtp_port)
+            ports = [preferred_port]
+            if settings.smtp_host.strip().lower() in {"smtp.gmail.com", "smtp.googlemail.com"}:
+                alternate_port = 465 if preferred_port != 465 else 587
+                if alternate_port not in ports:
+                    ports.append(alternate_port)
+
+            last_failure = None
+            for port_index, port in enumerate(ports):
+                stage = "connect"
+                try:
+                    if port == 465:
+                        with smtplib.SMTP_SSL(
+                            settings.smtp_host,
+                            port,
+                            timeout=20,
+                            context=ssl.create_default_context(),
+                        ) as server:
+                            stage = "ehlo"
+                            server.ehlo()
+                            stage = "login"
+                            server.login(settings.smtp_user, settings.smtp_password)
+                            stage = "sendmail"
+                            refused = server.sendmail(msg["From"], [to_addr], msg.as_string())
+                    else:
+                        with smtplib.SMTP(settings.smtp_host, port, timeout=20) as server:
+                            stage = "ehlo"
+                            server.ehlo()
+                            stage = "starttls"
+                            server.starttls(context=ssl.create_default_context())
+                            server.ehlo()
+                            stage = "login"
+                            server.login(settings.smtp_user, settings.smtp_password)
+                            stage = "sendmail"
+                            refused = server.sendmail(msg["From"], [to_addr], msg.as_string())
+
+                    if refused:
+                        raise smtplib.SMTPRecipientsRefused(refused)
+                    last_failure = None
+                    break
+                except Exception as exc:
+                    last_failure = (port, stage, exc)
+                    logger.warning(
+                        "SMTP attempt failed at stage=%s port=%s (%s).",
+                        stage,
+                        port,
+                        type(exc).__name__,
+                    )
+                    # Gmail supports implicit TLS on 465 as well as STARTTLS on 587.
+                    # Only retry the alternate port when the connection/auth handshake
+                    # failed before message submission; never resend after sendmail starts.
+                    if stage == "sendmail" or port_index == len(ports) - 1:
+                        break
+
+            if last_failure is not None:
+                port, stage, exc = last_failure
+                safe_error = (
+                    f"SMTP failed during {stage} on port {port} "
+                    f"({type(exc).__name__}); check Gmail app-password, TLS, and runner network access."
+                )
+                logger.error("Email dispatch failed (%s); credentials and message data were not logged.", type(exc).__name__)
+                return {
+                    "success": False,
+                    "delivered": False,
+                    "mocked": False,
+                    "message_id": None,
+                    "error": safe_error,
+                }
 
             message_id = f"smtp_{int(__import__('time').time())}"
             logger.info("Email successfully accepted by SMTP server; final inbox delivery is not confirmed.")
@@ -125,12 +188,23 @@ class EmailProvider(NotificationProvider):
                 "message_id": message_id,
                 "error": None,
             }
-        except Exception as e:
-            logger.error("Email dispatch failure (%s); details redacted.", type(e).__name__)
+        except ValueError as exc:
+            # These are fixed validation messages (for example, invalid PDF path,
+            # size, or signature); they contain no credentials or recipient data.
+            logger.error("Email attachment/message validation failed (ValueError).")
             return {
                 "success": False,
                 "delivered": False,
                 "mocked": False,
                 "message_id": None,
-                "error": str(e),
+                "error": str(exc),
+            }
+        except Exception as exc:
+            logger.error("Email dispatch failure (%s); details redacted.", type(exc).__name__)
+            return {
+                "success": False,
+                "delivered": False,
+                "mocked": False,
+                "message_id": None,
+                "error": f"Email message preparation failed ({type(exc).__name__}).",
             }

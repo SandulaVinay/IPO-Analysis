@@ -207,7 +207,7 @@ async def test_email_provider_attaches_pdf_reports_only_from_reports_directory(t
             return False
         def ehlo(self):
             pass
-        def starttls(self):
+        def starttls(self, context=None):
             pass
         def login(self, user, password):
             assert user == "sender@example.test"
@@ -302,7 +302,7 @@ async def test_portal_scraper_reports_partial_when_one_official_layout_is_unreco
         SimpleNamespace(text="<html><body>Service unavailable</body></html>"),
     ])
 
-    async def fake_get(url, headers=None):
+    async def fake_get(url, headers=None, timeout=None):
         return next(responses)
 
     monkeypatch.setattr(scraper_module.http_client, "get", fake_get)
@@ -402,7 +402,7 @@ async def test_portal_scraper_clears_conflicting_price_bands_across_sources(monk
         SimpleNamespace(text=table("₹ 100 - ₹ 105")),
     ])
 
-    async def fake_get(url, headers=None):
+    async def fake_get(url, headers=None, timeout=None):
         return next(responses)
 
     monkeypatch.setattr(scraper_module.http_client, "get", fake_get)
@@ -411,3 +411,59 @@ async def test_portal_scraper_clears_conflicting_price_bands_across_sources(monk
     assert rows[0].get("min_price") is None
     assert rows[0].get("max_price") is None
     assert {item["field"] for item in rows[0]["field_conflicts"]} == {"min_price", "max_price"}
+
+
+
+@pytest.mark.asyncio
+async def test_gmail_smtp_falls_back_to_implicit_tls_on_465(tmp_path, monkeypatch):
+    import smtplib
+    import src.notifications.email as email_module
+    from src.notifications.email import EmailProvider
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "enable_email", True)
+    monkeypatch.setattr(settings, "email_provider", "smtp")
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "smtp_host", "smtp.gmail.com")
+    monkeypatch.setattr(settings, "smtp_port", 587)
+    monkeypatch.setattr(settings, "smtp_user", "sender@example.test")
+    monkeypatch.setattr(settings, "smtp_password", "test-app-password")
+    monkeypatch.setattr(settings, "email_from", "sender@example.test")
+    monkeypatch.setattr(settings, "email_to", "recipient@example.test")
+
+    attempted_ports = []
+
+    class DisconnectedSMTP:
+        def __init__(self, host, port, timeout=20):
+            attempted_ports.append(port)
+            raise smtplib.SMTPServerDisconnected("connection closed")
+
+    class FakeSMTPSSL:
+        def __init__(self, host, port, timeout=20, context=None):
+            attempted_ports.append(port)
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def ehlo(self):
+            pass
+        def login(self, user, password):
+            assert user == "sender@example.test"
+            assert password == "test-app-password"
+        def sendmail(self, sender, recipients, message):
+            assert recipients == ["recipient@example.test"]
+            return {}
+
+    monkeypatch.setattr(email_module.smtplib, "SMTP", DisconnectedSMTP)
+    monkeypatch.setattr(email_module.smtplib, "SMTP_SSL", FakeSMTPSSL)
+
+    result = await EmailProvider().send_notification(
+        recipient="recipient@example.test",
+        subject="SMTP fallback test",
+        content="Test message",
+    )
+
+    assert attempted_ports == [587, 465]
+    assert result["success"] is True
+    assert result["accepted"] is True
+    assert result["delivered"] is False

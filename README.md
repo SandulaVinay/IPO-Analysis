@@ -9,7 +9,7 @@ A production-quality, evidence-driven, deterministic intelligence platform for d
 1. **Deterministic calculations**: Financial formulas and scoring calculations are performed in Python; an AI model is not required for numerical calculations.
 2. **Evidence and provenance**: Prospectus documents are hashed and versioned. Extracted PDF passages retain page references and remain explicitly `UNVERIFIED` until the period, unit and statement-basis checks are completed.
 3. **Fail-closed production analysis**: Missing, conflicting or unverified critical inputs produce `UNABLE_TO_ASSESS`. The system must not invent financial values or issue unsupported `APPLY` / `AVOID` recommendations.
-4. **IPO discovery and results monitoring**: Official NSE/BSE IPO pages are checked; financial-results monitoring uses the configured company watchlist and a conservative subset of NSE/XBRL filing data.
+4. **IPO discovery and results monitoring**: Official NSE/BSE IPO pages are checked; financial-results monitoring uses the configured company watchlist, exact issuer-name matching, NSE filings/XBRL facts, and BSE scrip-code announcements for BSE-listed companies.
 5. **GitHub Actions automation**: Weekday checks run at 08:30, 11:30, 14:30 and 17:30 IST. The final weekday run generates a daily status digest. Reports are retained as seven-day workflow artifacts and sanitized state is persisted to the public `state` branch.
 6. **Notifications**: WhatsApp Cloud API is primary and SMTP email is the fallback when the owner configures the required GitHub Actions secrets. Without credentials, reports are generated in report-only mode. WhatsApp eligibility and charges depend on provider terms.
 7. **Dashboard and CLI**: A FastAPI dashboard and command-line interface are available for local use. No separate always-on server is required for the GitHub Actions scheduled workflow.
@@ -94,12 +94,12 @@ Run the complete test suite (Unit, Integration, and 11 Realistic Scenario Fixtur
 - [TESTING.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/TESTING.md): Test execution guide and 11 scenario definitions.
 
 
-## Automation v2 rollout notes
+## GitHub Actions deployment and operations
 
-The `automation-v2` branch and draft pull request are being used to validate the safer scheduled architecture before anything is merged into `main`.
+The scheduled automation is deployed from `main`. Its workflow runs discovery, results monitoring, and health checks as independent steps so an exchange outage does not prevent the other checks from running.
 
 - The scheduled workflow persists only sanitized public IPO metadata and event keys on the public `state` branch.
-- Add NSE symbols to `state/watchlist.json` on the `state` branch to monitor official financial-results filings. The list is intentionally empty by default.
+- Add exchange-specific watchlist entries to `state/watchlist.json` on the `state` branch. NSE entries use the NSE symbol; BSE entries also require `exchange: \"BSE\"` and a six-digit `bse_scrip_code`. Both require exact official issuer names and verified aliases.
 - Result reports are generated as short-lived GitHub Actions artifacts. XBRL values are extracted only when the attachment is a supported XBRL instance; other formats are reported as unavailable rather than guessed.
 - `ENABLE_DEMO_ANALYSIS` defaults to `false`. Never enable demo analysis in production.
 - Configure WhatsApp and email values through GitHub repository Actions Secrets, not in files or chat. The application defaults recipient fields to blank to prevent accidental sends.
@@ -110,7 +110,7 @@ The `automation-v2` branch and draft pull request are being used to validate the
 
 See [Automation v2 Architecture and Rollout Gates](docs/ARCHITECTURE_V2.md) for the GitHub Actions design, public state-branch schema, watchlist format, notification secret names, and production-readiness checklist.
 
-**Important:** automated IPO investment recommendations are not production-ready yet. The production path must return `UNABLE_TO_ASSESS` until official RHP/DRHP financial extraction and verification are implemented. The financial-results monitor currently supports only a conservative subset of XBRL facts; unsupported filings are reported as unavailable rather than guessed. Do not enable real notifications until GitHub Actions Secrets are configured and a manual test is approved.
+**Important:** automated IPO investment recommendations are not production-ready yet. The production path must return `UNABLE_TO_ASSESS` until official RHP/DRHP financial extraction and verification are implemented. The financial-results monitor currently supports only a conservative subset of NSE XBRL facts; BSE announcements are filing notices and their financial metrics are not yet parsed into the same XBRL model; unsupported filings are reported as unavailable rather than guessed. Do not enable real notifications until GitHub Actions Secrets are configured and a manual test is approved.
 
 
 ### PDF research artifacts

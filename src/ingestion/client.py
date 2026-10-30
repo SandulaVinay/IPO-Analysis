@@ -16,10 +16,10 @@ class HTTPClient:
         self.timeout = timeout
         self.max_retries = max_retries
 
-    async def _request(self, method: str, url: str, *, params=None, json=None, data=None, files=None, headers=None, retry_transient: bool = True):
+    async def _request(self, method: str, url: str, *, params=None, json=None, data=None, files=None, headers=None, retry_transient: bool = True, timeout: Optional[float] = None):
         req_headers = {**DEFAULT_HEADERS, **(headers or {})}
         attempts = self.max_retries if retry_transient else 1
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=timeout or self.timeout, follow_redirects=True) as client:
             for attempt in range(1, attempts + 1):
                 try:
                     response = await client.request(method, url, params=params, json=json, data=data, files=files, headers=req_headers)
@@ -45,9 +45,9 @@ class HTTPClient:
                     await asyncio.sleep(delay)
         raise httpx.RequestError(f"{method} exhausted retries")
 
-    async def get(self, url: str, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None) -> httpx.Response:
-        """Execute GET with transient-error retries."""
-        return await self._request("GET", url, params=params, headers=headers)
+    async def get(self, url: str, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None, timeout: Optional[float] = None) -> httpx.Response:
+        """Execute GET with transient-error retries and an optional per-source timeout."""
+        return await self._request("GET", url, params=params, headers=headers, timeout=timeout)
 
     async def post(self, url: str, *, json: Optional[Dict[str, Any]] = None, data: Optional[Dict[str, Any]] = None, files=None, headers: Optional[Dict[str, str]] = None, retry_transient: bool = True) -> httpx.Response:
         """Execute POST, optionally multipart; disable retries for non-idempotent provider requests."""

@@ -302,7 +302,7 @@ async def test_portal_scraper_reports_partial_when_one_official_layout_is_unreco
         SimpleNamespace(text="<html><body>Service unavailable</body></html>"),
     ])
 
-    async def fake_get(url, headers=None):
+    async def fake_get(url, headers=None, timeout=None):
         return next(responses)
 
     monkeypatch.setattr(scraper_module.http_client, "get", fake_get)

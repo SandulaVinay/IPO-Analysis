@@ -25,7 +25,7 @@ class ReportGenerator:
 
         return f"""# 📊 IPO Executive Summary: {ipo.get('company_name')} ({ipo.get('symbol')})
 
-**Assessment**: {verdict_emoji} **{score_data.get('verdict', 'UNABLE_TO_ASSESS')}** | **Overall Score**: {score_data.get('overall_score')}/10 | **Confidence**: {data.get('confidence_level', 'HIGH')}
+**Assessment**: {verdict_emoji} **{score_data.get('verdict', 'UNABLE_TO_ASSESS')}** | **Overall Score**: {score_data.get('overall_score')}/10 | **Confidence**: {data.get('confidence_level', 'NOT_ASSESSED')}
 
 ### Key Issue Details
 - **Application Window**: {ipo.get('verified_open_date')} to {ipo.get('verified_close_date')}

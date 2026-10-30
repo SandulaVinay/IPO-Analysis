@@ -63,7 +63,7 @@ class ReportGenerator:
         report = f"""# 📑 Forensic IPO Intelligence & Research Report
 ## {ipo.get('company_name')} ({ipo.get('symbol')})
 
-**Generated on**: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')} | **Source Verification**: VERIFIED | **Confidence**: {data.get('confidence_level', 'HIGH')}
+**Generated on**: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')} | **Source Verification**: {data.get('source_verification_status', 'NOT_VERIFIED')} | **Confidence**: {data.get('confidence_level', 'NOT_ASSESSED')}
 
 ---
 
@@ -147,7 +147,7 @@ class ReportGenerator:
 
         verdict_emoji = "🟢" if score_data.get("verdict") == "ATTRACTIVE" else ("🟡" if score_data.get("verdict") == "NEUTRAL" else ("🔴" if score_data.get("verdict") == "AVOID" else "⚪"))
 
-        copy_text = f"""🚨 NEW IPO ALERT: {ipo.get('company_name')}
+        copy_text = f"""📊 IPO STATUS UPDATE: {ipo.get('company_name')}
 
 Application:
 {ipo.get('verified_open_date')} – {ipo.get('verified_close_date')}
@@ -171,7 +171,7 @@ Overall Score:
 {score_data.get('overall_score')}/10
 
 Confidence:
-{data.get('confidence_level', 'HIGH')}
+{data.get('confidence_level', 'NOT_ASSESSED')}
 
 GMP:
 ₹{gmp.get('gmp_value', 'N/A')} (~{gmp.get('potential_listing_gain_pct', 'N/A')}% Est. Listing Gain)

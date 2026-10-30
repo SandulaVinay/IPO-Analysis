@@ -142,3 +142,58 @@ def test_results_parser_prefers_xbrl_over_details_pdf():
     assert rows[0]["attachment_url"] == "https://nsearchives.nseindia.com/corporate/results.xml"
     assert rows[0]["xbrl_url"] == "https://nsearchives.nseindia.com/corporate/results.xml"
     assert rows[0]["details_url"] == "https://nsearchives.nseindia.com/corporate/details.pdf"
+
+
+
+def test_bse_results_parser_requires_exact_company_and_normalizes_attachment():
+    from src.results.monitor import parse_bse_financial_results_payload
+
+    payload = {
+        "Table": [
+            {
+                "NEWSID": "event-123",
+                "SCRIP_CD": 517286,
+                "SLONGNAME": "RNIT AI SOLUTIONS LIMITED",
+                "NEWSSUB": "RNIT AI SOLUTIONS LIMITED - Unaudited Financial Results",
+                "SUBCATNAME": "Financial Results",
+                "DT_TM": "2026-10-30T16:30:00",
+                "ATTACHMENTNAME": "event-123.pdf",
+                "NSURL": "https://www.bseindia.com/stock-share-price/rnit/517286/",
+            },
+            {
+                "NEWSID": "wrong-company",
+                "SCRIP_CD": 517286,
+                "SLONGNAME": "OTHER COMPANY LIMITED",
+                "NEWSSUB": "Other Company Financial Results",
+                "DT_TM": "2026-10-30T16:31:00",
+                "ATTACHMENTNAME": "other.pdf",
+            },
+        ]
+    }
+    company = {
+        "symbol": "RNITAI",
+        "exchange": "BSE",
+        "bse_scrip_code": "517286",
+        "company_name": "RNIT AI SOLUTIONS LIMITED",
+        "company_name_aliases": ["RNIT AI Solutions Ltd"],
+    }
+    rows = parse_bse_financial_results_payload(payload, "RNITAI", company, "517286")
+
+    assert len(rows) == 1
+    assert rows[0]["exchange"] == "BSE"
+    assert rows[0]["company_name"] == "RNIT AI SOLUTIONS LIMITED"
+    assert rows[0]["period_ended"] is None
+    assert rows[0]["attachment_url"] == "https://www.bseindia.com/xml-data/corpfiling/AttachLive/event-123.pdf"
+    assert rows[0]["event_key"].startswith("RESULT_")
+
+
+def test_nse_results_layout_recognition_uses_required_headers():
+    from src.results.monitor import has_recognized_financial_results_table
+
+    valid = """
+    <table>
+      <tr><th>Company Name</th><th>Period Ended</th><th>Broadcast Date/Time</th></tr>
+    </table>
+    """
+    assert has_recognized_financial_results_table(valid) is True
+    assert has_recognized_financial_results_table("<html><p>Access denied</p></html>") is False

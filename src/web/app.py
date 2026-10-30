@@ -152,6 +152,20 @@ async def run_pipeline_for_ipo(ipo, session: AsyncSession) -> Dict[str, Any]:
         return {
             "symbol": ipo.symbol,
             "company_name": ipo.company_name,
+            "confidence_level": "NOT_ASSESSED",
+            "source_verification_status": "NOT_VERIFIED",
+            "ipo": {
+                "symbol": ipo.symbol,
+                "company_name": ipo.company_name,
+                "verified_open_date": str(ipo.verified_open_date) if ipo.verified_open_date else None,
+                "verified_close_date": str(ipo.verified_close_date) if ipo.verified_close_date else None,
+                "min_price": ipo.min_price,
+                "max_price": ipo.max_price,
+                "lot_size": ipo.lot_size,
+                "issue_size_cr": ipo.issue_size_cr,
+                "fresh_issue_cr": ipo.fresh_issue_cr,
+                "ofs_cr": ipo.ofs_cr,
+            },
             "score_data": {
                 "verdict": "UNABLE_TO_ASSESS",
                 "overall_score": 0.0,

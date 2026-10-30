@@ -16,27 +16,29 @@
         "TCS"
       ]
     },
-        {
+    {
       "symbol": "RNIT AI Solutions Ltd",
-        "company_name": "RNIT",
+      "company_name": "RNIT",
       "company_name_aliases": [
         "RNIT AI"
       ]
     },
-        {
+    {
       "symbol": "CLEAN",
-      "company_name": "CLEAN",
+      "company_name": "Clean Science and Technology Limited",
       "company_name_aliases": [
-        "Clean Science and Technology Ltd"
+        "Clean Science and Technology Ltd",
+        "Clean Science and Technology Limited"
       ]
     },
     {
       "symbol": "GODAVARIB",
-      "company_name": "Godavari Biorefineries Ltd",
+      "company_name": "GODAVARI BIOREFINERIES LIMITED",
       "company_name_aliases": [
-        "Godavari Biorefineries Ltd"
+        "Godavari Biorefineries Ltd",
+        "GODAVARI BIOREFINERIES LIMITED",
+        "Godavari Biorefineries Limited"
       ]
     }
-
   ]
 }

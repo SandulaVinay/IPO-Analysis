@@ -25,12 +25,12 @@ class ReportGenerator:
 
         return f"""# 📊 IPO Executive Summary: {ipo.get('company_name')} ({ipo.get('symbol')})
 
-**Assessment**: {verdict_emoji} **{score_data.get('verdict', 'UNABLE_TO_ASSESS')}** | **Overall Score**: {score_data.get('overall_score')}/10 | **Confidence**: {data.get('confidence_level', 'NOT_ASSESSED')}
+**Assessment**: {verdict_emoji} **{score_data.get('verdict', 'UNABLE_TO_ASSESS')}** | **Overall Score**: {score_data.get('overall_score') if score_data.get('overall_score') is not None else 'N/A'}/10 | **Confidence**: {data.get('confidence_level', 'NOT_ASSESSED')}
 
 ### Key Issue Details
 - **Application Window**: {ipo.get('verified_open_date')} to {ipo.get('verified_close_date')}
 - **Price Band**: ₹{ipo.get('min_price')} – ₹{ipo.get('max_price')}
-- **Market Lot**: {ipo.get('lot_size')} shares (Min Investment: ₹{round(ipo.get('min_price', 0)*ipo.get('lot_size', 0), 2):,})
+- **Market Lot**: {ipo.get('lot_size')} shares (Min Investment: ₹{f'{min_investment:,.2f}' if min_investment is not None else 'N/A'})
 - **Total Issue Size**: ₹{ipo.get('issue_size_cr')} Cr (Fresh: ₹{ipo.get('fresh_issue_cr')} Cr | OFS: ₹{ipo.get('ofs_cr')} Cr)
 - **GMP Signal**: ₹{gmp.get('gmp_value', 'N/A')} (~{gmp.get('potential_listing_gain_pct', 'N/A')}% Est. Listing Gain)
 
@@ -81,7 +81,7 @@ class ReportGenerator:
 | **Market Sentiment** | {pillars.get('market_sentiment', 'N/A')}/10 | 5% | {round(pillars.get('market_sentiment', 0)*0.05, 2)} |
 | **OVERALL COMPOSITE** | **{score_data.get('overall_score', 'N/A')}/10** | **100%** | **{score_data.get('overall_score', 'N/A')}** |
 
-**Final Assessment**: {verdict_emoji} **{score_data.get('verdict')}**
+**Final Assessment**: {verdict_emoji} **{score_data.get('verdict', 'UNABLE_TO_ASSESS')}**
 
 ---
 
@@ -145,6 +145,10 @@ class ReportGenerator:
         val = data.get("valuation", {})
         yt = data.get("youtube_videos", [])
 
+        min_price = ipo.get("min_price")
+        lot_size = ipo.get("lot_size")
+        min_investment = round(min_price * lot_size, 2) if isinstance(min_price, (int, float)) and isinstance(lot_size, (int, float)) else None
+        verdict = score_data.get("verdict", "UNABLE_TO_ASSESS")
         verdict_emoji = "🟢" if score_data.get("verdict") == "ATTRACTIVE" else ("🟡" if score_data.get("verdict") == "NEUTRAL" else ("🔴" if score_data.get("verdict") == "AVOID" else "⚪"))
 
         copy_text = f"""📊 IPO STATUS UPDATE: {ipo.get('company_name')}
@@ -165,7 +169,7 @@ Issue Size:
 ₹{ipo.get('issue_size_cr')} Cr (Fresh: ₹{ipo.get('fresh_issue_cr')} Cr | OFS: ₹{ipo.get('ofs_cr')} Cr)
 
 Assessment:
-{verdict_emoji} {score_data.get('verdict')}
+{verdict_emoji} {verdict}
 
 Overall Score:
 {score_data.get('overall_score')}/10

@@ -30,20 +30,28 @@ class VerificationEngine:
         """
         Evaluate completeness percentage, count verified sources, and compute confidence score.
         """
+        # Only explicitly verified date fields may count directly from the IPO row.
+        # Other numeric fields require a corresponding provenance-bearing VERIFIED fact.
         available_fields = set()
-        for k, v in ipo_data.items():
-            if v is not None and v != "":
+        for k in ("verified_open_date", "verified_close_date"):
+            value = ipo_data.get(k)
+            if value is not None and value != "":
                 available_fields.add(k)
-        for f in facts:
-            if f.get("field_name") and f.get("verification_status") == "VERIFIED":
-                available_fields.add(f["field_name"])
+        for fact in facts:
+            if (
+                fact.get("field_name")
+                and fact.get("verification_status") == "VERIFIED"
+                and fact.get("source_name")
+                and fact.get("source_url")
+            ):
+                available_fields.add(fact["field_name"])
 
         missing_critical = [f for f in cls.CRITICAL_FIELDS if f not in available_fields]
         completeness_ratio = (len(cls.CRITICAL_FIELDS) - len(missing_critical)) / len(cls.CRITICAL_FIELDS)
         completeness_pct = round(completeness_ratio * 100.0, 1)
 
         # Count verified distinct sources
-        verified_sources = set(f.get("source_name") for f in facts if f.get("verification_status") == "VERIFIED")
+        verified_sources = {f.get("source_name") for f in facts if f.get("verification_status") == "VERIFIED" and f.get("source_name") and f.get("source_url")}
 
         # Determine confidence
         if completeness_pct >= 90.0 and len(missing_critical) == 0:
@@ -57,6 +65,6 @@ class VerificationEngine:
             "completeness_pct": completeness_pct,
             "completeness_ratio": completeness_ratio,
             "missing_critical_fields": missing_critical,
-            "verified_sources_count": max(len(verified_sources), 1),
+            "verified_sources_count": len(verified_sources),
             "confidence_level": confidence,
         }

@@ -3,6 +3,8 @@ Integration tests for the complete IPO Intelligence, Evidence, and Reporting Pip
 """
 
 import pytest
+from io import BytesIO
+from pypdf import PdfWriter
 from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.repository import IPORepository
@@ -11,6 +13,14 @@ from src.documents.diff import DocumentDiffEngine
 from src.reporting.generator import ReportGenerator
 from src.feedback.engine import FeedbackEngine
 from src.web.app import run_pipeline_for_ipo
+
+
+def _valid_test_pdf() -> bytes:
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    buffer = BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
 
 
 @pytest.mark.asyncio
@@ -42,7 +52,7 @@ async def test_full_pipeline_flow(async_session: AsyncSession):
         document_type="RHP",
         document_title="Red Herring Prospectus",
         source_url="https://example.com/rhp.pdf",
-        local_content=b"%PDF-1.4 Mock Prospectus Data for Acme Corp",
+        local_content=_valid_test_pdf(),
     )
     assert doc_version.document_hash is not None
 

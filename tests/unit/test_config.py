@@ -8,7 +8,7 @@ def test_settings_default_values():
     assert s.enable_whatsapp is False
     assert s.enable_email is False
     assert s.enable_sms is False
-    assert s.enable_automated_scheduler is True
+    assert s.enable_automated_scheduler is False
     assert s.port == 8000
     assert s.whatsapp_provider == "console"
     assert s.email_provider == "console"

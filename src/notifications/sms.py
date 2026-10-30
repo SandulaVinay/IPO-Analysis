@@ -22,13 +22,22 @@ class SMSProvider(NotificationProvider):
         content: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Dispatch SMS via provider or console fallback."""
-        target_phone = recipient or settings.sms_recipient_phone
-        logger.info(f"[SMS DISPATCH] To: {target_phone} | Content: {content[:100]}...")
+        """Fail closed until a real SMS provider adapter is implemented."""
+        if not settings.enable_sms:
+            return {
+                "success": False,
+                "delivered": False,
+                "mocked": False,
+                "message_id": None,
+                "error": "SMS is disabled",
+            }
+        logger.warning("SMS is not implemented as a real delivery provider; no message was sent.")
         return {
-            "success": True,
-            "message_id": f"sms_mock_{int(__import__('time').time())}",
-            "error": None,
+            "success": False,
+            "delivered": False,
+            "mocked": False,
+            "message_id": None,
+            "error": "SMS provider adapter is not implemented",
         }
 
 
@@ -46,11 +55,9 @@ class ConsoleProvider(NotificationProvider):
         content: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Output notification cleanly to console logs."""
-        border = "=" * 60
-        logger.info(f"\n{border}\n📢 [NOTIFICATION DISPATCH: {subject}]\nTo: {recipient}\n{border}\n{content}\n{border}\n")
-        return {
-            "success": True,
-            "message_id": f"console_{int(__import__('time').time())}",
-            "error": None,
-        }
+        """Never treat console logging as notification delivery."""
+        if settings.app_env == "production":
+            logger.warning("Console notifications are disabled in production; no message was sent.")
+            return {"success": False, "delivered": False, "mocked": False, "message_id": None, "error": "Console notifications are disabled in production"}
+        logger.info("Console notification provider is a local-only stub; no message was sent.")
+        return {"success": False, "delivered": False, "mocked": True, "message_id": None, "error": "Console provider does not deliver messages"}

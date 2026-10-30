@@ -85,18 +85,18 @@ async def list_ipos(session: AsyncSession = Depends(get_db)):
             "company_name": ipo.company_name,
             "industry": ipo.industry,
             "status": ipo.status,
-            "verified_open_date": str(ipo.verified_open_date) if ipo.verified_open_date else None,
-            "verified_close_date": str(ipo.verified_close_date) if ipo.verified_close_date else None,
-            "min_price": ipo.min_price,
-            "max_price": ipo.max_price,
-            "lot_size": ipo.lot_size,
+            "verified_open_date": str(getattr(ipo, "verified_open_date", None)) if getattr(ipo, "verified_open_date", None) else None,
+            "verified_close_date": str(getattr(ipo, "verified_close_date", None)) if getattr(ipo, "verified_close_date", None) else None,
+            "min_price": getattr(ipo, "min_price", None),
+            "max_price": getattr(ipo, "max_price", None),
+            "lot_size": getattr(ipo, "lot_size", None),
             "min_investment": ipo.min_investment,
-            "issue_size_cr": ipo.issue_size_cr,
-            "fresh_issue_cr": ipo.fresh_issue_cr,
-            "ofs_cr": ipo.ofs_cr,
+            "issue_size_cr": getattr(ipo, "issue_size_cr", None),
+            "fresh_issue_cr": getattr(ipo, "fresh_issue_cr", None),
+            "ofs_cr": getattr(ipo, "ofs_cr", None),
             "verdict": latest_run.verdict if latest_run else "PENDING_ANALYSIS",
             "overall_score": latest_run.overall_score if latest_run else None,
-            "confidence_level": latest_run.confidence_level if latest_run else "HIGH",
+            "confidence_level": latest_run.confidence_level if latest_run else "NOT_ASSESSED",
             "latest_gmp": latest_gmp.gmp_value if latest_gmp else None,
             "potential_listing_gain_pct": latest_gmp.potential_listing_gain_pct if latest_gmp else None,
         })
@@ -139,7 +139,50 @@ async def trigger_notification(symbol: str, session: AsyncSession = Depends(get_
 
 
 async def run_pipeline_for_ipo(ipo, session: AsyncSession) -> Dict[str, Any]:
-    """Helper to run the full evidence and scoring pipeline for an IPO."""
+    """Run analysis; synthetic financial inputs require an explicit non-production opt-in."""
+    if settings.app_env == "production" or not settings.enable_demo_analysis:
+        reason = (
+            "Analysis is fail-closed because verified issuer financials and live official-source adapters "
+            "are not yet connected, or demo analysis is disabled. No investment recommendation was generated."
+        )
+        safe_report = (
+            f"ASSESSMENT: UNABLE TO ASSESS\n\n{ipo.company_name} ({ipo.symbol})\n\n"
+            f"{reason}\n\nDo not use this report as a basis for an investment decision."
+        )
+        return {
+            "symbol": ipo.symbol,
+            "company_name": ipo.company_name,
+            "confidence_level": "NOT_ASSESSED",
+            "source_verification_status": "NOT_VERIFIED",
+            "ipo": {
+                "symbol": ipo.symbol,
+                "company_name": ipo.company_name,
+                "verified_open_date": str(getattr(ipo, "verified_open_date", None)) if getattr(ipo, "verified_open_date", None) else None,
+                "verified_close_date": str(getattr(ipo, "verified_close_date", None)) if getattr(ipo, "verified_close_date", None) else None,
+                "min_price": getattr(ipo, "min_price", None),
+                "max_price": getattr(ipo, "max_price", None),
+                "lot_size": getattr(ipo, "lot_size", None),
+                "issue_size_cr": getattr(ipo, "issue_size_cr", None),
+                "fresh_issue_cr": getattr(ipo, "fresh_issue_cr", None),
+                "ofs_cr": getattr(ipo, "ofs_cr", None),
+            },
+            "score_data": {
+                "verdict": "UNABLE_TO_ASSESS",
+                "overall_score": 0.0,
+                "is_safety_gated": True,
+                "safety_gate_reasons": [reason],
+                "pillar_scores": {},
+                "weights_used": {},
+                "horizons": {},
+            },
+            "gmp": {"gmp_value": None, "status": "UNAVAILABLE"},
+            "subscription": {"status": "UNAVAILABLE"},
+            "executive_summary": safe_report,
+            "full_report": safe_report,
+            "copy_mode": safe_report,
+            "assessment_status": "UNABLE_TO_ASSESS",
+        }
+
     # 1. Gather historical financials
     periods_data = [
         {"period_name": "FY23", "revenue": 650.0, "ebitda": 110.0, "pat": 55.0, "cfo": 48.0, "net_debt": 40.0, "net_worth": 300.0, "trade_receivables": 75.0},
@@ -230,16 +273,16 @@ async def run_pipeline_for_ipo(ipo, session: AsyncSession) -> Dict[str, Any]:
 
     # Verification & Completeness
     facts_data = [
-        {"field_name": "verified_open_date", "source_name": "NSE", "verification_status": "VERIFIED"},
-        {"field_name": "verified_close_date", "source_name": "NSE", "verification_status": "VERIFIED"},
-        {"field_name": "min_price", "source_name": "RHP", "verification_status": "VERIFIED"},
-        {"field_name": "max_price", "source_name": "RHP", "verification_status": "VERIFIED"},
-        {"field_name": "lot_size", "source_name": "RHP", "verification_status": "VERIFIED"},
-        {"field_name": "issue_size_cr", "source_name": "RHP", "verification_status": "VERIFIED"},
-        {"field_name": "fresh_issue_cr", "source_name": "RHP", "verification_status": "VERIFIED"},
-        {"field_name": "revenue_latest", "source_name": "RHP", "verification_status": "VERIFIED"},
-        {"field_name": "pat_latest", "source_name": "RHP", "verification_status": "VERIFIED"},
-        {"field_name": "cfo_latest", "source_name": "RHP", "verification_status": "VERIFIED"},
+        {"field_name": "verified_open_date", "source_name": "NSE", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "verified_close_date", "source_name": "NSE", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "min_price", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "max_price", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "lot_size", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "issue_size_cr", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "fresh_issue_cr", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "revenue_latest", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "pat_latest", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        {"field_name": "cfo_latest", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
     ]
     ipo_dict = {
         "symbol": ipo.symbol,

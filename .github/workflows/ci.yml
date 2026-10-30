@@ -1,0 +1,58 @@
+name: CI - Tests and Safety Checks
+
+on:
+  push:
+    branches: [main, automation-v2]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipo-analysis-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      APP_ENV: test
+      ENABLE_DEMO_ANALYSIS: "true"
+      ENABLE_WHATSAPP: "false"
+      ENABLE_EMAIL: "false"
+      ENABLE_SMS: "false"
+      DATABASE_URL: sqlite+aiosqlite:///./ci_test.db
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile Python modules
+        run: python -m compileall -q src tests scripts
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Upload test diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-failure-diagnostics
+          path: |
+            .pytest_cache/
+            ci_test.db
+          if-no-files-found: ignore
+          retention-days: 3

@@ -42,6 +42,8 @@ class Normalizer:
         formats = [
             "%Y-%m-%d",
             "%d-%m-%Y",
+            "%d-%b-%Y",
+            "%d-%b-%y",
             "%d/%m/%Y",
             "%d %b %Y",
             "%d %B %Y",

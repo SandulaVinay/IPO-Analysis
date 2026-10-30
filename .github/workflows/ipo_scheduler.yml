@@ -2,37 +2,60 @@ name: Automated IPO Discovery & Alert Scheduler
 
 on:
   schedule:
-    # Runs at 08:30 IST (03:00 UTC) and 14:30 IST (09:00 UTC) every weekday
-    - cron: '0 3,9 * * 1-5'
+    # 08:30, 11:30, 14:30, and 17:30 IST weekdays; scheduled runs can be delayed by GitHub.
+    - cron: '0 3 * * 1-5'
+    - cron: '0 6 * * 1-5'
+    - cron: '0 9 * * 1-5'
+    - cron: '0 12 * * 1-5'
   workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ipo-scheduler-state
+  cancel-in-progress: false
 
 jobs:
   run-ipo-intelligence:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Checkout Code
+      - name: Checkout application code
         uses: actions/checkout@v4
+
+      - name: Checkout sanitized public state branch
+        id: checkout_state
+        uses: actions/checkout@v4
+        with:
+          ref: state
+          path: state-branch
+          token: ${{ github.token }}
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
+          cache: pip
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Discovery & Notifications
+      - name: Run Discovery & Health Checks
         env:
           APP_ENV: production
-          ENABLE_AUTOMATED_SCHEDULER: "true"
-          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP }}
+          STATE_DIR: state-branch/state
+          ENABLE_DEMO_ANALYSIS: "false"
+          ENABLE_AUTOMATED_SCHEDULER: "false"
+          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP || 'false' }}
+          WHATSAPP_PROVIDER: cloud_api
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_API_VERSION: v26.0
           WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
-          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL }}
+          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL || 'false' }}
           EMAIL_PROVIDER: smtp
           SMTP_HOST: smtp.gmail.com
           SMTP_PORT: 587
@@ -42,4 +65,69 @@ jobs:
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: |
           python -m src.cli.main discover
+          python -m src.cli.main results
           python -m src.cli.main health
+
+      - name: Run daily IPO status digest
+        if: always() && (github.event_name == 'workflow_dispatch' || github.event.schedule == '0 12 * * 1-5')
+        env:
+          APP_ENV: production
+          STATE_DIR: state-branch/state
+          ENABLE_DEMO_ANALYSIS: "false"
+          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP }}
+          WHATSAPP_PROVIDER: cloud_api
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_API_VERSION: v26.0
+          WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
+          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL }}
+          EMAIL_PROVIDER: smtp
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: 587
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: python -m src.cli.digest
+
+      - name: Upload daily IPO digest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-ipo-digest
+          path: reports/daily/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload results reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: financial-results-reports
+          path: reports/results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload prospectus evidence reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prospectus-evidence-reports
+          path: reports/prospectus/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Persist sanitized state
+        if: always() && steps.checkout_state.outcome == 'success'
+        env:
+          STATE_BRANCH_DIR: state-branch
+        run: |
+          git -C "$STATE_BRANCH_DIR" config user.name "github-actions[bot]"
+          git -C "$STATE_BRANCH_DIR" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$STATE_BRANCH_DIR" add state/*.json
+          if git -C "$STATE_BRANCH_DIR" diff --cached --quiet; then
+            echo "No sanitized state changes to persist."
+          else
+            git -C "$STATE_BRANCH_DIR" commit -m "chore(state): persist sanitized IPO run state"
+            git -C "$STATE_BRANCH_DIR" push origin state
+          fi

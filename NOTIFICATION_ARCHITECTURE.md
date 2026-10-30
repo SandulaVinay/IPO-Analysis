@@ -1,49 +1,69 @@
-# Notification Architecture & Dispatch Pipeline (`NOTIFICATION_ARCHITECTURE.md`)
+# Notification Architecture & Current Deployment Behavior
 
-This document details the multi-stage alert lifecycle, delivery tracking, and provider-agnostic fallback engine (`WhatsApp → Email → SMS → Console`).
+This document describes the notification paths that are implemented on `automation-v2`. It intentionally distinguishes scheduled behavior from reminder features that are not yet connected to the GitHub Actions workflow.
 
----
+## 1. Scheduled events
 
-## 1. Alert Schedule & Timing Hierarchy
+The GitHub Actions workflow runs official-source checks on weekdays at approximately:
 
-All scheduling strictly respects **Indian Standard Time (`Asia/Kolkata`)** and the NSE/BSE market trading holidays calendar:
+| India time | Job |
+|---|---|
+| 08:30 | IPO discovery, financial-results monitor, health checks |
+| 11:30 | IPO discovery, financial-results monitor, health checks |
+| 14:30 | IPO discovery, financial-results monitor, health checks |
+| 17:30 | IPO discovery, financial-results monitor, health checks, daily IPO digest |
 
-1. **Target T-2 Alert (09:00 IST, 2 Calendar Days Prior to Opening)**:
-   - Contains executive summary, price band, lot size, fresh vs OFS split, key positives/risks, and YouTube analyst links.
-   - If verified information becomes available after T-2, the alert is **dispatched immediately**.
-2. **6-Hour Follow-Up Reminder (6 Hours post T-2 Alert)**:
-   - Sent through secondary channel to ensure visibility without duplicate spam.
-3. **Day-Before Reminder (T-1, 10:00 IST)**:
-   - Concise summary with price band, lot size, minimum investment, and current GMP signal.
-4. **IPO Opened Alert (Opening Day, 09:30 IST)**:
-   - Application window open alert with real-time bidding category updates.
+GitHub may delay scheduled runs. The workflow is designed for repeatable, at-least-once execution, not exact-time delivery.
 
----
+The financial-results monitor checks the public `state/watchlist.json` list. The list must contain an NSE symbol and the exact official issuer name (plus verified aliases where required). It is empty by default, so no company results are monitored until it is populated.
 
-## 2. Multi-Channel Fallback Flow
+## 2. Current notification chain
 
-```
-Trigger Alert Event
-       ↓
-Check Idempotency Key (Skip if already dispatched)
-       ↓
-Primary Channel: WhatsApp (Cloud API / Twilio)
-       ├── SUCCESS ──> Mark DELIVERED & End
-       └── FAILED / UNCONFIGURED
-              ↓
-Secondary Channel: Email (SMTP / Resend)
-       ├── SUCCESS ──> Mark DELIVERED & End
-       └── FAILED / UNCONFIGURED
-              ↓
-Backup Channel: SMS / Webhook / Console
-       ├── SUCCESS ──> Mark DELIVERED & End
-       └── FAILED ──> Log Error in Audit Trail
-```
+Only two real channels are part of the production workflow:
 
----
+1. **WhatsApp Cloud API** — primary channel, only when explicitly enabled and configured.
+2. **SMTP email** — fallback when WhatsApp is disabled, unconfigured, or rejected.
 
-## 3. Idempotency & Delivery Guarantees
+A successful provider API response means the provider accepted the request. It does not prove that the message reached the user's handset or inbox. Final delivery requires provider delivery-status evidence, which is not currently wired into this project.
 
-- **Idempotency Keys**: Formatted as `{ALERT_TYPE}_{SYMBOL}_{VERIFIED_OPEN_DATE}` (e.g. `T2_HEXAGON_TECH_2026-09-18`).
-- Running discovery or scheduler multiple times will **never** send duplicate alerts.
-- Every attempt is logged in `notification_attempts` with timestamp, provider message ID, and error payloads.
+If both channels are disabled or unconfigured, reports are still generated and uploaded as GitHub Actions artifacts. The system must not log or report that a notification was sent.
+
+WhatsApp use, template requirements, eligibility and charges depend on Meta/provider terms. Do not assume it is free. Gmail SMTP generally requires an app password rather than an account password.
+
+## 3. Idempotency and recovery
+
+- Stable event keys prevent the same accepted event from being notified repeatedly.
+- Failed notification events remain eligible for a later retry.
+- Public state stores only sanitized event keys, event type, public symbol, event date, status and channel.
+- Recipient phone numbers, email addresses, tokens and message bodies must never be written to the public state branch.
+- State JSON is written through temporary files and atomic replacement.
+- The workflow serializes state-writing runs with a concurrency group.
+- Reports are uploaded as seven-day GitHub Actions artifacts.
+
+## 4. Not yet enabled
+
+The code contains notification methods for T-2, six-hour and T-1 alerts, but the scheduled GitHub Actions workflow does not currently invoke these methods as an automated lifecycle. IPO-opened alerts and listing-day market-price monitoring are also not part of the current scheduled workflow.
+
+Do not describe these reminders as deployed until their triggers, schedule, verified input gates, deduplication and end-to-end tests are connected.
+
+## 5. Required GitHub Actions secrets
+
+Add these in **Repository → Settings → Secrets and variables → Actions**. Never paste secret values into chat, source files, issues or logs.
+
+| Secret | Purpose |
+|---|---|
+| `ENABLE_WHATSAPP` | Set to `true` only after WhatsApp is ready |
+| `WHATSAPP_PHONE_NUMBER_ID` | Meta Cloud API phone-number ID |
+| `WHATSAPP_ACCESS_TOKEN` | Meta access token |
+| `WHATSAPP_RECIPIENT_PHONE` | Opted-in recipient in international format |
+| `ENABLE_EMAIL` | Set to `true` only after SMTP is ready |
+| `SMTP_USER` | SMTP account |
+| `SMTP_PASSWORD` | SMTP app password / credential |
+| `EMAIL_FROM` | Sender address |
+| `EMAIL_TO` | Recipient address |
+
+After adding secrets, enable one channel and run a manually approved test. Confirm provider acceptance from the workflow result; do not treat acceptance as final handset delivery.
+
+## 6. Investment-safety rule
+
+The production IPO-analysis path remains fail-closed. Prospectus passages are candidate evidence and have not yet been fully reconciled for financial period, units, restatement, and consolidated-versus-standalone basis. Until those verification steps are implemented and tested, the system must issue `UNABLE_TO_ASSESS` instead of `APPLY`, `AVOID`, or a buy/sell recommendation.

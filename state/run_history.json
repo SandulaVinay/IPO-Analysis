@@ -1,4 +1,11 @@
 {
-  "schema_version": 1,
-  "runs": []
+  "runs": [
+    {
+      "command": "discover",
+      "detail": "RuntimeError",
+      "status": "FAILED",
+      "timestamp": "2026-10-30T12:13:04.797164+00:00"
+    }
+  ],
+  "schema_version": 1
 }

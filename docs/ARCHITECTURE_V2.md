@@ -73,16 +73,16 @@ Example watchlist entry (use the exact issuer name displayed on the NSE filing p
 
 ## Financial-results workflow
 
-1. Fetch the official NSE financial-results page.
-2. Parse only recognizable filing rows; retain the official page URL and any official attachment URL.
-3. Match the row to the configured issuer name/aliases.
+1. For NSE watchlist entries, fetch the official NSE financial-results page once per run. For BSE entries, query the official BSE announcement API by the configured six-digit scrip code.
+2. Parse only recognizable source rows; retain the official page URL and any official attachment URL.
+3. Match each row to the configured issuer name/aliases and, for BSE, require the exact scrip code.
 4. Prefer the latest period end available for that issuer and prefer consolidated results when present. Preserve audit status, cumulative status, period type, submission type, and broadcast time.
 5. If an XBRL instance is linked and matches supported tags/contexts/units, extract only supported revenue, PAT, EPS, and operating cash-flow facts. Compare current and prior-year matching periods when both are present.
 6. If the attachment is PDF/unsupported XBRL or the period/unit mapping is ambiguous, report the filing but label metrics unavailable. Do not infer a verdict.
 7. Write a Markdown report as a short-lived GitHub Actions artifact. Do not commit generated reports or issuer financial statements to the public state branch.
 8. Attempt WhatsApp first. If it fails, attempt email. Record provider acceptance, not assumed final delivery. A failed notification remains eligible for retry.
 
-The XBRL extractor is deliberately conservative and currently supports only a subset of tags and period contexts. It is **not** a general-purpose parser for every Indian GAAP/Ind AS filing. A reported metric must be checked against the source filing before it is used in an investment decision.
+The BSE adapter currently detects and reports official result-announcement metadata; it does not yet extract financial metrics from BSE attachments. The NSE XBRL extractor is deliberately conservative and currently supports only a subset of tags and period contexts. It is **not** a general-purpose parser for every Indian GAAP/Ind AS filing. A reported metric must be checked against the source filing before it is used in an investment decision.
 
 ## IPO analysis workflow
 
@@ -141,7 +141,7 @@ WhatsApp availability, template requirements, and charges depend on Meta/provide
 - Implemented on `automation-v2`: official IPO-page parsing, source-date conflict handling, CI, sanitized state persistence, WhatsApp Cloud API adapter, a watchlist-based results monitor with conservative XBRL extraction, and prospectus PDF validation with page-cited candidate evidence stored as explicitly UNVERIFIED facts.
 - Recent work added exact issuer-name filtering and preservation of cumulative/submission metadata.
 - Still incomplete: comprehensive/live-validated RHP/DRHP link coverage, table-aware financial statement extraction and period reconciliation, a verification/reconciliation workflow for candidate facts, full production IPO scoring from verified documents, broad XBRL/PDF financial-results coverage, and a fully validated live-source scheduled run.
-- The draft pull request must remain unmerged and production recommendations must remain disabled until the validation checklist is satisfied.
+- The automation code is deployed on `main`; live source coverage and end-to-end notification checks remain subject to scheduled-run verification. Production investment recommendations remain disabled until the financial verification checklist is satisfied.
 
 
 ## Prospectus ingestion update

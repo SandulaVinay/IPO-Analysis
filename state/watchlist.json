@@ -17,10 +17,13 @@
       ]
     },
     {
-      "symbol": "RNIT AI Solutions Ltd",
-      "company_name": "RNIT",
+      "exchange": "BSE",
+      "symbol": "RNITAI",
+      "bse_scrip_code": "517286",
+      "company_name": "RNIT AI SOLUTIONS LIMITED",
       "company_name_aliases": [
-        "RNIT AI"
+        "RNIT AI Solutions Ltd",
+        "RNIT AI Solutions Limited"
       ]
     },
     {

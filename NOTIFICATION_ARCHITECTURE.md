@@ -1,6 +1,6 @@
 # Notification Architecture & Current Deployment Behavior
 
-This document describes the notification paths that are implemented on `automation-v2`. It intentionally distinguishes scheduled behavior from reminder features that are not yet connected to the GitHub Actions workflow.
+This document describes the notification paths that are implemented in the deployed `main` branch. It intentionally distinguishes scheduled behavior from reminder features that are not yet connected to the GitHub Actions workflow.
 
 ## 1. Scheduled events
 
@@ -15,14 +15,14 @@ The GitHub Actions workflow runs official-source checks on weekdays at approxima
 
 GitHub may delay scheduled runs. The workflow is designed for repeatable, at-least-once execution, not exact-time delivery.
 
-The financial-results monitor checks the public `state/watchlist.json` list. The list must contain an NSE symbol and the exact official issuer name (plus verified aliases where required). It is empty by default, so no company results are monitored until it is populated.
+The financial-results monitor checks the public `state/watchlist.json` list. NSE entries use an NSE symbol; BSE entries must also include `exchange: \"BSE\"` and a six-digit `bse_scrip_code`. All entries require an exact official issuer name (plus verified aliases where required).
 
 ## 2. Current notification chain
 
 Only two real channels are part of the production workflow:
 
 1. **WhatsApp Cloud API** — primary channel, only when explicitly enabled and configured.
-2. **SMTP email** — fallback when WhatsApp is disabled, unconfigured, or rejected.
+2. **SMTP email** — fallback when WhatsApp is disabled, unconfigured, or rejected. Gmail uses STARTTLS on port 587 by default and retries implicit TLS on port 465 if the connection/handshake fails before message submission.
 
 A successful provider API response means the provider accepted the request. It does not prove that the message reached the user's handset or inbox. Final delivery requires provider delivery-status evidence, which is not currently wired into this project.
 

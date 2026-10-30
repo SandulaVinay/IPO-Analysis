@@ -2,14 +2,77 @@
   "events": [
     {
       "channel": null,
+      "event_date": "31-Dec-2024",
+      "event_key": "RESULT_8bef3a0eb3d3c958b44018b73c0e5677",
+      "event_type": "FINANCIAL_RESULTS_FILING",
+      "status": "FAILED",
+      "symbol": "RELIANCE",
+      "updated_at": "2026-10-30T13:02:26.994870+00:00"
+    },
+    {
+      "channel": null,
+      "event_date": "31-Mar-2024",
+      "event_key": "RESULT_e543be600301f2863d6e88b999321a7a",
+      "event_type": "FINANCIAL_RESULTS_FILING",
+      "status": "FAILED",
+      "symbol": "RELIANCE",
+      "updated_at": "2026-10-30T13:04:03.501908+00:00"
+    },
+    {
+      "channel": null,
+      "event_date": "31-Dec-2024",
+      "event_key": "RESULT_c360450d2df9da0ee3b141885190b5df",
+      "event_type": "FINANCIAL_RESULTS_FILING",
+      "status": "FAILED",
+      "symbol": "TCS",
+      "updated_at": "2026-10-30T13:05:40.288137+00:00"
+    },
+    {
+      "channel": null,
+      "event_date": "31-Mar-2024",
+      "event_key": "RESULT_d8a915cd6d24803407025290d1d849ea",
+      "event_type": "FINANCIAL_RESULTS_FILING",
+      "status": "FAILED",
+      "symbol": "TCS",
+      "updated_at": "2026-10-30T13:07:16.804747+00:00"
+    },
+    {
+      "channel": null,
+      "event_date": "31-Dec-2024",
+      "event_key": "RESULT_014cd0d38e633d28410b852e91f5de67",
+      "event_type": "FINANCIAL_RESULTS_FILING",
+      "status": "FAILED",
+      "symbol": "CLEAN",
+      "updated_at": "2026-10-30T13:08:53.299022+00:00"
+    },
+    {
+      "channel": null,
+      "event_date": "31-Mar-2024",
+      "event_key": "RESULT_963db9726b90d5ea869cdfe279ad0720",
+      "event_type": "FINANCIAL_RESULTS_FILING",
+      "status": "FAILED",
+      "symbol": "CLEAN",
+      "updated_at": "2026-10-30T13:10:29.826838+00:00"
+    },
+    {
+      "channel": null,
+      "event_date": "31-Dec-2024",
+      "event_key": "RESULT_ecc39906ff3f2fbb25563ea247b118d4",
+      "event_type": "FINANCIAL_RESULTS_FILING",
+      "status": "FAILED",
+      "symbol": "GODAVARIB",
+      "updated_at": "2026-10-30T13:12:06.309600+00:00"
+    },
+    {
+      "channel": null,
       "event_date": "2026-10-30",
       "event_key": "IPO_DAILY_DIGEST_2026-10-30",
       "event_type": "DAILY_IPO_DIGEST",
       "status": "FAILED",
       "symbol": "ALL",
-      "updated_at": "2026-10-30T12:56:16.094062+00:00"
+      "updated_at": "2026-10-30T13:12:08.675511+00:00"
     }
   ],
   "schema_version": 1,
-  "updated_at": "2026-10-30T12:56:16.094071+00:00"
+  "updated_at": "2026-10-30T13:12:08.675521+00:00"
 }

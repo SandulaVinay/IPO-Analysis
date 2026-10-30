@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
+import httpx
 from bs4 import BeautifulSoup
 
 from src.common.config import settings
@@ -24,7 +25,9 @@ from src.notifications.whatsapp import WhatsAppProvider
 from src.state.store import StateStore
 from src.reporting.pdf import markdown_to_pdf
 
+NSE_ROOT_URL = "https://www.nseindia.com/"
 NSE_RESULTS_URL = "https://www.nseindia.com/companies-listing/corporate-filings-financial-results"
+NSE_RESULTS_API_URL = "https://www.nseindia.com/api/corporates-financial-results"
 BSE_RESULTS_API_URL = "https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w"
 BSE_RESULTS_PAGE_URL = "https://www.bseindia.com/corporates/ann.html"
 BSE_ATTACHMENT_BASE_URL = "https://www.bseindia.com/xml-data/corpfiling/AttachLive/"
@@ -53,7 +56,7 @@ METRIC_TAGS = {
 
 
 def _clean(value: str) -> str:
-    return re.sub(r"\\s+", " ", value or "").strip()
+    return re.sub(r"\s+", " ", value or "").strip()
 
 
 def _key(value: str) -> str:
@@ -65,6 +68,109 @@ def _matches_watchlist_company(filing: Dict[str, Any], company: Dict[str, Any]) 
     expected = [company.get("company_name"), *(company.get("company_name_aliases") or [])]
     expected_keys = {_key(value) for value in expected if isinstance(value, str) and value.strip()}
     return bool(expected_keys and _key(str(filing.get("company_name", ""))) in expected_keys)
+
+
+def parse_nse_financial_results_payload(
+    payload: Any,
+    symbol: str,
+    company: Dict[str, Any],
+    period_type: str,
+) -> List[Dict[str, Any]]:
+    """Normalize NSE's JSON financial-results feed using exact symbol and issuer-name checks."""
+    if isinstance(payload, dict):
+        rows = payload.get("data")
+        if rows is None:
+            rows = payload.get("results")
+    else:
+        rows = payload
+    if not isinstance(rows, list):
+        raise ValueError("NSE financial-results API response was not a list of filings.")
+
+    output: List[Dict[str, Any]] = []
+    seen = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        row_symbol = str(row.get("symbol") or row.get("Symbol") or "").strip().upper()
+        if row_symbol != symbol.strip().upper():
+            continue
+
+        company_name = _clean(str(row.get("companyName") or row.get("company_name") or ""))
+        if not company_name or not _matches_watchlist_company({"company_name": company_name}, company):
+            continue
+
+        period_ended = _clean(str(row.get("toDate") or row.get("periodEnded") or ""))
+        broadcast = _clean(str(row.get("broadCastDate") or row.get("broadcastDate") or row.get("filingDate") or ""))
+        relating = _clean(str(row.get("relatingTo") or row.get("relating_to") or period_type))
+        xbrl_value = str(row.get("xbrl") or row.get("xbrlUrl") or "").strip()
+        details_value = str(row.get("resultDetailedDataLink") or row.get("detailsUrl") or "").strip()
+        xbrl_url = urljoin(NSE_RESULTS_URL, xbrl_value) if xbrl_value else None
+        details_url = urljoin(NSE_RESULTS_URL, details_value) if details_value else None
+        attachment = xbrl_url or details_url
+        event_material = "|".join([
+            row_symbol, period_ended, relating, broadcast,
+            str(row.get("consolidated") or ""), str(row.get("format") or ""),
+            attachment or NSE_RESULTS_URL,
+        ])
+        event_key = "RESULT_" + hashlib.sha256(event_material.encode("utf-8")).hexdigest()[:32]
+        if event_key in seen:
+            continue
+        seen.add(event_key)
+        output.append({
+            "event_key": event_key,
+            "symbol": row_symbol,
+            "exchange": "NSE",
+            "company_name": company_name,
+            "period_ended": period_ended or None,
+            "relating_to": relating,
+            "broadcast_time": broadcast or "Not provided by NSE",
+            "audit_status": _clean(str(row.get("audited") or "")),
+            "cumulative_status": _clean(str(row.get("cumulative") or "")),
+            "period_type": _clean(str(row.get("period") or period_type)),
+            "submission_type": _clean(str(row.get("format") or row.get("oldNewFlag") or "")),
+            "consolidation": _clean(str(row.get("consolidated") or "")),
+            "source_url": NSE_RESULTS_URL,
+            "attachment_url": attachment,
+            "xbrl_url": xbrl_url,
+            "details_url": details_url,
+        })
+    return output
+
+
+def bse_api_headers() -> Dict[str, str]:
+    """Browser-like headers required by BSE's public announcement endpoint."""
+    return {
+        "Host": "api.bseindia.com",
+        "Referer": "https://www.bseindia.com/",
+        "Origin": "https://www.bseindia.com",
+        "User-Agent": "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+        "Sec-CH-UA": '"Google Chrome";v="155", "Chromium";v="155", "Not?A_Brand";v="99"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": '"Windows"',
+        "Sec-Fetch-Site": "same-site",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty",
+        "DNT": "1",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+    }
+
+
+def bse_results_request_params(page_no: int, scrip_code: str, from_date, to_date) -> Dict[str, Any]:
+    """Build the minimal BSE financial-announcement query; Result/Financial Results are defaults."""
+    return {
+        "pageno": page_no,
+        "strCat": "-1",
+        "subcategory": "-1",
+        "strPrevDate": from_date.strftime("%Y%m%d"),
+        "strToDate": to_date.strftime("%Y%m%d"),
+        "strSearch": "P",
+        "strscrip": scrip_code,
+        "strType": "C",
+    }
 
 
 def has_recognized_financial_results_table(html: str) -> bool:
@@ -307,8 +413,14 @@ def parse_bse_financial_results_payload(
         if not company_name or not _matches_watchlist_company({"company_name": company_name}, company):
             continue
 
-        headline = _clean(str(row.get("NEWSSUB") or row.get("HEADLINE") or "Financial results filing"))
-        category = _clean(str(row.get("SUBCATNAME") or row.get("CATEGORYNAME") or "Financial results"))
+        headline = _clean(str(row.get("NEWSSUB") or row.get("HEADLINE") or ""))
+        category = _clean(str(row.get("SUBCATNAME") or row.get("CATEGORYNAME") or ""))
+        if "result" not in f"{category} {headline}".lower():
+            continue
+        if not headline:
+            headline = "Financial results filing"
+        if not category:
+            category = "Financial results"
         broadcast = _clean(str(row.get("DT_TM") or row.get("NEWS_DT") or row.get("News_submission_dt") or ""))
         news_id = str(row.get("NEWSID") or row.get("XML_NAME") or "").strip()
         attachment_name = str(row.get("ATTACHMENTNAME") or "").strip()
@@ -383,7 +495,7 @@ def _report_text(item: Dict[str, Any], metrics: Dict[str, Any]) -> str:
 
 
 async def monitor_financial_results() -> Dict[str, Any]:
-    """Check the NSE results table once and BSE result announcements per configured scrip."""
+    """Monitor NSE JSON filings and BSE result announcements independently."""
     store = StateStore()
     watchlist = store.load_watchlist()
     if not watchlist:
@@ -401,119 +513,152 @@ async def monitor_financial_results() -> Dict[str, Any]:
     nse_companies = [company for company in watchlist if str(company.get("exchange", "NSE")).upper() == "NSE"]
     bse_companies = [company for company in watchlist if str(company.get("exchange", "NSE")).upper() == "BSE"]
     nse_rows_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
-    nse_source_error: Optional[str] = None
 
-    # NSE publishes one market-wide table. Fetch it once rather than repeating the same
-    # request for every watchlist company.
+    # NSE's page is a JavaScript UI; the underlying official JSON endpoint is the
+    # stable data source. Reuse one HTTP session so the initial NSE cookies persist.
     if nse_companies:
+        nse_headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": NSE_RESULTS_URL,
+            "X-Requested-With": "XMLHttpRequest",
+        }
         try:
-            response = await http_client.get(
-                NSE_RESULTS_URL,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language": "en-US,en;q=0.9",
-                    "Referer": "https://www.nseindia.com/companies-listing/corporate-filings-application",
-                },
-                timeout=45.0,
-            )
-            if not has_recognized_financial_results_table(response.text):
-                raise ValueError("NSE financial-results page layout was not recognized.")
-            for company in nse_companies:
-                symbol = company["symbol"]
-                if not company.get("company_name"):
-                    errors += 1
-                    logger.warning("Skipping %s: exact official company_name is required.", symbol)
-                    continue
-                rows = parse_financial_results_page(response.text, symbol, NSE_RESULTS_URL)
-                filings = [item for item in rows if _matches_watchlist_company(item, company)]
-                if filings:
-                    parsed_periods = [(Normalizer.parse_date(item.get("period_ended")), item) for item in filings]
-                    valid_periods = [period for period, _ in parsed_periods if period is not None]
-                    if valid_periods:
-                        latest_period = max(valid_periods)
-                        filings = [item for period, item in parsed_periods if period == latest_period]
-                    consolidated = [
-                        item for item in filings
-                        if "consolidated" in (item.get("consolidation") or "").lower()
-                        and "non-consolidated" not in (item.get("consolidation") or "").lower()
-                    ]
-                    if consolidated:
-                        filings = consolidated
-                nse_rows_by_symbol[symbol] = filings
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(45.0, connect=15.0),
+                follow_redirects=True,
+            ) as session:
+                landing = await session.get(NSE_ROOT_URL, headers={**nse_headers, "Accept": "text/html,application/xhtml+xml"})
+                landing.raise_for_status()
+
+                for company in nse_companies:
+                    symbol = str(company.get("symbol") or "").strip().upper()
+                    if not symbol or not company.get("company_name"):
+                        errors += 1
+                        logger.warning("Skipping NSE watchlist entry with a missing symbol or exact company_name.")
+                        continue
+
+                    company_filings: List[Dict[str, Any]] = []
+                    try:
+                        # NSE exposes quarterly and annual metadata via the same official feed.
+                        for period_type in ("Quarterly", "Annual"):
+                            response = await session.get(
+                                NSE_RESULTS_API_URL,
+                                params={"index": "equities", "period": period_type, "symbol": symbol},
+                                headers=nse_headers,
+                            )
+                            response.raise_for_status()
+                            parsed = parse_nse_financial_results_payload(
+                                response.json(), symbol, company, period_type
+                            )
+                            if parsed:
+                                dates = [
+                                    (Normalizer.parse_date(item.get("period_ended")), item)
+                                    for item in parsed
+                                ]
+                                valid_dates = [period for period, _ in dates if period is not None]
+                                if valid_dates:
+                                    latest_period = max(valid_dates)
+                                    parsed = [item for period, item in dates if period == latest_period]
+                                consolidated = [
+                                    item for item in parsed
+                                    if "consolidated" in (item.get("consolidation") or "").lower()
+                                    and "non-consolidated" not in (item.get("consolidation") or "").lower()
+                                    and "standalone" not in (item.get("consolidation") or "").lower()
+                                ]
+                                if consolidated:
+                                    parsed = consolidated
+                            company_filings.extend(parsed)
+                        nse_rows_by_symbol[symbol] = company_filings
+                        logger.info(
+                            "NSE financial-results feed checked for %s; exact issuer filings matched=%s.",
+                            symbol,
+                            len(company_filings),
+                        )
+                    except Exception as exc:
+                        errors += 1
+                        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                        logger.warning(
+                            "NSE results API failed for %s (HTTP %s; %s).",
+                            symbol,
+                            status_code if status_code is not None else "n/a",
+                            type(exc).__name__,
+                        )
+                        nse_rows_by_symbol[symbol] = []
         except Exception as exc:
             errors += 1
-            nse_source_error = type(exc).__name__
-            logger.warning("NSE financial-results source check failed (%s).", nse_source_error)
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            logger.warning(
+                "NSE session/bootstrap failed (HTTP %s; %s).",
+                status_code if status_code is not None else "n/a",
+                type(exc).__name__,
+            )
+            for company in nse_companies:
+                nse_rows_by_symbol[str(company.get("symbol") or "").strip().upper()] = []
 
     bse_rows_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
     for company in bse_companies:
-        symbol = company["symbol"]
+        symbol = str(company.get("symbol") or "").strip().upper()
         scrip_code = str(company.get("bse_scrip_code") or "").strip()
-        if not company.get("company_name") or not scrip_code:
+        if not symbol or not company.get("company_name") or not re.fullmatch(r"\d{6}", scrip_code):
             errors += 1
-            logger.warning("Skipping BSE symbol %s: company_name and bse_scrip_code are required.", symbol)
+            logger.warning("Skipping BSE watchlist entry %s: company_name and six-digit bse_scrip_code are required.", symbol or "(missing)")
             continue
         try:
             today_ist = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Kolkata")).date()
             from_date = today_ist - timedelta(days=7)
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Referer": "https://www.bseindia.com/",
-                "Origin": "https://www.bseindia.com",
-            }
             raw_rows: List[Dict[str, Any]] = []
             for page_no in range(1, 6):
                 response = await http_client.get(
                     BSE_RESULTS_API_URL,
-                    params={
-                        "pageno": page_no,
-                        "strCat": "Result",
-                        "strPrevDate": from_date.strftime("%Y%m%d"),
-                        "strScrip": scrip_code,
-                        "strSearch": "P",
-                        "strToDate": today_ist.strftime("%Y%m%d"),
-                        "strType": "C",
-                        "subcategory": "-1",
-                    },
-                    headers=headers,
+                    params=bse_results_request_params(page_no, scrip_code, from_date, today_ist),
+                    headers=bse_api_headers(),
                     timeout=30.0,
                 )
-                payload = response.json()
-                if not isinstance(payload, dict) or not isinstance(payload.get("Table"), list):
+                response_payload = response.json()
+                if not isinstance(response_payload, dict) or not isinstance(response_payload.get("Table"), list):
                     raise ValueError("BSE results API response did not contain a Table list.")
-                page_rows = payload["Table"]
+                page_rows = response_payload["Table"]
                 raw_rows.extend(row for row in page_rows if isinstance(row, dict))
                 total_rows = 0
-                table1 = payload.get("Table1")
+                table1 = response_payload.get("Table1")
                 if isinstance(table1, list) and table1 and isinstance(table1[0], dict):
                     try:
                         total_rows = int(table1[0].get("ROWCNT") or 0)
                     except (TypeError, ValueError):
                         total_rows = 0
-                if not page_rows or len(raw_rows) >= total_rows or len(page_rows) < 50:
+                if not page_rows or (total_rows and len(raw_rows) >= total_rows) or len(page_rows) < 50:
                     break
-            bse_payload = {"Table": raw_rows}
             bse_rows_by_symbol[symbol] = parse_bse_financial_results_payload(
-                bse_payload, symbol, company, scrip_code
+                {"Table": raw_rows}, symbol, company, scrip_code
+            )
+            logger.info(
+                "BSE announcement feed checked for %s (scrip %s); exact results announcements matched=%s.",
+                symbol,
+                scrip_code,
+                len(bse_rows_by_symbol[symbol]),
             )
         except Exception as exc:
             errors += 1
-            logger.warning("BSE results check failed for %s (%s).", symbol, type(exc).__name__)
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            logger.warning(
+                "BSE results check failed for %s (HTTP %s; %s).",
+                symbol,
+                status_code if status_code is not None else "n/a",
+                type(exc).__name__,
+            )
             bse_rows_by_symbol[symbol] = []
 
     for company in watchlist:
-        symbol = company["symbol"]
+        symbol = str(company.get("symbol") or "").strip().upper()
         checked += 1
         exchange = str(company.get("exchange", "NSE")).upper()
-        if exchange == "BSE":
-            filings = bse_rows_by_symbol.get(symbol, [])
-        elif nse_source_error:
-            filings = []
-        else:
-            filings = nse_rows_by_symbol.get(symbol, [])
+        filings = (
+            bse_rows_by_symbol.get(symbol, [])
+            if exchange == "BSE"
+            else nse_rows_by_symbol.get(symbol, [])
+        )
 
         for item in filings:
             if store.has_processed_event(item["event_key"]):

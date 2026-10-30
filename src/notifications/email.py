@@ -31,6 +31,10 @@ class EmailProvider(NotificationProvider):
     ) -> Dict[str, Any]:
         """Dispatch email via SMTP. Mock mode is explicit and never reports delivery."""
         to_addr = (recipient or settings.email_to).strip()
+        smtp_user = (settings.smtp_user or "").strip()
+        # Google displays app passwords in four-character groups. Remove embedded
+        # spaces/newlines so a copied key is submitted as the expected 16 characters.
+        smtp_password = (settings.smtp_password or "").strip().replace(" ", "").replace("\n", "").replace("\r", "")
 
         # Email is disabled: this is a normal no-op, not a successful delivery.
         if not settings.enable_email:
@@ -72,9 +76,9 @@ class EmailProvider(NotificationProvider):
         missing = []
         if not settings.smtp_host:
             missing.append("SMTP_HOST")
-        if not settings.smtp_user:
+        if not smtp_user:
             missing.append("SMTP_USER")
-        if not settings.smtp_password:
+        if not smtp_password:
             missing.append("SMTP_PASSWORD")
         if not to_addr:
             missing.append("EMAIL_TO")
@@ -86,7 +90,7 @@ class EmailProvider(NotificationProvider):
         try:
             msg = MIMEMultipart("mixed")
             msg["Subject"] = subject
-            msg["From"] = settings.email_from or settings.smtp_user
+            msg["From"] = (settings.email_from or smtp_user).strip()
             msg["To"] = to_addr
             msg.attach(MIMEText(content, "plain", "utf-8"))
 
@@ -130,7 +134,7 @@ class EmailProvider(NotificationProvider):
                             stage = "ehlo"
                             server.ehlo()
                             stage = "login"
-                            server.login(settings.smtp_user, settings.smtp_password)
+                            server.login(smtp_user, smtp_password)
                             stage = "sendmail"
                             refused = server.sendmail(msg["From"], [to_addr], msg.as_string())
                     else:
@@ -141,7 +145,7 @@ class EmailProvider(NotificationProvider):
                             server.starttls(context=ssl.create_default_context())
                             server.ehlo()
                             stage = "login"
-                            server.login(settings.smtp_user, settings.smtp_password)
+                            server.login(smtp_user, smtp_password)
                             stage = "sendmail"
                             refused = server.sendmail(msg["From"], [to_addr], msg.as_string())
 

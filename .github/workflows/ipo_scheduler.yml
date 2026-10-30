@@ -8,11 +8,15 @@ on:
     - cron: '0 9 * * 1-5'
     - cron: '0 12 * * 1-5'
   workflow_dispatch:
-  # Run a production smoke check when this scheduler workflow itself changes.
+  # Run a production smoke check when scheduler, exchange adapters, or notification code changes.
   push:
     branches: [main]
     paths:
       - ".github/workflows/ipo_scheduler.yml"
+      - "src/results/**"
+      - "src/notifications/email.py"
+      - "src/ingestion/client.py"
+      - "src/ingestion/scrapers.py"
 
 permissions:
   contents: write

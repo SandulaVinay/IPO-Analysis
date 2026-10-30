@@ -514,23 +514,37 @@ async def monitor_financial_results() -> Dict[str, Any]:
     bse_companies = [company for company in watchlist if str(company.get("exchange", "NSE")).upper() == "BSE"]
     nse_rows_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
 
-    # NSE's page is a JavaScript UI; the underlying official JSON endpoint is the
-    # stable data source. Reuse one HTTP session so the initial NSE cookies persist.
+    # Bootstrap through the IPO page first: GitHub runners have received 403
+    # from the NSE homepage, while the IPO page is the known-working public landing URL.
     if nse_companies:
         nse_headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9",
             "Referer": NSE_RESULTS_URL,
+            "Origin": "https://www.nseindia.com",
             "X-Requested-With": "XMLHttpRequest",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Dest": "empty",
         }
         try:
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(45.0, connect=15.0),
                 follow_redirects=True,
             ) as session:
-                landing = await session.get(NSE_ROOT_URL, headers={**nse_headers, "Accept": "text/html,application/xhtml+xml"})
+                landing = await session.get(
+                    "https://www.nseindia.com/market-data/all-upcoming-issues-ipo",
+                    headers={**nse_headers, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+                )
                 landing.raise_for_status()
+                # Visit the exact UI page before its JSON feed so any route-specific
+                # cookies and anti-CSRF context are retained in the same session.
+                results_page = await session.get(
+                    NSE_RESULTS_URL,
+                    headers={**nse_headers, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+                )
+                results_page.raise_for_status()
 
                 for company in nse_companies:
                     symbol = str(company.get("symbol") or "").strip().upper()
@@ -541,7 +555,6 @@ async def monitor_financial_results() -> Dict[str, Any]:
 
                     company_filings: List[Dict[str, Any]] = []
                     try:
-                        # NSE exposes quarterly and annual metadata via the same official feed.
                         for period_type in ("Quarterly", "Annual"):
                             response = await session.get(
                                 NSE_RESULTS_API_URL,
@@ -590,7 +603,7 @@ async def monitor_financial_results() -> Dict[str, Any]:
             errors += 1
             status_code = getattr(getattr(exc, "response", None), "status_code", None)
             logger.warning(
-                "NSE session/bootstrap failed (HTTP %s; %s).",
+                "NSE IPO/results session bootstrap failed (HTTP %s; %s).",
                 status_code if status_code is not None else "n/a",
                 type(exc).__name__,
             )
@@ -598,57 +611,88 @@ async def monitor_financial_results() -> Dict[str, Any]:
                 nse_rows_by_symbol[str(company.get("symbol") or "").strip().upper()] = []
 
     bse_rows_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
-    for company in bse_companies:
-        symbol = str(company.get("symbol") or "").strip().upper()
-        scrip_code = str(company.get("bse_scrip_code") or "").strip()
-        if not symbol or not company.get("company_name") or not re.fullmatch(r"\d{6}", scrip_code):
-            errors += 1
-            logger.warning("Skipping BSE watchlist entry %s: company_name and six-digit bse_scrip_code are required.", symbol or "(missing)")
-            continue
+    if bse_companies:
+        bse_headers = bse_api_headers()
         try:
-            today_ist = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Kolkata")).date()
-            from_date = today_ist - timedelta(days=7)
-            raw_rows: List[Dict[str, Any]] = []
-            for page_no in range(1, 6):
-                response = await http_client.get(
-                    BSE_RESULTS_API_URL,
-                    params=bse_results_request_params(page_no, scrip_code, from_date, today_ist),
-                    headers=bse_api_headers(),
-                    timeout=30.0,
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(35.0, connect=15.0),
+                follow_redirects=True,
+            ) as session:
+                # Prime BSE cookies from a public issues page known to respond in
+                # discovery before querying the corporate-announcement API.
+                bse_landing = await session.get(
+                    "https://www.bseindia.com/markets/PublicIssues/IPOIssues_new.aspx?id=1&Type=p",
+                    headers={
+                        **bse_headers,
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        "Sec-Fetch-Site": "none",
+                        "Sec-Fetch-Mode": "navigate",
+                        "Sec-Fetch-Dest": "document",
+                    },
                 )
-                response_payload = response.json()
-                if not isinstance(response_payload, dict) or not isinstance(response_payload.get("Table"), list):
-                    raise ValueError("BSE results API response did not contain a Table list.")
-                page_rows = response_payload["Table"]
-                raw_rows.extend(row for row in page_rows if isinstance(row, dict))
-                total_rows = 0
-                table1 = response_payload.get("Table1")
-                if isinstance(table1, list) and table1 and isinstance(table1[0], dict):
+                bse_landing.raise_for_status()
+
+                for company in bse_companies:
+                    symbol = str(company.get("symbol") or "").strip().upper()
+                    scrip_code = str(company.get("bse_scrip_code") or "").strip()
+                    if not symbol or not company.get("company_name") or not re.fullmatch(r"\d{6}", scrip_code):
+                        errors += 1
+                        logger.warning("Skipping BSE watchlist entry %s: company_name and six-digit bse_scrip_code are required.", symbol or "(missing)")
+                        continue
                     try:
-                        total_rows = int(table1[0].get("ROWCNT") or 0)
-                    except (TypeError, ValueError):
-                        total_rows = 0
-                if not page_rows or (total_rows and len(raw_rows) >= total_rows) or len(page_rows) < 50:
-                    break
-            bse_rows_by_symbol[symbol] = parse_bse_financial_results_payload(
-                {"Table": raw_rows}, symbol, company, scrip_code
-            )
-            logger.info(
-                "BSE announcement feed checked for %s (scrip %s); exact results announcements matched=%s.",
-                symbol,
-                scrip_code,
-                len(bse_rows_by_symbol[symbol]),
-            )
+                        today_ist = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Kolkata")).date()
+                        from_date = today_ist - timedelta(days=7)
+                        raw_rows: List[Dict[str, Any]] = []
+                        for page_no in range(1, 6):
+                            response = await session.get(
+                                BSE_RESULTS_API_URL,
+                                params=bse_results_request_params(page_no, scrip_code, from_date, today_ist),
+                                headers=bse_headers,
+                            )
+                            response.raise_for_status()
+                            response_payload = response.json()
+                            if not isinstance(response_payload, dict) or not isinstance(response_payload.get("Table"), list):
+                                raise ValueError("BSE results API response did not contain a Table list.")
+                            page_rows = response_payload["Table"]
+                            raw_rows.extend(row for row in page_rows if isinstance(row, dict))
+                            total_rows = 0
+                            table1 = response_payload.get("Table1")
+                            if isinstance(table1, list) and table1 and isinstance(table1[0], dict):
+                                try:
+                                    total_rows = int(table1[0].get("ROWCNT") or 0)
+                                except (TypeError, ValueError):
+                                    total_rows = 0
+                            if not page_rows or (total_rows and len(raw_rows) >= total_rows) or len(page_rows) < 50:
+                                break
+                        bse_rows_by_symbol[symbol] = parse_bse_financial_results_payload(
+                            {"Table": raw_rows}, symbol, company, scrip_code
+                        )
+                        logger.info(
+                            "BSE announcement feed checked for %s (scrip %s); exact results announcements matched=%s.",
+                            symbol,
+                            scrip_code,
+                            len(bse_rows_by_symbol[symbol]),
+                        )
+                    except Exception as exc:
+                        errors += 1
+                        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                        logger.warning(
+                            "BSE results API failed for %s (HTTP %s; %s).",
+                            symbol,
+                            status_code if status_code is not None else "n/a",
+                            type(exc).__name__,
+                        )
+                        bse_rows_by_symbol[symbol] = []
         except Exception as exc:
             errors += 1
             status_code = getattr(getattr(exc, "response", None), "status_code", None)
             logger.warning(
-                "BSE results check failed for %s (HTTP %s; %s).",
-                symbol,
+                "BSE session bootstrap failed (HTTP %s; %s).",
                 status_code if status_code is not None else "n/a",
                 type(exc).__name__,
             )
-            bse_rows_by_symbol[symbol] = []
+            for company in bse_companies:
+                bse_rows_by_symbol[str(company.get("symbol") or "").strip().upper()] = []
 
     for company in watchlist:
         symbol = str(company.get("symbol") or "").strip().upper()

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
+import httpx
 from bs4 import BeautifulSoup
 
 from src.common.config import settings
@@ -25,6 +26,7 @@ from src.state.store import StateStore
 from src.reporting.pdf import markdown_to_pdf
 
 NSE_RESULTS_URL = "https://www.nseindia.com/companies-listing/corporate-filings-financial-results"
+NSE_RESULTS_API_URL = "https://www.nseindia.com/api/corporates-financial-results"
 BSE_RESULTS_API_URL = "https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w"
 BSE_RESULTS_PAGE_URL = "https://www.bseindia.com/corporates/ann.html"
 BSE_ATTACHMENT_BASE_URL = "https://www.bseindia.com/xml-data/corpfiling/AttachLive/"
@@ -53,7 +55,7 @@ METRIC_TAGS = {
 
 
 def _clean(value: str) -> str:
-    return re.sub(r"\\s+", " ", value or "").strip()
+    return re.sub(r"\s+", " ", value or "").strip()
 
 
 def _key(value: str) -> str:
@@ -65,6 +67,107 @@ def _matches_watchlist_company(filing: Dict[str, Any], company: Dict[str, Any]) 
     expected = [company.get("company_name"), *(company.get("company_name_aliases") or [])]
     expected_keys = {_key(value) for value in expected if isinstance(value, str) and value.strip()}
     return bool(expected_keys and _key(str(filing.get("company_name", ""))) in expected_keys)
+
+
+def parse_nse_financial_results_payload(
+    payload: Any,
+    symbol: str,
+    company: Dict[str, Any],
+    period_type: str,
+) -> List[Dict[str, Any]]:
+    """Normalize NSE's JSON financial-results feed using exact symbol and issuer-name checks."""
+    if isinstance(payload, dict):
+        rows = payload.get("data")
+        if rows is None:
+            rows = payload.get("results")
+    else:
+        rows = payload
+    if not isinstance(rows, list):
+        raise ValueError("NSE financial-results API response was not a list of filings.")
+
+    output: List[Dict[str, Any]] = []
+    seen = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        row_symbol = str(row.get("symbol") or row.get("Symbol") or "").strip().upper()
+        if row_symbol != symbol.strip().upper():
+            continue
+
+        company_name = _clean(str(row.get("companyName") or row.get("company_name") or ""))
+        if not company_name or not _matches_watchlist_company({"company_name": company_name}, company):
+            continue
+
+        period_ended = _clean(str(row.get("toDate") or row.get("periodEnded") or ""))
+        broadcast = _clean(str(row.get("broadCastDate") or row.get("broadcastDate") or row.get("filingDate") or ""))
+        relating = _clean(str(row.get("relatingTo") or row.get("relating_to") or period_type))
+        xbrl_value = str(row.get("xbrl") or row.get("xbrlUrl") or "").strip()
+        details_value = str(row.get("resultDetailedDataLink") or row.get("detailsUrl") or "").strip()
+        xbrl_url = urljoin(NSE_RESULTS_URL, xbrl_value) if xbrl_value else None
+        details_url = urljoin(NSE_RESULTS_URL, details_value) if details_value else None
+        attachment = xbrl_url or details_url
+        event_material = "|".join([
+            row_symbol, period_ended, relating, broadcast,
+            str(row.get("consolidated") or ""), str(row.get("format") or ""),
+            attachment or NSE_RESULTS_URL,
+        ])
+        event_key = "RESULT_" + hashlib.sha256(event_material.encode("utf-8")).hexdigest()[:32]
+        if event_key in seen:
+            continue
+        seen.add(event_key)
+        output.append({
+            "event_key": event_key,
+            "symbol": row_symbol,
+            "exchange": "NSE",
+            "company_name": company_name,
+            "period_ended": period_ended or None,
+            "relating_to": relating,
+            "broadcast_time": broadcast or "Not provided by NSE",
+            "audit_status": _clean(str(row.get("audited") or "")),
+            "cumulative_status": _clean(str(row.get("cumulative") or "")),
+            "period_type": _clean(str(row.get("period") or period_type)),
+            "submission_type": _clean(str(row.get("format") or row.get("oldNewFlag") or "")),
+            "consolidation": _clean(str(row.get("consolidated") or "")),
+            "source_url": NSE_RESULTS_URL,
+            "attachment_url": attachment,
+            "xbrl_url": xbrl_url,
+            "details_url": details_url,
+        })
+    return output
+
+
+def bse_api_headers() -> Dict[str, str]:
+    """Browser-like headers required by BSE's public announcement endpoint."""
+    return {
+        "Host": "api.bseindia.com",
+        "Referer": "https://www.bseindia.com/",
+        "Origin": "https://www.bseindia.com",
+        "User-Agent": "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+        "Sec-CH-UA": '"Google Chrome";v="155", "Chromium";v="155", "Not?A_Brand";v="99"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": '"Windows"',
+        "Sec-Fetch-Site": "same-site",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty",
+        "DNT": "1",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+    }
+
+
+def bse_results_request_params(page_no: int, scrip_code: str, from_date, to_date) -> Dict[str, Any]:
+    """Build the minimal BSE financial-announcement query; Result/Financial Results are defaults."""
+    return {
+        "pageno": page_no,
+        "strPrevDate": from_date.strftime("%Y%m%d"),
+        "strToDate": to_date.strftime("%Y%m%d"),
+        "strSearch": "P",
+        "strScrip": scrip_code,
+        "strType": "C",
+    }
 
 
 def has_recognized_financial_results_table(html: str) -> bool:

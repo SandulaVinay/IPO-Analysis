@@ -147,6 +147,8 @@ class ReportGenerator:
         struct = data.get("structure", {})
         val = data.get("valuation", {})
         yt = data.get("youtube_videos", [])
+        def display(value):
+            return value if value is not None and value != "" else "N/A"
 
         min_price = ipo.get("min_price")
         lot_size = ipo.get("lot_size")
@@ -154,22 +156,22 @@ class ReportGenerator:
         verdict = score_data.get("verdict", "UNABLE_TO_ASSESS")
         verdict_emoji = "🟢" if score_data.get("verdict") == "ATTRACTIVE" else ("🟡" if score_data.get("verdict") == "NEUTRAL" else ("🔴" if score_data.get("verdict") == "AVOID" else "⚪"))
 
-        copy_text = f"""📊 IPO STATUS UPDATE: {ipo.get('company_name')}
+copy_text = f"""📊 IPO STATUS UPDATE: {display(ipo.get('company_name') or data.get('company_name'))}
 
 Application:
-{ipo.get('verified_open_date')} – {ipo.get('verified_close_date')}
+{display(ipo.get('verified_open_date'))} – {display(ipo.get('verified_close_date'))}
 
 Price:
-₹{ipo.get('min_price')}–{ipo.get('max_price')}
+₹{display(ipo.get('min_price'))}–₹{display(ipo.get('max_price'))}
 
 Lot:
-{ipo.get('lot_size')} shares
+{display(ipo.get('lot_size'))} shares
 
 Minimum Investment:
 ₹{f'{min_investment:,.2f}' if min_investment is not None else 'N/A'}
 
 Issue Size:
-₹{ipo.get('issue_size_cr')} Cr (Fresh: ₹{ipo.get('fresh_issue_cr')} Cr | OFS: ₹{ipo.get('ofs_cr')} Cr)
+₹{display(ipo.get('issue_size_cr'))} Cr (Fresh: ₹{display(ipo.get('fresh_issue_cr'))} Cr | OFS: ₹{display(ipo.get('ofs_cr'))} Cr)
 
 Assessment:
 {verdict_emoji} {verdict}
@@ -179,6 +181,9 @@ Overall Score:
 
 Confidence:
 {data.get('confidence_level', 'NOT_ASSESSED')}
+
+Source Verification:
+{data.get('source_verification_status', 'NOT_VERIFIED')}
 
 GMP:
 ₹{gmp.get('gmp_value', 'N/A')} (~{gmp.get('potential_listing_gain_pct', 'N/A')}% Est. Listing Gain)
@@ -197,5 +202,5 @@ YOUTUBE REVIEWS:
         for v in yt[:2]:
             copy_text += f"• {v.get('channel_name')}: {v.get('video_url')}\n"
 
-        copy_text += "\nFull evidence and analysis recorded."
+copy_text += "\nReview the source filings and assessment limitations before making an investment decision."
         return copy_text.strip()

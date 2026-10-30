@@ -411,8 +411,14 @@ def parse_bse_financial_results_payload(
         if not company_name or not _matches_watchlist_company({"company_name": company_name}, company):
             continue
 
-        headline = _clean(str(row.get("NEWSSUB") or row.get("HEADLINE") or "Financial results filing"))
-        category = _clean(str(row.get("SUBCATNAME") or row.get("CATEGORYNAME") or "Financial results"))
+        headline = _clean(str(row.get("NEWSSUB") or row.get("HEADLINE") or ""))
+        category = _clean(str(row.get("SUBCATNAME") or row.get("CATEGORYNAME") or ""))
+        if "result" not in f"{category} {headline}".lower():
+            continue
+        if not headline:
+            headline = "Financial results filing"
+        if not category:
+            category = "Financial results"
         broadcast = _clean(str(row.get("DT_TM") or row.get("NEWS_DT") or row.get("News_submission_dt") or ""))
         news_id = str(row.get("NEWSID") or row.get("XML_NAME") or "").strip()
         attachment_name = str(row.get("ATTACHMENTNAME") or "").strip()

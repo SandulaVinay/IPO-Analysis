@@ -298,7 +298,9 @@ def parse_bse_financial_results_payload(
         if not isinstance(row, dict):
             continue
         row_code = str(row.get("SCRIP_CD") or row.get("SCRIPCODE") or "").strip()
-        if row_code and row_code != str(scrip_code):
+        # The source query is filtered by scrip code, but still verify every row
+        # carries that exact identifier before matching the issuer name.
+        if row_code != str(scrip_code):
             continue
 
         company_name = _clean(str(row.get("SLONGNAME") or row.get("COMPANYNAME") or ""))

@@ -2,21 +2,12 @@
   "events": [
     {
       "channel": null,
-      "event_date": "2026-10-30",
-      "event_key": "IPO_DAILY_DIGEST_2026-10-30",
-      "event_type": "DAILY_IPO_DIGEST",
-      "status": "FAILED",
-      "symbol": "ALL",
-      "updated_at": "2026-10-30T13:12:08.675511+00:00"
-    },
-    {
-      "channel": null,
       "event_date": "31-Dec-2024",
       "event_key": "RESULT_8bef3a0eb3d3c958b44018b73c0e5677",
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "RELIANCE",
-      "updated_at": "2026-10-30T15:30:01.434326+00:00"
+      "updated_at": "2026-10-30T17:48:28.926787+00:00"
     },
     {
       "channel": null,
@@ -25,7 +16,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "RELIANCE",
-      "updated_at": "2026-10-30T15:31:37.999087+00:00"
+      "updated_at": "2026-10-30T17:50:05.389341+00:00"
     },
     {
       "channel": null,
@@ -34,7 +25,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "TCS",
-      "updated_at": "2026-10-30T15:33:14.687892+00:00"
+      "updated_at": "2026-10-30T17:51:41.831813+00:00"
     },
     {
       "channel": null,
@@ -43,7 +34,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "TCS",
-      "updated_at": "2026-10-30T15:34:51.227041+00:00"
+      "updated_at": "2026-10-30T17:53:18.202399+00:00"
     },
     {
       "channel": null,
@@ -52,7 +43,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "CLEAN",
-      "updated_at": "2026-10-30T15:36:27.908335+00:00"
+      "updated_at": "2026-10-30T17:54:54.543026+00:00"
     },
     {
       "channel": null,
@@ -61,7 +52,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "CLEAN",
-      "updated_at": "2026-10-30T15:38:04.524544+00:00"
+      "updated_at": "2026-10-30T17:56:31.043293+00:00"
     },
     {
       "channel": null,
@@ -70,9 +61,18 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "GODAVARIB",
-      "updated_at": "2026-10-30T15:39:41.095466+00:00"
+      "updated_at": "2026-10-30T17:58:07.454018+00:00"
+    },
+    {
+      "channel": null,
+      "event_date": "2026-10-30",
+      "event_key": "IPO_DAILY_DIGEST_2026-10-30",
+      "event_type": "DAILY_IPO_DIGEST",
+      "status": "FAILED",
+      "symbol": "ALL",
+      "updated_at": "2026-10-30T17:58:10.431172+00:00"
     }
   ],
   "schema_version": 1,
-  "updated_at": "2026-10-30T15:39:41.095477+00:00"
+  "updated_at": "2026-10-30T17:58:10.431183+00:00"
 }

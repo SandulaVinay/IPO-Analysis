@@ -287,8 +287,23 @@ def extract_pdf_candidate_evidence(pdf_bytes: bytes, *, source_url: str) -> Dict
                 # prospectuses frequently use whitespace-aligned columns without ruled
                 # borders. Recover row candidates from word geometry when no table was
                 # detected; only candidate evidence is emitted, never verified facts.
-                if not detected_tables:
-                    detected_tables = _extract_table_rows_from_word_positions(page)
+                # Some pdfplumber versions return a table object but fail to
+                # preserve the cells/columns as usable rows. Use the geometry fallback
+                # whenever the detected tables contain no recognizable financial row.
+                has_candidate_row = any(
+                    len(row or []) >= 2
+                    and any(
+                        pattern.search(" ".join(str(cell or "") for cell in row))
+                        for patterns in EVIDENCE_PATTERNS.values()
+                        for pattern in (re.compile(item, re.IGNORECASE) for item in patterns)
+                    )
+                    for table in detected_tables
+                    for row in (table or [])
+                )
+                if not has_candidate_row:
+                    geometry_tables = _extract_table_rows_from_word_positions(page)
+                    if geometry_tables:
+                        detected_tables.extend(geometry_tables)
                 tables_by_page[page_index] = detected_tables
         table_evidence = extract_candidate_evidence_from_tables(
             tables_by_page,

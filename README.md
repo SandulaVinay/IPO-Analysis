@@ -4,15 +4,17 @@ A production-quality, evidence-driven, deterministic intelligence platform for d
 
 ---
 
-## 🌟 Key System Capabilities
+## 🌟 Current System Capabilities
 
-1. **Deterministic Primacy**: All financial, mathematical, and valuation calculations are executed in deterministic code. The LLM is **never** used for numerical math.
-2. **Evidence & Provenance Hierarchy**: Segregates **FACTS** (with document version, page number, extraction timestamp), **CALCULATIONS**, and **OPINIONS**.
-3. **Hard Safety Assessment Gates**: If critical financial numbers or timeline dates are missing or conflicting across Tier 1 sources, the system outputs `⚪ UNABLE TO ASSESS` rather than guessing.
-4. **Multi-Horizon Decision Modeling**: Evaluates Company Quality, IPO Attractiveness, Listing Opportunity, and Long-Term Opportunity separately.
-5. **Proactive T-2 Notification Orchestrator**: Dispatches alerts 2 calendar days before IPO opening (Asia/Kolkata timezone awareness, market holidays), with a 6-hour reminder, T-1 reminder, and opening alert across `WhatsApp → Email → SMS → Console` with automated fallback.
-6. **Zero Mandatory Recurring Cost**: Runs locally, via cron, or on GitHub Actions with zero recurring infrastructure expenses.
-7. **Interactive Web Dashboard & Rich CLI**: Modern dark-mode Glassmorphism dashboard and terminal console tool.
+1. **Deterministic calculations**: Financial formulas and scoring calculations are performed in Python; an AI model is not required for numerical calculations.
+2. **Evidence and provenance**: Prospectus documents are hashed and versioned. Extracted PDF passages retain page references and remain explicitly `UNVERIFIED` until the period, unit and statement-basis checks are completed.
+3. **Fail-closed production analysis**: Missing, conflicting or unverified critical inputs produce `UNABLE_TO_ASSESS`. The system must not invent financial values or issue unsupported `APPLY` / `AVOID` recommendations.
+4. **IPO discovery and results monitoring**: Official NSE/BSE IPO pages are checked; financial-results monitoring uses the configured company watchlist and a conservative subset of NSE/XBRL filing data.
+5. **GitHub Actions automation**: Weekday checks run at 08:30, 11:30, 14:30 and 17:30 IST. The final weekday run generates a daily status digest. Reports are retained as seven-day workflow artifacts and sanitized state is persisted to the public `state` branch.
+6. **Notifications**: WhatsApp Cloud API is primary and SMTP email is the fallback when the owner configures the required GitHub Actions secrets. Without credentials, reports are generated in report-only mode. WhatsApp eligibility and charges depend on provider terms.
+7. **Dashboard and CLI**: A FastAPI dashboard and command-line interface are available for local use. No separate always-on server is required for the GitHub Actions scheduled workflow.
+
+**Production limitation:** full automated IPO investment recommendations are not yet enabled. Table-aware prospectus financial extraction, period/unit reconciliation, consolidated-versus-standalone verification, and a fully validated live-source pipeline remain open gates. The safe result is `UNABLE_TO_ASSESS` until those checks are complete.
 
 ---
 

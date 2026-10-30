@@ -128,7 +128,7 @@ jobs:
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
           WHATSAPP_API_VERSION: v26.0
           WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
-          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL }}
+          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL || 'false' }}
           EMAIL_PROVIDER: smtp
           SMTP_HOST: smtp.gmail.com
           SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}

@@ -271,7 +271,9 @@ def test_bse_api_request_uses_browser_headers_and_default_result_filters():
         "pageno": 1,
         "strPrevDate": "20261023",
         "strToDate": "20261030",
+        "strCat": "-1",
+        "subcategory": "-1",
         "strSearch": "P",
-        "strScrip": "517286",
+        "strscrip": "517286",
         "strType": "C",
     }

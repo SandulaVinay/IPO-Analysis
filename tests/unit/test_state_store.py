@@ -113,3 +113,41 @@ def test_public_document_registry_redacts_token_like_query_parameters(tmp_path):
     assert "private-token" not in payload_text
     assert "token=" not in payload["documents"][0]["source_url"]
     assert store.has_document_url(source_url) is True
+
+
+
+def test_watchlist_accepts_bse_scrip_code_and_rejects_missing_code(tmp_path):
+    import pytest
+
+    store = StateStore(str(tmp_path))
+    path = tmp_path / "watchlist.json"
+    path.write_text(
+        json.dumps({
+            "schema_version": 1,
+            "companies": [{
+                "exchange": "BSE",
+                "symbol": "RNITAI",
+                "bse_scrip_code": "517286",
+                "company_name": "RNIT AI SOLUTIONS LIMITED",
+                "company_name_aliases": ["RNIT AI Solutions Ltd"],
+            }],
+        }),
+        encoding="utf-8",
+    )
+    entry = store.load_watchlist()[0]
+    assert entry["exchange"] == "BSE"
+    assert entry["bse_scrip_code"] == "517286"
+
+    path.write_text(
+        json.dumps({
+            "schema_version": 1,
+            "companies": [{
+                "exchange": "BSE",
+                "symbol": "RNITAI",
+                "company_name": "RNIT AI SOLUTIONS LIMITED",
+            }],
+        }),
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="six-digit bse_scrip_code"):
+        store.load_watchlist()

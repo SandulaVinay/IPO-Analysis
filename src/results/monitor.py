@@ -163,10 +163,12 @@ def bse_results_request_params(page_no: int, scrip_code: str, from_date, to_date
     """Build the minimal BSE financial-announcement query; Result/Financial Results are defaults."""
     return {
         "pageno": page_no,
+        "strCat": "-1",
+        "subcategory": "-1",
         "strPrevDate": from_date.strftime("%Y%m%d"),
         "strToDate": to_date.strftime("%Y%m%d"),
         "strSearch": "P",
-        "strScrip": scrip_code,
+        "strscrip": scrip_code,
         "strType": "C",
     }
 

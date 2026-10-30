@@ -71,6 +71,18 @@
       "detail": "records=0; channel=NONE",
       "status": "FAILED",
       "timestamp": "2026-10-30T13:12:08.676497+00:00"
+    },
+    {
+      "command": "discover",
+      "detail": "restored=1; discovered=1; registry_total=1; source_coverage=PARTIAL",
+      "status": "PARTIAL",
+      "timestamp": "2026-10-30T15:28:15.689707+00:00"
+    },
+    {
+      "command": "results",
+      "detail": "symbols_checked=5; new_filings=7; notifications_accepted=0; errors=1",
+      "status": "PARTIAL",
+      "timestamp": "2026-10-30T15:39:41.096308+00:00"
     }
   ],
   "schema_version": 1

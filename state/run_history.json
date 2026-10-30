@@ -35,6 +35,24 @@
       "detail": "records=0; channel=NONE",
       "status": "FAILED",
       "timestamp": "2026-10-30T12:45:27.155770+00:00"
+    },
+    {
+      "command": "discover",
+      "detail": "restored=1; discovered=1; registry_total=1; source_coverage=PARTIAL",
+      "status": "PARTIAL",
+      "timestamp": "2026-10-30T12:56:11.530645+00:00"
+    },
+    {
+      "command": "results",
+      "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; errors=2",
+      "status": "PARTIAL",
+      "timestamp": "2026-10-30T12:56:13.142032+00:00"
+    },
+    {
+      "command": "digest",
+      "detail": "records=0; channel=NONE",
+      "status": "FAILED",
+      "timestamp": "2026-10-30T12:56:16.094904+00:00"
     }
   ],
   "schema_version": 1

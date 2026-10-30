@@ -185,6 +185,51 @@ def extract_candidate_evidence_from_tables(
     return output
 
 
+def _extract_table_rows_from_word_positions(page) -> List[List[str]]:
+    """Recover likely table rows from PDF word geometry when ruled-table detection fails.
+
+    Financial labels and values are kept on the same visual line. Large horizontal
+    gaps form cell boundaries; ordinary spaces within a label do not. This fallback
+    creates review candidates only and never assigns values to periods.
+    """
+    try:
+        words = page.extract_words(x_tolerance=2, y_tolerance=3, use_text_flow=False)
+    except Exception:
+        return []
+    if not words:
+        return []
+
+    line_groups: List[Dict[str, Any]] = []
+    for word in sorted(words, key=lambda item: (float(item.get("top", 0)), float(item.get("x0", 0)))):
+        top = float(word.get("top", 0))
+        if line_groups and abs(top - line_groups[-1]["top"]) <= 2.5:
+            line_groups[-1]["words"].append(word)
+            line_groups[-1]["top"] = (
+                line_groups[-1]["top"] * (len(line_groups[-1]["words"]) - 1) + top
+            ) / len(line_groups[-1]["words"])
+        else:
+            line_groups.append({"top": top, "words": [word]})
+
+    rows: List[List[str]] = []
+    for line in line_groups:
+        ordered = sorted(line["words"], key=lambda item: float(item.get("x0", 0)))
+        cells: List[str] = []
+        current: List[str] = []
+        previous_x1: Optional[float] = None
+        for word in ordered:
+            x0 = float(word.get("x0", 0))
+            if current and previous_x1 is not None and x0 - previous_x1 >= 8:
+                cells.append(" ".join(current))
+                current = []
+            current.append(str(word.get("text", "")))
+            previous_x1 = float(word.get("x1", x0))
+        if current:
+            cells.append(" ".join(current))
+        if len(cells) >= 2 and any(cell.strip() for cell in cells):
+            rows.append(cells)
+    return [rows] if rows else []
+
+
 def extract_pdf_candidate_evidence(pdf_bytes: bytes, *, source_url: str) -> Dict[str, Any]:
     """Extract candidate passages from a validated PDF byte stream with strict limits."""
     if not pdf_bytes:
@@ -235,9 +280,16 @@ def extract_pdf_candidate_evidence(pdf_bytes: bytes, *, source_url: str) -> Dict
                 ):
                     continue
                 try:
-                    tables_by_page[page_index] = page.extract_tables() or []
+                    detected_tables = page.extract_tables() or []
                 except Exception:
-                    tables_by_page[page_index] = []
+                    detected_tables = []
+                # PDF table detection differs across pdfplumber/pdfminer versions and
+                # prospectuses frequently use whitespace-aligned columns without ruled
+                # borders. Recover row candidates from word geometry when no table was
+                # detected; only candidate evidence is emitted, never verified facts.
+                if not detected_tables:
+                    detected_tables = _extract_table_rows_from_word_positions(page)
+                tables_by_page[page_index] = detected_tables
         table_evidence = extract_candidate_evidence_from_tables(
             tables_by_page,
             source_url=source_url,

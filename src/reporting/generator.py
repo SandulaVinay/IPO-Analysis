@@ -20,6 +20,9 @@ class ReportGenerator:
         score_data = data.get("score_data", {})
         horizons = score_data.get("horizons", {})
         gmp = data.get("gmp", {})
+        min_price = ipo.get("min_price")
+        lot_size = ipo.get("lot_size")
+        min_investment = round(min_price * lot_size, 2) if isinstance(min_price, (int, float)) and isinstance(lot_size, (int, float)) else None
 
         verdict_emoji = "🟢" if score_data.get("verdict") == "ATTRACTIVE" else ("🟡" if score_data.get("verdict") == "NEUTRAL" else ("🔴" if score_data.get("verdict") == "AVOID" else "⚪"))
 
@@ -163,7 +166,7 @@ Lot:
 {ipo.get('lot_size')} shares
 
 Minimum Investment:
-₹{round(ipo.get('min_price', 0)*ipo.get('lot_size', 0), 2):,}
+₹{f'{min_investment:,.2f}' if min_investment is not None else 'N/A'}
 
 Issue Size:
 ₹{ipo.get('issue_size_cr')} Cr (Fresh: ₹{ipo.get('fresh_issue_cr')} Cr | OFS: ₹{ipo.get('ofs_cr')} Cr)
@@ -172,7 +175,7 @@ Assessment:
 {verdict_emoji} {verdict}
 
 Overall Score:
-{score_data.get('overall_score')}/10
+{score_data.get('overall_score') if score_data.get('overall_score') is not None else 'N/A'}/10
 
 Confidence:
 {data.get('confidence_level', 'NOT_ASSESSED')}

@@ -107,7 +107,7 @@ class Settings(BaseSettings):
     t_minus_days_target: int = 2
     reminder_hours_after_alert: int = 6
     final_reminder_days_before: int = 1
-    enable_automated_scheduler: bool = True
+    enable_automated_scheduler: bool = False
     enable_demo_analysis: bool = False
 
     # Scoring Model Weights (Must sum to 1.0)

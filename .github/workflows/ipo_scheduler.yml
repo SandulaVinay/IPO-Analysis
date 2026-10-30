@@ -8,6 +8,11 @@ on:
     - cron: '0 9 * * 1-5'
     - cron: '0 12 * * 1-5'
   workflow_dispatch:
+  # Run a production smoke check when this scheduler workflow itself changes.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ipo_scheduler.yml"
 
 permissions:
   contents: write
@@ -43,7 +48,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Discovery & Health Checks
+      - name: Run IPO discovery
         env:
           APP_ENV: production
           STATE_DIR: state-branch/state
@@ -58,23 +63,66 @@ jobs:
           ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL || 'false' }}
           EMAIL_PROVIDER: smtp
           SMTP_HOST: smtp.gmail.com
-          SMTP_PORT: 587
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-        run: |
-          python -m src.cli.main discover
-          python -m src.cli.main results
-          python -m src.cli.main health
+        run: python -m src.cli.main discover
 
-      - name: Run daily IPO status digest
-        if: always() && (github.event_name == 'workflow_dispatch' || github.event.schedule == '0 12 * * 1-5')
+      - name: Run financial results monitor
+        if: always()
         env:
           APP_ENV: production
           STATE_DIR: state-branch/state
           ENABLE_DEMO_ANALYSIS: "false"
-          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP }}
+          ENABLE_AUTOMATED_SCHEDULER: "false"
+          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP || 'false' }}
+          WHATSAPP_PROVIDER: cloud_api
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_API_VERSION: v26.0
+          WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
+          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL || 'false' }}
+          EMAIL_PROVIDER: smtp
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: python -m src.cli.main results
+
+      - name: Run system health checks
+        if: always()
+        env:
+          APP_ENV: production
+          STATE_DIR: state-branch/state
+          ENABLE_DEMO_ANALYSIS: "false"
+          ENABLE_AUTOMATED_SCHEDULER: "false"
+          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP || 'false' }}
+          WHATSAPP_PROVIDER: cloud_api
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_API_VERSION: v26.0
+          WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
+          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL || 'false' }}
+          EMAIL_PROVIDER: smtp
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: python -m src.cli.main health
+
+      - name: Run daily IPO status digest
+        if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.schedule == '0 12 * * 1-5')
+        env:
+          APP_ENV: production
+          STATE_DIR: state-branch/state
+          ENABLE_DEMO_ANALYSIS: "false"
+          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP || 'false' }}
           WHATSAPP_PROVIDER: cloud_api
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
@@ -83,10 +131,10 @@ jobs:
           ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL }}
           EMAIL_PROVIDER: smtp
           SMTP_HOST: smtp.gmail.com
-          SMTP_PORT: 587
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: python -m src.cli.digest
 

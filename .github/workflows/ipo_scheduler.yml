@@ -48,7 +48,7 @@ jobs:
           APP_ENV: production
           STATE_DIR: state-branch/state
           ENABLE_DEMO_ANALYSIS: "false"
-          ENABLE_AUTOMATED_SCHEDULER: "true"
+          ENABLE_AUTOMATED_SCHEDULER: "false"
           ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP || 'false' }}
           WHATSAPP_PROVIDER: cloud_api
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}

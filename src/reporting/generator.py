@@ -156,7 +156,7 @@ class ReportGenerator:
         verdict = score_data.get("verdict", "UNABLE_TO_ASSESS")
         verdict_emoji = "🟢" if score_data.get("verdict") == "ATTRACTIVE" else ("🟡" if score_data.get("verdict") == "NEUTRAL" else ("🔴" if score_data.get("verdict") == "AVOID" else "⚪"))
 
-copy_text = f"""📊 IPO STATUS UPDATE: {display(ipo.get('company_name') or data.get('company_name'))}
+        copy_text = f"""📊 IPO STATUS UPDATE: {display(ipo.get('company_name') or data.get('company_name'))}
 
 Application:
 {display(ipo.get('verified_open_date'))} – {display(ipo.get('verified_close_date'))}
@@ -202,5 +202,5 @@ YOUTUBE REVIEWS:
         for v in yt[:2]:
             copy_text += f"• {v.get('channel_name')}: {v.get('video_url')}\n"
 
-copy_text += "\nReview the source filings and assessment limitations before making an investment decision."
+        copy_text += "\nReview the source filings and assessment limitations before making an investment decision."
         return copy_text.strip()

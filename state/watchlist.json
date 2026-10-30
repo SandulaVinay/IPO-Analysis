@@ -1,5 +1,42 @@
 {
   "schema_version": 1,
-  "description": "Public company symbols to monitor for official quarterly and annual results. Keep recipient details and credentials out of this file.",
-  "companies": ["RNIT", "CLEAN", "GODAVARIB"]
+  "description": "Public company symbols to monitor for official results.",
+  "companies": [
+    {
+      "symbol": "RELIANCE",
+      "company_name": "Reliance Industries Limited",
+      "company_name_aliases": [
+        "Reliance Industries Ltd"
+      ]
+    },
+    {
+      "symbol": "TCS",
+      "company_name": "Tata Consultancy Services Limited",
+      "company_name_aliases": [
+        "TCS"
+      ]
+    },
+        {
+      "symbol": "RNIT AI Solutions Ltd",
+        "company_name": "RNIT",
+      "company_name_aliases": [
+        "RNIT AI"
+      ]
+    },
+        {
+      "symbol": "CLEAN",
+      "company_name": "CLEAN",
+      "company_name_aliases": [
+        "Clean Science and Technology Ltd"
+      ]
+    },
+    {
+      "symbol": "GODAVARIB",
+      "company_name": "Godavari Biorefineries Ltd",
+      "company_name_aliases": [
+        "Godavari Biorefineries Ltd"
+      ]
+    }
+
+  ]
 }

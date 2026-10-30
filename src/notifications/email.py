@@ -34,7 +34,7 @@ class EmailProvider(NotificationProvider):
         smtp_user = (settings.smtp_user or "").strip()
         # Google displays app passwords in four-character groups. Remove embedded
         # spaces/newlines so a copied key is submitted as the expected 16 characters.
-        smtp_password = (settings.smtp_password or "").strip().replace(" ", "").replace("\\n", "")
+        smtp_password = (settings.smtp_password or "").strip().replace(" ", "").replace("\n", "").replace("\r", "")
 
         # Email is disabled: this is a normal no-op, not a successful delivery.
         if not settings.enable_email:
@@ -145,7 +145,7 @@ class EmailProvider(NotificationProvider):
                             server.starttls(context=ssl.create_default_context())
                             server.ehlo()
                             stage = "login"
-                            server.login(settings.smtp_user, settings.smtp_password)
+                            server.login(smtp_user, smtp_password)
                             stage = "sendmail"
                             refused = server.sendmail(msg["From"], [to_addr], msg.as_string())
 

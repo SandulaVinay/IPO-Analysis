@@ -1,91 +1,50 @@
-# IPO-Analysis Automation v2 — Implementation Blueprint
+# IPO-Analysis Automation v2 — Implementation and Deployment Status
 
-## Status
+## Current deployment target
 
-This blueprint is being implemented on the `automation-v2` branch. The `main` branch is not changed by this work. Do not enable live notifications until the verification and test gates below pass.
+The project uses GitHub Actions only for scheduled execution. It stores sanitized operational state on the public `state` branch, generates reports as short-lived workflow artifacts, and uses WhatsApp Cloud API first with SMTP email fallback when the owner configures the required secrets.
 
-## Audit findings from the current repository
+The `main` branch is kept separate from the `automation-v2` implementation branch until code review, CI and deployment checks pass.
 
-1. `.github/workflows/ipo_scheduler.yml` runs `discover` and `health`; it does not run a full analyze/report/dispatch cycle.
-2. The scheduled workflow uses a GitHub-hosted runner and the default SQLite path `./ipo_system.db`. That file is ephemeral between runs unless explicitly restored and persisted.
-3. `src/ingestion/scrapers.py` currently returns a hard-coded sample IPO and sample GMP/subscription values rather than verified live data.
-4. `src/web/app.py` currently feeds hard-coded sample financial periods and company characteristics into analysis. These can produce plausible-looking but unsupported recommendations.
-5. `src/notifications/whatsapp.py` does not send a Cloud API POST request; it explicitly returns failure. Real WhatsApp delivery is therefore not implemented yet.
-6. `src/monitoring/health.py` currently reports several subsystems as operational without checking their actual source/provider readiness.
-7. `requirements.txt` does not explicitly declare `greenlet`, although SQLAlchemy's async extension can require it.
-8. The repository contains existing scoring, provenance, notification, and resilience specifications. Reuse them, but verify implementation against the docs rather than assuming documentation means a feature is live.
+## Implemented on `automation-v2`
 
-## Target architecture
+- Python application modules for IPO discovery, financial-results monitoring, PDF ingestion/evidence capture, state persistence, reporting and notifications.
+- Official NSE/BSE IPO public-issue page adapters with recognized-layout checks and source-conflict handling. A source outage or page-layout change is reported as partial/degraded rather than silently treated as complete coverage.
+- Prospectus PDF validation, SHA-256 hashing, immutable document-version metadata, and page-cited candidate passages. Extracted passages remain explicitly `UNVERIFIED`.
+- Watchlist-based NSE corporate-results filing monitor. The monitor requires an exact official company-name match, extracts only a conservative subset of XBRL facts, and labels unsupported/ambiguous metrics unavailable.
+- Production analysis safety gate: missing or unverified issuer financial facts produce `UNABLE_TO_ASSESS`; demo financial inputs are not permitted in production.
+- Daily Markdown/PDF IPO status digest and financial-results/prospectus review reports.
+- WhatsApp Cloud API and SMTP provider adapters, WhatsApp-first/email-fallback behavior, and provider-acceptance tracking.
+- Sanitized public state branch with schema version, IPO registry, document metadata, source cursors, processed event keys, notification outbox, run history and a watchlist file.
+- GitHub Actions weekday schedule, manual recovery entry point, state persistence, report artifacts, and CI tests.
+- Explicit `greenlet` and PDF-generation dependencies.
 
-- **Execution:** GitHub Actions only; weekday source checks every few hours, daily digest, and manual recovery/test runs. Scheduled jobs are treated as at-least-once, not exact-time execution.
-- **Source of truth:** official SEBI, NSE, BSE, issuer investor-relations pages and offer documents take precedence. Secondary portals may discover candidates but cannot establish critical facts by themselves.
-- **Evidence-first ingestion:** every extracted fact carries source URL, retrieval time, document hash/version where applicable, and a verification state. Invalid or conflicting critical facts are quarantined.
-- **Deterministic analysis:** formulas and score calculations remain Python code. Missing evidence produces `UNABLE_TO_ASSESS`; no synthetic financial values may enter production analysis.
-- **State:** a dedicated public state branch may contain only sanitized, non-personal operational JSON (schema version, public IPO identifiers/events, source cursors, processed event IDs, run metadata). No phone numbers, email addresses, credentials, message bodies, or recipient-specific state may be stored there.
-- **Notifications:** WhatsApp primary, email fallback. Each channel reports whether a provider accepted the message; provider acceptance must not be described as confirmed end-user delivery unless a delivery-status callback confirms it.
-- **Secrets:** all tokens, SMTP credentials, recipient phone number, and recipient email are GitHub Actions Secrets. Never commit or print them.
-- **Reports:** generate Markdown and PDF reports as run artifacts with short retention. Public state stores report hashes/links only when safe; no personal recipient data.
-- **Recovery:** retries with bounded exponential backoff, idempotency keys, checkpoints, atomic state updates, workflow concurrency control, and a manual replay path.
-- **Observability:** structured logs with redaction; health checks report source freshness and provider configuration truthfully; a failed pipeline must exit non-zero.
+## Verification completed
 
-## State-branch contract (proposed)
+On 2026-10-30, the CI workflow on the `automation-v2` branch completed successfully after fixing PDF table-evidence extraction fallback. The successful runs compiled the Python modules and passed all 72 automated tests.
 
-```text
-state/
-  schema_version.json
-  ipo_registry.json
-  source_cursors.json
-  processed_events.json
-  notification_outbox.json
-  run_history.json
-```
+CI success is a code-level gate only. It does not prove that live NSE/BSE pages will always retain their current layout, that an issuer's filing is complete, or that a configured messaging provider has accepted a real message.
 
-State records must be schema-versioned, size-bounded, validated before write, and updated atomically. Do not put personal recipient information or full notification bodies in these files. Because this branch is public, assume every byte stored there can be read by anyone.
+## Current scheduled behavior
 
-## Notification behavior
+The GitHub Actions workflow checks IPO discovery, the configured company-results watchlist and subsystem health four times per weekday (08:30, 11:30, 14:30 and 17:30 IST). The final weekday run also generates the daily IPO digest. The workflow uploads report artifacts and commits only sanitized JSON state to the public `state` branch.
 
-1. Build a notification event only after the source/data-quality gate passes.
-2. Derive a stable idempotency key from event type, IPO symbol/identifier, and verified event date/version.
-3. Attempt WhatsApp only when its official provider is configured and the recipient is opted in.
-4. On a confirmed provider failure, try email; never mark a console/mock attempt as delivered.
-5. Store sanitized attempt status and provider error category, not tokens or recipient details.
-6. If both channels fail, keep the event retryable and fail the workflow visibly.
+It does not currently run an automated T-2 / six-hour / T-1 / IPO-opened alert lifecycle. The embedded APScheduler is disabled by default because the agreed deployment model is GitHub Actions, not a permanently running web server.
 
-## Required secret names
+## Remaining production gates
 
-- `ENABLE_WHATSAPP`
-- `WHATSAPP_PROVIDER` (initially `cloud_api` only after configured)
-- `WHATSAPP_PHONE_NUMBER_ID`
-- `WHATSAPP_ACCESS_TOKEN`
-- `WHATSAPP_RECIPIENT_PHONE`
-- `ENABLE_EMAIL`
-- `SMTP_USER`
-- `SMTP_PASSWORD` (an email-provider app password, never the normal account password)
-- `EMAIL_FROM`
-- `EMAIL_TO`
+1. **Company watchlist:** `state/watchlist.json` is empty. The owner must add each NSE symbol, its exact official company name and verified aliases. This branch is public; the list must contain only information the owner is comfortable exposing.
+2. **Notification credentials:** the owner must configure GitHub Actions secrets for WhatsApp and/or SMTP. Without secrets, the system remains in report-only mode. WhatsApp costs and eligibility depend on the provider/Meta account.
+3. **Live source validation:** verify NSE/BSE page layouts against live responses and keep parser fixtures current. GitHub Actions scheduled runs can be delayed.
+4. **IPO financial verification:** complete table-aware prospectus extraction, financial-period and unit mapping, restated-period handling, consolidated/standalone reconciliation, and issuer-fact verification.
+5. **Results coverage:** expand beyond the current conservative NSE/XBRL subset; unsupported PDF/XBRL layouts must remain unavailable rather than guessed.
+6. **Live notification test:** after secrets are configured, approve a non-sensitive test and verify provider acceptance and email fallback behavior.
+7. **Post-merge scheduled run:** verify at least one real scheduled workflow on `main`, including state-branch persistence and expected report artifacts.
 
-These must be added through GitHub repository Settings → Secrets and variables → Actions. The repository integration used for code changes does not provide a safe way to set these secret values on the user's behalf.
+## Safety and cost boundaries
 
-## Delivery and safety gates
-
-- A clean CI run must pass before a workflow is enabled for scheduled production delivery.
-- Unit tests cover source normalization, evidence gates, scoring, state validation, idempotency, and provider fallback.
-- Integration tests use fake HTTP/provider adapters and never send real messages.
-- A production analysis cannot use demo fixtures, hard-coded financials, or unverified secondary-source data as facts.
-- The system must never emit `ATTRACTIVE`, `AVOID`, or `APPLY` from missing/conflicting critical inputs.
-- Notification tests are manual and clearly labelled; normal CI does not send messages.
-- Every scheduled run must be safe to repeat without duplicate notifications.
-- No secret or personal contact detail may appear in commits, artifacts, logs, or public state.
-
-## Implementation phases
-
-1. **Audit and containment:** preserve the current branch; add CI; fix dependency declarations; disable fake data from production paths.
-2. **Persistence and execution:** restore/write sanitized state branch data, concurrency lock, atomic state updates, bounded retries, run history and recovery.
-3. **Source adapters:** implement official-source adapters with source-level tests; secondary portals only discover candidates.
-4. **Analysis and reports:** connect verified evidence to deterministic calculations; mark unsupported metrics as unavailable; generate report artifacts.
-5. **Notifications:** implement actual WhatsApp Cloud API POST with strict configuration validation and email fallback; test with mocked providers.
-6. **Schedule and acceptance:** weekday monitoring, daily summary, manual replay, failure alerts, end-to-end tests, and documentation.
-
-## Current rollout status
-
-The repository audit identified critical blockers in live source ingestion, production analysis inputs, WhatsApp delivery, and persistent state. The automation must remain in safe/test mode until those blockers are fixed and CI verifies the end-to-end path.
+- Do not enable `ENABLE_DEMO_ANALYSIS` in production.
+- Do not issue `APPLY`, `AVOID`, or buy/sell conclusions until prospectus facts are verified and the deterministic analysis pipeline consumes those verified facts.
+- Never store phone numbers, email addresses, credentials, access tokens, private message text or financial statements in the public state branch.
+- GitHub-hosted Actions and open-source Python libraries avoid a separate server and mandatory AI API. GitHub quotas, SMTP provider limits, and WhatsApp provider charges/eligibility still apply.
+- A provider's accepted response is not proof that the person received the message.

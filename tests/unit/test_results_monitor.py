@@ -168,6 +168,13 @@ def test_bse_results_parser_requires_exact_company_and_normalizes_attachment():
                 "DT_TM": "2026-10-30T16:31:00",
                 "ATTACHMENTNAME": "other.pdf",
             },
+            {
+                "NEWSID": "missing-code",
+                "SLONGNAME": "RNIT AI SOLUTIONS LIMITED",
+                "NEWSSUB": "RNIT AI SOLUTIONS LIMITED - Financial Results",
+                "DT_TM": "2026-10-30T16:32:00",
+                "ATTACHMENTNAME": "missing-code.pdf",
+            },
         ]
     }
     company = {

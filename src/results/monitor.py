@@ -4,6 +4,7 @@ The monitor reports only values found in a source filing. It never infers financ
 performance from a filing title and never emits a buy/sell recommendation.
 """
 import asyncio
+from io import BytesIO
 import hashlib
 import time
 import os
@@ -17,6 +18,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 import requests
+from pypdf import PdfReader
 from bs4 import BeautifulSoup
 
 from src.common.config import settings
@@ -641,7 +643,53 @@ def _format_metric(value: Optional[float], suffix: str = "") -> str:
     return "Not available" if value is None else f"{value:,.2f}{suffix}"
 
 
-def _report_text(item: Dict[str, Any], metrics: Dict[str, Any]) -> str:
+def extract_pdf_text(pdf_content: bytes, *, max_pages: int = 12, max_chars: int = 12000) -> Dict[str, Any]:
+    """Extract a bounded, page-labelled text excerpt from a filing PDF.
+
+    This is source transcription for review, not financial metric extraction. It
+    deliberately does not interpret tables or infer financial values.
+    """
+    if not pdf_content:
+        return {"status": "UNAVAILABLE", "reason": "The PDF attachment was empty."}
+    if len(pdf_content) > 15_000_000:
+        return {"status": "UNAVAILABLE", "reason": "The PDF exceeds the 15 MB extraction safety limit."}
+    if not pdf_content.startswith(b"%PDF-"):
+        return {"status": "UNAVAILABLE", "reason": "The attachment did not have a PDF signature."}
+    try:
+        reader = PdfReader(BytesIO(pdf_content), strict=False)
+        pages = []
+        chars_left = max_chars
+        for index, page in enumerate(reader.pages[:max_pages], start=1):
+            if chars_left <= 0:
+                break
+            try:
+                page_text = _clean(page.extract_text() or "")
+            except Exception:
+                page_text = ""
+            if not page_text:
+                continue
+            excerpt = page_text[:chars_left]
+            pages.append(f"[Page {index}]\n{excerpt}")
+            chars_left -= len(excerpt)
+        if not pages:
+            return {
+                "status": "UNAVAILABLE",
+                "reason": "No selectable text was found; the PDF may be scanned or image-only.",
+            }
+        return {
+            "status": "EXTRACTED",
+            "text": "\n\n".join(pages),
+            "pages_extracted": len(pages),
+            "truncated": len(reader.pages) > max_pages or chars_left <= 0,
+        }
+    except Exception as exc:
+        return {
+            "status": "UNAVAILABLE",
+            "reason": f"PDF text extraction failed ({type(exc).__name__}).",
+        }
+
+
+def _report_text(item: Dict[str, Any], metrics: Dict[str, Any], document_text: Optional[Dict[str, Any]] = None) -> str:
     attachment = item.get("attachment_url") or item["source_url"]
     if metrics.get("status") == "EXTRACTED":
         analysis = (
@@ -666,8 +714,28 @@ def _report_text(item: Dict[str, Any], metrics: Dict[str, Any]) -> str:
         f"- **Statement basis:** {item.get('consolidation') or 'Not specified'}\n"
         f"- **Official source:** {item['source_url']}\n"
         f"- **Filing attachment:** {attachment}\n"
-        f"- **Details / PDF attachment:** {item.get('details_url') or 'Not available'}\n\n"
+        f"- **Details / PDF attachment:** {item.get('details_url') or 'Not available'}\n"
+        f"- **Announcement:** {item.get('headline') or 'Not provided'}\n\n"
         f"## Extracted financial metrics\n\n{analysis}\n{analysis_note}\n"
+        + _pdf_text_section(document_text)
+    )
+
+
+def _pdf_text_section(document_text: Optional[Dict[str, Any]]) -> str:
+    if not document_text:
+        return ""
+    if document_text.get("status") != "EXTRACTED":
+        return (
+            "\n## Source document text\n\n"
+            f"Text extraction unavailable: {document_text.get('reason', 'No readable PDF text was found.')}\n"
+            "The official filing link above remains the authoritative source.\n"
+        )
+    suffix = "\n\n*Excerpt only; verify figures, units, statement basis, and reporting period against the original filing.*"
+    if document_text.get("truncated"):
+        suffix += " The excerpt was truncated to keep the report readable."
+    return (
+        "\n## Source document text (page-labelled excerpt)\n\n"
+        f"{document_text.get('text', '')}{suffix}\n"
     )
 
 
@@ -823,7 +891,30 @@ async def monitor_financial_results() -> Dict[str, Any]:
                 continue
             new_filings += 1
             metrics: Dict[str, Any] = {"status": "UNAVAILABLE", "reason": "No supported XBRL attachment was detected."}
+            document_text: Optional[Dict[str, Any]] = None
             attachment = item.get("xbrl_url") or item.get("attachment_url") or ""
+            if attachment.lower().split("?", 1)[0].endswith(".pdf"):
+                try:
+                    pdf_response = await http_client.get(
+                        attachment,
+                        headers={
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/156.0.0.0 Safari/537.36",
+                            "Accept": "application/pdf,*/*;q=0.8",
+                            "Referer": BSE_RESULTS_PAGE_URL if exchange == "BSE" else NSE_RESULTS_URL,
+                        },
+                        timeout=45.0,
+                    )
+                    document_text = extract_pdf_text(pdf_response.content)
+                except Exception as exc:
+                    document_text = {
+                        "status": "UNAVAILABLE",
+                        "reason": f"PDF download or extraction failed ({type(exc).__name__}).",
+                    }
+                    logger.warning(
+                        "PDF text extraction failed for %s (%s).",
+                        symbol,
+                        type(exc).__name__,
+                    )
             if attachment.lower().endswith((".xml", ".xbrl")) or "/xbrl/" in attachment.lower():
                 try:
                     xbrl_response = await http_client.get(
@@ -856,7 +947,7 @@ async def monitor_financial_results() -> Dict[str, Any]:
             safe_period = re.sub(r"[^0-9A-Za-z_-]+", "_", str(safe_period_value))
             safe_symbol = re.sub(r"[^0-9A-Za-z_-]+", "_", symbol)
             report_path = report_dir / f"{safe_symbol}_{safe_period}_{item['event_key'][-8:]}.md"
-            report_content = _report_text(item, metrics)
+            report_content = _report_text(item, metrics, document_text)
             report_path.write_text(report_content, encoding="utf-8")
             markdown_to_pdf(report_content, report_path.with_suffix(".pdf"), title=f"Financial Results - {symbol}")
             subject = f"Official results filing: {item['company_name']} ({symbol})"

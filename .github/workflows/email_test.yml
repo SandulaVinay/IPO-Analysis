@@ -26,10 +26,10 @@ jobs:
           APP_ENV: production
           ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL }}
           EMAIL_PROVIDER: smtp
-          SMTP_HOST: smtp.gmail.com
-          SMTP_PORT: 587
+          SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: python scripts/test_email.py

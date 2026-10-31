@@ -66,6 +66,17 @@ def _clean(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
 
 
+def is_official_attachment_url(url: str, exchange: str) -> bool:
+    """Accept only HTTPS attachment URLs hosted by the selected official exchange."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme.lower() != "https" or not host:
+        return False
+    exchange_name = str(exchange or "").upper()
+    official_domain = "bseindia.com" if exchange_name == "BSE" else "nseindia.com"
+    return host == official_domain or host.endswith("." + official_domain)
+
+
 def _key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
@@ -918,12 +929,7 @@ async def monitor_financial_results() -> Dict[str, Any]:
             attachment = item.get("xbrl_url") or item.get("attachment_url") or ""
             if attachment.lower().split("?", 1)[0].endswith(".pdf"):
                 try:
-                    attachment_host = (urlparse(attachment).hostname or "").lower()
-                    allowed_hosts = {"bseindia.com", "www.bseindia.com", "nseindia.com", "www.nseindia.com"}
-                    if urlparse(attachment).scheme != "https" or not any(
-                        attachment_host == host or attachment_host.endswith("." + host)
-                        for host in allowed_hosts
-                    ):
+                    if not is_official_attachment_url(attachment, exchange):
                         raise ValueError("PDF attachment URL is not an approved official exchange HTTPS URL.")
                     pdf_response = await http_client.get(
                         attachment,
@@ -950,10 +956,7 @@ async def monitor_financial_results() -> Dict[str, Any]:
                     )
             if attachment.lower().endswith((".xml", ".xbrl")) or "/xbrl/" in attachment.lower():
                 try:
-                    attachment_host = (urlparse(attachment).hostname or "").lower()
-                    if urlparse(attachment).scheme != "https" or not (
-                        attachment_host == "nseindia.com" or attachment_host.endswith(".nseindia.com")
-                    ):
+                    if not is_official_attachment_url(attachment, "NSE"):
                         raise ValueError("XBRL attachment URL is not an approved official NSE HTTPS URL.")
                     xbrl_response = await http_client.get(
                         attachment,

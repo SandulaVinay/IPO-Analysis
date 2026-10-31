@@ -17,6 +17,7 @@ on:
       - "src/notifications/email.py"
       - "src/ingestion/client.py"
       - "src/ingestion/scrapers.py"
+      - "scripts/diagnose_external_services.py"
 
 permissions:
   contents: write
@@ -51,6 +52,26 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Diagnose exchange and SMTP network reachability
+        if: always()
+        run: python scripts/diagnose_external_services.py
+
+      # Enable this repository variable only when you want a real test email.
+      # The test uses configured Actions secrets and never prints their values.
+      - name: Verify SMTP email configuration (manual opt-in)
+        if: github.event_name == 'workflow_dispatch' && vars.RUN_SMTP_SMOKE_TEST == 'true'
+        env:
+          APP_ENV: production
+          ENABLE_EMAIL: "true"
+          EMAIL_PROVIDER: smtp
+          SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: python scripts/test_email.py
 
       - name: Run IPO discovery
         env:

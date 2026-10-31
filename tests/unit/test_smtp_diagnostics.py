@@ -36,11 +36,12 @@ def test_smtp_auth_probe_normalizes_password_and_sends_no_message(monkeypatch):
         host="smtp.example.test",
         preferred_port=587,
         username="sender@example.test",
-        password=" app-pass word\n",
+        password=" app-pass word\\n",
     )
 
     assert result["success"] is True
     assert result["port"] == 587
+    assert result["attempts"] == [{"port": 587, "stage": "authenticated", "error": None}]
     assert ("login", "sender@example.test", "app-password") in calls
     assert ("noop",) in calls
 
@@ -85,6 +86,56 @@ def test_smtp_auth_probe_tries_gmail_ssl_alternate_port(monkeypatch):
     assert result["success"] is True
     assert result["port"] == 465
     assert attempts == [("starttls", 587), ("ssl", 465)]
+    assert result["attempts"][0]["error"] == "SMTP OSError during connect on port 587: network blocked"
+    assert result["attempts"][1] == {"port": 465, "stage": "authenticated", "error": None}
+
+
+def test_smtp_auth_probe_reports_both_gmail_login_disconnects(monkeypatch):
+    import smtplib
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout=30):
+            self.port = port
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def ehlo(self):
+            pass
+
+        def starttls(self, context=None):
+            pass
+
+        def login(self, username, password):
+            raise smtplib.SMTPServerDisconnected(
+                f"connection unexpectedly closed on port {self.port}"
+            )
+
+    class FakeSMTPSSL(FakeSMTP):
+        def __init__(self, host, port, timeout=30, context=None):
+            self.port = port
+
+    monkeypatch.setattr("src.notifications.smtp_diagnostics.smtplib.SMTP", FakeSMTP)
+    monkeypatch.setattr("src.notifications.smtp_diagnostics.smtplib.SMTP_SSL", FakeSMTPSSL)
+
+    result = authenticate_smtp(
+        host="smtp.gmail.com",
+        preferred_port=587,
+        username="sender@gmail.com",
+        password="app-password",
+    )
+
+    assert result["success"] is False
+    assert len(result["attempts"]) == 2
+    assert result["attempts"][0]["port"] == 587
+    assert result["attempts"][0]["stage"] == "login"
+    assert "closed on port 587" in result["attempts"][0]["error"]
+    assert result["attempts"][1]["port"] == 465
+    assert result["attempts"][1]["stage"] == "login"
+    assert "closed on port 465" in result["attempts"][1]["error"]
 
 
 def test_smtp_auth_probe_reports_missing_configuration():
@@ -97,6 +148,7 @@ def test_smtp_auth_probe_reports_missing_configuration():
 
     assert result["success"] is False
     assert result["stage"] == "configuration"
+    assert result["attempts"] == []
 
 
 def test_settings_map_uppercase_github_actions_smtp_variables(monkeypatch):

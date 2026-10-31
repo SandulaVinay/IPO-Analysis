@@ -117,7 +117,7 @@ async def test_recent_nse_results_create_email_report_and_dedupe(monkeypatch, tm
     assert first["notifications_accepted"] == 1
     assert len(email_calls) == 1
     assert email_calls[0]["subject"] == (
-        "Official results filing: Reliance Industries Limited (RELIANCE)"
+        "Financial Results Alert | Reliance Industries Limited (RELIANCE) | Second Quarter ended 30-Sep-2026"
     )
     assert "30-Sep-2026" in email_calls[0]["content"]
     assert "Official filing:" in email_calls[0]["content"]

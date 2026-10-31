@@ -29,6 +29,7 @@ from src.notifications.email import EmailProvider
 from src.notifications.whatsapp import WhatsAppProvider
 from src.state.store import StateStore
 from src.reporting.pdf import markdown_to_pdf
+from src.results.email_analysis import build_results_email
 
 NSE_ROOT_URL = "https://www.nseindia.com/"
 NSE_RESULTS_URL = "https://www.nseindia.com/companies-listing/corporate-filings-financial-results"
@@ -950,33 +951,10 @@ async def monitor_financial_results() -> Dict[str, Any]:
             report_content = _report_text(item, metrics, document_text)
             report_path.write_text(report_content, encoding="utf-8")
             markdown_to_pdf(report_content, report_path.with_suffix(".pdf"), title=f"Financial Results - {symbol}")
-            subject = f"Official results filing: {item['company_name']} ({symbol})"
-            content = (
-                f"Official {exchange} financial-results filing detected.\n\n"
-                f"Company: {item['company_name']} ({symbol})\n"
-                f"Exchange: {exchange}\n"
-                f"Period ended: {item.get('period_ended') or 'Not disclosed in the filing notice'}\n"
-                f"Period/category: {item.get('relating_to') or 'Not specified'}\n"
-                f"Broadcast: {item.get('broadcast_time') or 'Not specified'}\n"
-                f"Official filing: {attachment or item['source_url']}\n"
-                + (f"Details PDF: {item['details_url']}\n" if item.get("details_url") else "")
-            )
-            if item.get("headline"):
-                content += f"Announcement: {item['headline']}\n"
             run_id = os.getenv("GITHUB_RUN_ID")
             repository = os.getenv("GITHUB_REPOSITORY", "SandulaVinay/IPO-Analysis")
-            if run_id:
-                content += f"\nFull PDF report artifact: https://github.com/{repository}/actions/runs/{run_id}\n"
-            if metrics.get("status") == "EXTRACTED":
-                content += (
-                    f"Revenue: ₹{_format_metric(metrics.get('revenue_cr'))} Cr\n"
-                    f"PAT: ₹{_format_metric(metrics.get('pat_cr'))} Cr\n"
-                    f"EPS: ₹{_format_metric(metrics.get('eps'))}\n"
-                    f"Revenue YoY: {_format_metric(metrics.get('revenue_yoy_pct'), '%')}\n"
-                    f"PAT YoY: {_format_metric(metrics.get('pat_yoy_pct'), '%')}\n"
-                )
-            else:
-                content += "Automated financial metrics were unavailable for this filing; no performance verdict is implied.\n"
+            report_url = f"https://github.com/{repository}/actions/runs/{run_id}" if run_id else None
+            subject, content = build_results_email(item, metrics, report_url=report_url)
 
             # Email is the primary channel for this project; WhatsApp is only a
             # fallback so a WhatsApp API acceptance cannot suppress the email alert.

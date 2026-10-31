@@ -82,7 +82,7 @@ def _parse_broadcast_datetime(value: Any) -> Optional[datetime]:
     if not value:
         return None
     raw = _clean(str(value))
-    if raw.lower().startswith("not provided"):
+    if raw.lower() in {"-", "--", "—", "n/a", "na", "null", "none", "not available", "not provided by nse", "not provided by bse"} or raw.lower().startswith("not provided"):
         return None
     normalized = raw.replace(" UTC", "+00:00").replace("Z", "+00:00")
     try:
@@ -154,7 +154,21 @@ def parse_nse_financial_results_payload(
             continue
 
         period_ended = _clean(str(row.get("toDate") or row.get("periodEnded") or ""))
-        broadcast = _clean(str(row.get("broadCastDate") or row.get("broadcastDate") or row.get("filingDate") or ""))
+        # Exchange feeds may provide "-" in the first timestamp field while a
+        # later fallback field contains the actual announcement time.
+        broadcast = next(
+            (
+                value for value in (
+                    row.get("broadCastDate"),
+                    row.get("broadcastDate"),
+                    row.get("filingDate"),
+                    row.get("broadcast_time"),
+                )
+                if _clean(str(value or "")).lower() not in {"", "-", "--", "—", "n/a", "na", "null", "none"}
+            ),
+            "",
+        )
+        broadcast = _clean(str(broadcast))
         relating = _clean(str(row.get("relatingTo") or row.get("relating_to") or period_type))
         xbrl_value = str(row.get("xbrl") or row.get("xbrlUrl") or "").strip()
         details_value = str(row.get("resultDetailedDataLink") or row.get("detailsUrl") or "").strip()
@@ -569,7 +583,19 @@ def parse_bse_financial_results_payload(
             headline = "Financial results filing"
         if not category:
             category = "Financial results"
-        broadcast = _clean(str(row.get("DT_TM") or row.get("NEWS_DT") or row.get("News_submission_dt") or ""))
+        broadcast = next(
+            (
+                value for value in (
+                    row.get("DT_TM"),
+                    row.get("NEWS_DT"),
+                    row.get("News_submission_dt"),
+                    row.get("NEWS_DT_TIME"),
+                )
+                if _clean(str(value or "")).lower() not in {"", "-", "--", "—", "n/a", "na", "null", "none"}
+            ),
+            "",
+        )
+        broadcast = _clean(str(broadcast))
         news_id = str(row.get("NEWSID") or row.get("XML_NAME") or "").strip()
         attachment_name = str(row.get("ATTACHMENTNAME") or "").strip()
         attachment_url = None
@@ -858,22 +884,24 @@ async def monitor_financial_results() -> Dict[str, Any]:
             else:
                 content += "Automated financial metrics were unavailable for this filing; no performance verdict is implied.\n"
 
-            result = await WhatsAppProvider().send_notification(
-                recipient=settings.whatsapp_recipient_phone,
+            # Email is the primary channel for this project; WhatsApp is only a
+            # fallback so a WhatsApp API acceptance cannot suppress the email alert.
+            result = await EmailProvider().send_notification(
+                recipient=settings.email_to,
                 subject=subject,
                 content=content,
-                metadata={"attachment_path": str(report_path.with_suffix(".pdf"))},
+                metadata={"attachments": [str(report_path.with_suffix(".pdf"))]},
             )
-            channel = "WHATSAPP"
+            channel = "EMAIL"
             success = bool(result.get("success") and (result.get("accepted") or result.get("delivered")))
             if not success:
-                result = await EmailProvider().send_notification(
-                    recipient=settings.email_to,
+                result = await WhatsAppProvider().send_notification(
+                    recipient=settings.whatsapp_recipient_phone,
                     subject=subject,
                     content=content,
-                    metadata={"attachments": [str(report_path.with_suffix(".pdf"))]},
+                    metadata={"attachment_path": str(report_path.with_suffix(".pdf"))},
                 )
-                channel = "EMAIL"
+                channel = "WHATSAPP"
                 success = bool(result.get("success") and (result.get("accepted") or result.get("delivered")))
             if success:
                 accepted_count += 1

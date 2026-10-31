@@ -94,7 +94,14 @@ class EmailProvider(NotificationProvider):
             msg["Subject"] = subject
             msg["From"] = (settings.email_from or smtp_user).strip()
             msg["To"] = to_addr
-            msg.attach(MIMEText(content, "plain", "utf-8"))
+            html_content = (metadata or {}).get("html_body")
+            if html_content:
+                alternative = MIMEMultipart("alternative")
+                alternative.attach(MIMEText(content, "plain", "utf-8"))
+                alternative.attach(MIMEText(str(html_content), "html", "utf-8"))
+                msg.attach(alternative)
+            else:
+                msg.attach(MIMEText(content, "plain", "utf-8"))
 
             attachments = (metadata or {}).get("attachments", [])
             if attachments and not isinstance(attachments, list):

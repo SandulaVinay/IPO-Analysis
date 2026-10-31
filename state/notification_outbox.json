@@ -16,7 +16,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "RELIANCE",
-      "updated_at": "2026-10-31T04:41:20.268479+00:00"
+      "updated_at": "2026-10-31T04:45:11.418273+00:00"
     },
     {
       "channel": null,
@@ -25,7 +25,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "RELIANCE",
-      "updated_at": "2026-10-31T04:41:20.559796+00:00"
+      "updated_at": "2026-10-31T04:45:11.704535+00:00"
     },
     {
       "channel": null,
@@ -34,7 +34,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "TCS",
-      "updated_at": "2026-10-31T04:41:20.914583+00:00"
+      "updated_at": "2026-10-31T04:45:11.991316+00:00"
     },
     {
       "channel": null,
@@ -43,7 +43,16 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "TCS",
-      "updated_at": "2026-10-31T04:41:21.239513+00:00"
+      "updated_at": "2026-10-31T04:45:12.238842+00:00"
+    },
+    {
+      "channel": null,
+      "event_date": "2026-10-29T17:20:11.97",
+      "event_key": "RESULT_e4645ba94977c259932bf0df13da9587",
+      "event_type": "FINANCIAL_RESULTS_FILING",
+      "status": "FAILED",
+      "symbol": "RNITAI",
+      "updated_at": "2026-10-31T04:45:12.246421+00:00"
     },
     {
       "channel": null,
@@ -52,7 +61,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "CLEAN",
-      "updated_at": "2026-10-31T04:41:21.565026+00:00"
+      "updated_at": "2026-10-31T04:45:13.461318+00:00"
     },
     {
       "channel": null,
@@ -61,7 +70,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "CLEAN",
-      "updated_at": "2026-10-31T04:41:21.859231+00:00"
+      "updated_at": "2026-10-31T04:45:13.920924+00:00"
     },
     {
       "channel": null,
@@ -70,9 +79,9 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "GODAVARIB",
-      "updated_at": "2026-10-31T04:41:22.279830+00:00"
+      "updated_at": "2026-10-31T04:45:14.193930+00:00"
     }
   ],
   "schema_version": 1,
-  "updated_at": "2026-10-31T04:41:22.279840+00:00"
+  "updated_at": "2026-10-31T04:45:14.193939+00:00"
 }

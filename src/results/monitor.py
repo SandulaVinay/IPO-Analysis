@@ -31,6 +31,7 @@ from src.state.store import StateStore
 from src.reporting.pdf import markdown_to_pdf
 from src.results.email_analysis import build_results_email
 from src.results.email_html import results_email_html
+from src.results.document_extractors import detect_document_format, extract_structured_document, extract_screener_quarter_metrics
 
 NSE_ROOT_URL = "https://www.nseindia.com/"
 NSE_RESULTS_URL = "https://www.nseindia.com/companies-listing/corporate-filings-financial-results"
@@ -425,6 +426,8 @@ def parse_financial_results_page(html: str, symbol: str, page_url: str) -> List[
                 if "xbrl" in item["label"].lower()
                 or any(ext in item["url"].lower() for ext in (".xml", ".xbrl"))
                 or "/xbrl/" in item["url"].lower()
+                or "/ixbrl/" in item["url"].lower()
+                or "/ixbrl" in item["url"].lower()
             ), None)
             details_attachment = next((
                 item["url"] for item in links
@@ -432,7 +435,7 @@ def parse_financial_results_page(html: str, symbol: str, page_url: str) -> List[
                 or item["url"].lower().split("?")[0].endswith(".pdf")
             ), None)
             attachment = xbrl_attachment or details_attachment or next(
-                (item["url"] for item in links if item["url"].lower().split("?")[0].endswith(".xlsx")),
+                (item["url"] for item in links if item["url"].lower().split("?")[0].endswith((".xlsx", ".csv", ".html"))),
                 None,
             )
             event_material = "|".join([symbol.upper(), period_end, relating, broadcast, consolidation, attachment or page_url])
@@ -959,38 +962,72 @@ async def monitor_financial_results() -> Dict[str, Any]:
                         symbol,
                         type(exc).__name__,
                     )
-            if attachment.lower().endswith((".xml", ".xbrl")) or "/xbrl/" in attachment.lower():
+            if attachment and not attachment.lower().split("?", 1)[0].endswith(".pdf"):
                 try:
-                    if not is_official_attachment_url(attachment, "NSE"):
-                        raise ValueError("XBRL attachment URL is not an approved official NSE HTTPS URL.")
-                    xbrl_response = await http_client.get(
+                    if not is_official_attachment_url(attachment, exchange):
+                        raise ValueError("Structured attachment URL is not an approved official exchange HTTPS URL.")
+                    response = await http_client.get(
                         attachment,
                         headers={
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
-                            "Accept": "application/xml,text/xml,application/xhtml+xml,*/*;q=0.8",
-                            "Accept-Language": "en-US,en;q=0.9",
-                            "Referer": NSE_RESULTS_URL,
-                            "Origin": "https://www.nseindia.com",
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/156.0.0.0 Safari/537.36",
+                            "Accept": "application/xml,text/xml,application/xhtml+xml,text/html,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,*/*;q=0.8",
+                            "Referer": BSE_RESULTS_PAGE_URL if exchange == "BSE" else NSE_RESULTS_URL,
                         },
                         timeout=45.0,
                     )
-                    xbrl_response.raise_for_status()
-                    if len(xbrl_response.content) > 10_000_000:
-                        raise ValueError("XBRL attachment exceeds the 10 MB download safety limit.")
-                    if item.get("period_ended"):
-                        metrics = extract_xbrl_metrics(
-                            xbrl_response.content, item["period_ended"], item.get("relating_to") or ""
+                    response.raise_for_status()
+                    if len(response.content) > 15_000_000:
+                        raise ValueError("Structured attachment exceeds the 15 MB download safety limit.")
+                    fmt = detect_document_format(response.content, response.headers.get("content-type", ""), attachment)
+                    if fmt in {"xbrl_xml", "ixbrl"} and item.get("period_ended"):
+                        structured = extract_structured_document(response.content, response.headers.get("content-type", ""), attachment)
+                        if structured.get("status") == "EXTRACTED":
+                            metrics = extract_xbrl_metrics(
+                                structured["xbrl_xml"], item["period_ended"], item.get("relating_to") or ""
+                            )
+                    elif fmt in {"xlsx", "csv", "html"}:
+                        document_text = extract_structured_document(
+                            response.content, response.headers.get("content-type", ""), attachment
                         )
                 except Exception as exc:
                     errors += 1
-                    metrics = {"status": "UNAVAILABLE", "reason": f"XBRL extraction failed ({type(exc).__name__})."}
-                    attachment_host = urlparse(attachment).hostname or "unknown-host"
                     logger.warning(
-                        "XBRL extraction failed for %s from %s (%s).",
+                        "Structured attachment extraction failed for %s from %s (%s).",
                         symbol,
-                        attachment_host,
+                        urlparse(attachment).hostname or "unknown-host",
                         type(exc).__name__,
                     )
+                    if metrics.get("status") != "EXTRACTED":
+                        metrics = {"status": "UNAVAILABLE", "reason": f"Structured attachment extraction failed ({type(exc).__name__})."}
+
+            # Screener is a secondary fallback only when official structured extraction
+            # did not produce metrics. It is never described as exchange-verified.
+            if metrics.get("status") != "EXTRACTED" and item.get("period_ended"):
+                screener_url = str(company.get("screener_url") or "").strip()
+                if not screener_url and symbol:
+                    screener_url = f"https://www.screener.in/company/{symbol}/"
+                if screener_url.startswith("https://www.screener.in/company/"):
+                    try:
+                        fallback_response = await http_client.get(
+                            screener_url,
+                            headers={"User-Agent": "Mozilla/5.0 (compatible; IPO-Analysis/1.0)", "Accept": "text/html"},
+                            timeout=30.0,
+                        )
+                        fallback_response.raise_for_status()
+                        if len(fallback_response.content) <= 15_000_000:
+                            fallback_metrics = extract_screener_quarter_metrics(
+                                fallback_response.content, str(company.get("company_name") or item.get("company_name") or ""),
+                                str(item["period_ended"]),
+                            )
+                            if fallback_metrics.get("status") == "EXTRACTED":
+                                fallback_metrics["source_url"] = screener_url
+                                metrics = fallback_metrics
+                                logger.warning(
+                                    "%s metrics were sourced from Screener fallback; official extraction was unavailable. Verify against the exchange filing.",
+                                    symbol,
+                                )
+                    except Exception as exc:
+                        logger.info("Screener fallback unavailable for %s (%s).", symbol, type(exc).__name__)
 
             safe_period_value = item.get("period_ended") or item.get("broadcast_time") or "filing"
             safe_period = re.sub(r"[^0-9A-Za-z_-]+", "_", str(safe_period_value))

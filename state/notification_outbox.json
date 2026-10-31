@@ -10,78 +10,87 @@
       "updated_at": "2026-10-30T17:58:10.431172+00:00"
     },
     {
-      "channel": null,
+      "channel": "EMAIL",
       "event_date": "31-Dec-2024",
       "event_key": "RESULT_8bef3a0eb3d3c958b44018b73c0e5677",
       "event_type": "FINANCIAL_RESULTS_FILING",
-      "status": "FAILED",
+      "status": "ACCEPTED",
       "symbol": "RELIANCE",
-      "updated_at": "2026-10-31T05:53:22.123701+00:00"
+      "updated_at": "2026-10-31T06:05:14.158197+00:00"
     },
     {
-      "channel": null,
+      "channel": "EMAIL",
       "event_date": "31-Mar-2024",
       "event_key": "RESULT_e543be600301f2863d6e88b999321a7a",
       "event_type": "FINANCIAL_RESULTS_FILING",
-      "status": "FAILED",
+      "status": "ACCEPTED",
       "symbol": "RELIANCE",
-      "updated_at": "2026-10-31T05:53:22.436526+00:00"
+      "updated_at": "2026-10-31T06:05:15.931214+00:00"
     },
     {
-      "channel": null,
+      "channel": "EMAIL",
       "event_date": "31-Dec-2024",
       "event_key": "RESULT_c360450d2df9da0ee3b141885190b5df",
       "event_type": "FINANCIAL_RESULTS_FILING",
-      "status": "FAILED",
+      "status": "ACCEPTED",
       "symbol": "TCS",
-      "updated_at": "2026-10-31T05:53:22.786754+00:00"
+      "updated_at": "2026-10-31T06:05:17.920912+00:00"
     },
     {
-      "channel": null,
+      "channel": "EMAIL",
       "event_date": "31-Mar-2024",
       "event_key": "RESULT_d8a915cd6d24803407025290d1d849ea",
       "event_type": "FINANCIAL_RESULTS_FILING",
-      "status": "FAILED",
+      "status": "ACCEPTED",
       "symbol": "TCS",
-      "updated_at": "2026-10-31T05:53:23.113505+00:00"
+      "updated_at": "2026-10-31T06:05:19.704186+00:00"
     },
     {
-      "channel": null,
+      "channel": "EMAIL",
       "event_date": "2026-10-29T17:20:11.97",
       "event_key": "RESULT_e4645ba94977c259932bf0df13da9587",
       "event_type": "FINANCIAL_RESULTS_FILING",
-      "status": "FAILED",
+      "status": "ACCEPTED",
       "symbol": "RNITAI",
-      "updated_at": "2026-10-31T05:53:23.121210+00:00"
+      "updated_at": "2026-10-31T06:05:21.358703+00:00"
     },
     {
-      "channel": null,
+      "channel": "EMAIL",
       "event_date": "31-Dec-2024",
       "event_key": "RESULT_014cd0d38e633d28410b852e91f5de67",
       "event_type": "FINANCIAL_RESULTS_FILING",
-      "status": "FAILED",
+      "status": "ACCEPTED",
       "symbol": "CLEAN",
-      "updated_at": "2026-10-31T05:53:23.435834+00:00"
+      "updated_at": "2026-10-31T06:05:23.109331+00:00"
     },
     {
-      "channel": null,
+      "channel": "EMAIL",
       "event_date": "31-Mar-2024",
       "event_key": "RESULT_963db9726b90d5ea869cdfe279ad0720",
       "event_type": "FINANCIAL_RESULTS_FILING",
-      "status": "FAILED",
+      "status": "ACCEPTED",
       "symbol": "CLEAN",
-      "updated_at": "2026-10-31T05:53:23.742783+00:00"
+      "updated_at": "2026-10-31T06:05:24.889698+00:00"
     },
     {
-      "channel": null,
+      "channel": "EMAIL",
       "event_date": "31-Dec-2024",
       "event_key": "RESULT_ecc39906ff3f2fbb25563ea247b118d4",
       "event_type": "FINANCIAL_RESULTS_FILING",
-      "status": "FAILED",
+      "status": "ACCEPTED",
       "symbol": "GODAVARIB",
-      "updated_at": "2026-10-31T05:53:24.076529+00:00"
+      "updated_at": "2026-10-31T06:05:27.197362+00:00"
+    },
+    {
+      "channel": "EMAIL",
+      "event_date": "2026-10-31",
+      "event_key": "IPO_DAILY_DIGEST_2026-10-31",
+      "event_type": "DAILY_IPO_DIGEST",
+      "status": "ACCEPTED",
+      "symbol": "ALL",
+      "updated_at": "2026-10-31T06:05:30.643611+00:00"
     }
   ],
   "schema_version": 1,
-  "updated_at": "2026-10-31T05:53:24.076538+00:00"
+  "updated_at": "2026-10-31T06:05:30.643618+00:00"
 }

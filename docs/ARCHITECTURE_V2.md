@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A low-cost, scheduled Indian IPO and listed-company research assistant. GitHub Actions runs the jobs; Python performs deterministic calculations; official exchange/company filings are the source of truth; WhatsApp is the preferred alert channel with email fallback.
+A low-cost, scheduled Indian IPO and listed-company research assistant. GitHub Actions runs the jobs; Python performs deterministic calculations; official exchange/company filings are the source of truth; SMTP email is the preferred supported alert channel, while WhatsApp is deferred.
 
 This document describes the intended architecture and the implementation status. A feature is not production-ready merely because a module exists: it must pass tests and source-level validation.
 
@@ -34,7 +34,7 @@ GitHub Actions (weekday schedule + manual dispatch)
         |       +--> extract supported XBRL metrics only
         |       +--> write Markdown report artifact
         |
-        +--> WhatsApp Cloud API --> email fallback
+        +--> SMTP email (preferred; explicitly enabled only)\n        |\n        +--> WhatsApp (deferred; disabled by default)
         |
         +--> health checks, CI tests, sanitized state commit
                 |
@@ -80,7 +80,7 @@ Example watchlist entry (use the exact issuer name displayed on the NSE filing p
 5. If an XBRL instance is linked and matches supported tags/contexts/units, extract only supported revenue, PAT, EPS, and operating cash-flow facts. Compare current and prior-year matching periods when both are present.
 6. If the attachment is PDF/unsupported XBRL or the period/unit mapping is ambiguous, report the filing but label metrics unavailable. Do not infer a verdict.
 7. Write a Markdown report as a short-lived GitHub Actions artifact. Do not commit generated reports or issuer financial statements to the public state branch.
-8. Attempt WhatsApp first. If it fails, attempt email. Record provider acceptance, not assumed final delivery. A failed notification remains eligible for retry.
+8. Attempt SMTP email first only when explicitly enabled and configured. WhatsApp remains deferred unless its rollout is explicitly approved and configured. Record provider acceptance, not assumed final delivery. A failed notification remains eligible for retry.
 
 The BSE adapter currently detects and reports official result-announcement metadata; it does not yet extract financial metrics from BSE attachments. The NSE XBRL extractor is deliberately conservative and currently supports only a subset of tags and period contexts. It is **not** a general-purpose parser for every Indian GAAP/Ind AS filing. A reported metric must be checked against the source filing before it is used in an investment decision.
 

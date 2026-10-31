@@ -31,10 +31,17 @@ def build_results_email(item: Dict[str, Any], metrics: Dict[str, Any], report_ur
     lines = [
         "Dear Investor,",
         "",
-        f"An official financial-results filing has been identified for {company} ({symbol}) on {exchange}.",
+        f"A financial-results filing has been identified for {company} ({symbol}) on {exchange}.",
         "",
         "EXECUTIVE SUMMARY",
     ]
+    if metrics.get("source_status") == "FALLBACK":
+        lines.extend([
+            "DATA SOURCE WARNING: Official exchange extraction was unavailable. The figures below were retrieved from Screener.in as a secondary fallback and are NOT exchange-verified.",
+            "Fallback source: " + str(metrics.get("source_url") or "Screener.in"),
+            "Verify reporting period, units, and standalone/consolidated basis against the official NSE/BSE filing before relying on these figures.",
+            "",
+        ])
     if metrics.get("status") == "EXTRACTED":
         revenue = metrics.get("revenue_cr")
         pat = metrics.get("pat_cr")

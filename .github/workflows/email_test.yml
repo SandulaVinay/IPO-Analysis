@@ -32,4 +32,5 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          PYTHONPATH: ${{ github.workspace }}
         run: python scripts/test_email.py

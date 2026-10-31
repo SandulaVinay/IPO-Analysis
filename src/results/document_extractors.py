@@ -163,3 +163,67 @@ def extract_structured_document(content: bytes, content_type: str = "", url: str
     if fmt == "pdf":
         return {"status": "REVIEW_REQUIRED", "format": "pdf", "reason": "Use bounded PDF text extraction; scanned PDFs require OCR and human validation."}
     return {"status": "UNAVAILABLE", "reason": "Unsupported or unrecognized attachment format."}
+
+
+def extract_screener_quarter_metrics(html: bytes, company_name: str, period_ended: str) -> Dict[str, Any]:
+    """Best-effort fallback from Screener's quarterly table, requiring issuer and period match.
+
+    Screener is secondary only: caller must invoke this after exchange extraction fails and
+    must retain the source URL and FALLBACK status. Values are not treated as exchange-verified.
+    """
+    if not html or len(html) > MAX_DOCUMENT_BYTES:
+        return {"status": "UNAVAILABLE", "reason": "Screener page is empty or exceeds the size limit."}
+    soup = BeautifulSoup(html, "lxml")
+    title = soup.title.get_text(" ", strip=True) if soup.title else ""
+    expected = re.sub(r"[^a-z0-9]+", " ", company_name.lower()).strip()
+    observed = re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
+    if not expected or expected not in observed:
+        return {"status": "UNAVAILABLE", "reason": "Screener issuer title did not match the configured company."}
+    try:
+        from datetime import datetime
+        target = datetime.strptime(period_ended[:10], "%Y-%m-%d") if re.match(r"^\d{4}-\d{2}-\d{2}", period_ended) else datetime.strptime(period_ended, "%d-%b-%Y")
+        month_alias = target.strftime("%b %Y").lower()
+    except (TypeError, ValueError):
+        return {"status": "UNAVAILABLE", "reason": "Reporting period could not be normalized for Screener matching."}
+    for table in soup.find_all("table"):
+        rows = [[cell.get_text(" ", strip=True) for cell in tr.find_all(["th", "td"])] for tr in table.find_all("tr")]
+        if not rows:
+            continue
+        headers = [re.sub(r"\s+", " ", value).strip().lower() for value in rows[0]]
+        col = next((i for i, header in enumerate(headers) if month_alias in header), None)
+        if col is None:
+            continue
+        values = {}
+        for row in rows[1:]:
+            if len(row) <= col:
+                continue
+            label = re.sub(r"[^a-z0-9]+", " ", row[0].lower()).strip()
+            raw = row[col].replace(",", "").replace("%", "").strip()
+            try:
+                number = float(raw)
+            except ValueError:
+                continue
+            if label in {"sales", "revenue", "revenue from operations"}:
+                values["revenue_cr"] = number
+            elif label in {"net profit", "net profit loss", "profit after tax", "pat"}:
+                values["pat_cr"] = number
+            elif label in {"eps", "eps in rs", "eps rs"}:
+                values["eps"] = number
+        if values:
+            return {
+                "status": "EXTRACTED",
+                "source_status": "FALLBACK",
+                "source_name": "Screener.in",
+                "source_url": "",
+                "period_label": month_alias,
+                "revenue_cr": values.get("revenue_cr"),
+                "pat_cr": values.get("pat_cr"),
+                "eps": values.get("eps"),
+                "cfo_cr": None,
+                "revenue_yoy_pct": None,
+                "pat_yoy_pct": None,
+                "revenue_qoq_pct": None,
+                "pat_qoq_pct": None,
+                "validation_note": "Secondary-source figures; independently verify against the official exchange filing.",
+            }
+    return {"status": "UNAVAILABLE", "reason": "No matching quarterly period and recognized metric rows were found on Screener."}

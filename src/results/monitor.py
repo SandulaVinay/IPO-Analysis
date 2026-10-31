@@ -73,6 +73,8 @@ def is_official_attachment_url(url: str, exchange: str) -> bool:
     if parsed.scheme.lower() != "https" or not host:
         return False
     exchange_name = str(exchange or "").upper()
+    if exchange_name not in {"BSE", "NSE"}:
+        return False
     official_domain = "bseindia.com" if exchange_name == "BSE" else "nseindia.com"
     return host == official_domain or host.endswith("." + official_domain)
 
@@ -881,7 +883,10 @@ async def monitor_financial_results() -> Dict[str, Any]:
                 type(exc).__name__,
             )
             for company in nse_companies:
-                nse_rows_by_symbol[str(company.get("symbol") or "").strip().upper()] = []
+                symbol = str(company.get("symbol") or "").strip().upper()
+                # Preserve any issuer filings already fetched before a later
+                # issuer/feed error; don't erase valid partial results.
+                nse_rows_by_symbol.setdefault(symbol, [])
 
     bse_rows_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
     if bse_companies:

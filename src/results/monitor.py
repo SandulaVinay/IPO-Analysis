@@ -30,6 +30,7 @@ from src.notifications.whatsapp import WhatsAppProvider
 from src.state.store import StateStore
 from src.reporting.pdf import markdown_to_pdf
 from src.results.email_analysis import build_results_email
+from src.results.email_html import results_email_html
 
 NSE_ROOT_URL = "https://www.nseindia.com/"
 NSE_RESULTS_URL = "https://www.nseindia.com/companies-listing/corporate-filings-financial-results"
@@ -962,7 +963,10 @@ async def monitor_financial_results() -> Dict[str, Any]:
                 recipient=settings.email_to,
                 subject=subject,
                 content=content,
-                metadata={"attachments": [str(report_path.with_suffix(".pdf"))]},
+                metadata={
+                    "attachments": [str(report_path.with_suffix(".pdf"))],
+                    "html_body": results_email_html(content),
+                },
             )
             channel = "EMAIL"
             success = bool(result.get("success") and (result.get("accepted") or result.get("delivered")))

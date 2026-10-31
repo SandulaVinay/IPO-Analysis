@@ -175,8 +175,8 @@ def extract_screener_quarter_metrics(html: bytes, company_name: str, period_ende
         return {"status": "UNAVAILABLE", "reason": "Screener page is empty or exceeds the size limit."}
     soup = BeautifulSoup(html, "lxml")
     title = soup.title.get_text(" ", strip=True) if soup.title else ""
-    expected = re.sub(r"[^a-z0-9]+", " ", company_name.lower()).strip()
-    observed = re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
+    expected = re.sub(r"[^a-z0-9]+", " ", company_name.lower()).strip().replace(" limited", " ltd")
+    observed = re.sub(r"[^a-z0-9]+", " ", title.lower()).strip().replace(" limited", " ltd")
     if not expected or expected not in observed:
         return {"status": "UNAVAILABLE", "reason": "Screener issuer title did not match the configured company."}
     try:

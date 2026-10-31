@@ -341,6 +341,18 @@
       "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; errors=0",
       "status": "SUCCESS",
       "timestamp": "2026-10-31T12:13:32.264640+00:00"
+    },
+    {
+      "command": "discover",
+      "detail": "restored=1; discovered=1; registry_total=1; source_coverage=PARTIAL",
+      "status": "PARTIAL",
+      "timestamp": "2026-10-31T12:14:06.146200+00:00"
+    },
+    {
+      "command": "results",
+      "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; errors=0",
+      "status": "SUCCESS",
+      "timestamp": "2026-10-31T12:14:12.199976+00:00"
     }
   ],
   "schema_version": 1

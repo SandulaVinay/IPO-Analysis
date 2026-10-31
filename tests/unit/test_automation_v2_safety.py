@@ -427,7 +427,7 @@ async def test_gmail_smtp_falls_back_to_implicit_tls_on_465(tmp_path, monkeypatc
     monkeypatch.setattr(settings, "smtp_host", "smtp.gmail.com")
     monkeypatch.setattr(settings, "smtp_port", 587)
     monkeypatch.setattr(settings, "smtp_user", "sender@example.test")
-    monkeypatch.setattr(settings, "smtp_password", " test-app- password ")
+    monkeypatch.setattr(settings, "smtp_password", " test-app-\tpassword \n ")
     monkeypatch.setattr(settings, "email_from", "sender@example.test")
     monkeypatch.setattr(settings, "email_to", "recipient@example.test")
 

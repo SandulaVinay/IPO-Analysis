@@ -14,7 +14,11 @@ async def main() -> int:
     print(f"SMTP_HOST={settings.smtp_host}")
     print(f"SMTP_PORT={settings.smtp_port}")
     print(f"SMTP_USER_CONFIGURED={bool(settings.smtp_user)}")
-    print(f"SMTP_PASSWORD_CONFIGURED={bool(settings.smtp_password)}")
+    normalized_password = "".join((settings.smtp_password or "").split())
+    print(f"SMTP_PASSWORD_CONFIGURED={bool(normalized_password)}")
+    print(f"SMTP_PASSWORD_LENGTH_AFTER_NORMALIZATION={len(normalized_password)}")
+    if settings.smtp_host.strip().lower() in {"smtp.gmail.com", "smtp.googlemail.com"} and normalized_password and len(normalized_password) != 16:
+        print("WARNING: Gmail App Passwords are normally 16 characters after whitespace is removed.")
     print(f"EMAIL_TO_CONFIGURED={bool(settings.email_to)}")
 
     if settings.app_env == "production" and settings.email_provider != "smtp":

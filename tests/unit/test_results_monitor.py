@@ -375,3 +375,40 @@ def test_nse_parser_falls_back_when_primary_broadcast_field_is_placeholder():
     )
     assert len(rows) == 1
     assert rows[0]["broadcast_time"] == "31-Oct-2026 10:30:00"
+
+
+def test_pdf_text_extraction_returns_page_labelled_excerpt_and_handles_scanned_pdf(tmp_path):
+    from io import BytesIO
+    from reportlab.pdfgen import canvas
+    from src.results.monitor import extract_pdf_text, _report_text
+
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer)
+    pdf.drawString(72, 750, "Unaudited Financial Results")
+    pdf.drawString(72, 730, "Revenue from operations 125.50")
+    pdf.showPage()
+    pdf.save()
+
+    extracted = extract_pdf_text(buffer.getvalue())
+    assert extracted["status"] == "EXTRACTED"
+    assert "[Page 1]" in extracted["text"]
+    assert "Unaudited Financial Results" in extracted["text"]
+
+    item = {
+        "company_name": "RNIT AI Solutions Limited",
+        "symbol": "RNITAI",
+        "exchange": "BSE",
+        "period_ended": "30-Sep-2026",
+        "relating_to": "Financial Results",
+        "broadcast_time": "31-Oct-2026 10:30:00",
+        "source_url": "https://www.bseindia.com/corporates/ann",
+        "attachment_url": "https://www.bseindia.com/xml-data/corpfiling/AttachLive/example.pdf",
+        "headline": "Unaudited Financial Results",
+    }
+    report = _report_text(item, {"status": "UNAVAILABLE"}, extracted)
+    assert "Source document text (page-labelled excerpt)" in report
+    assert "Revenue from operations 125.50" in report
+    assert "No financial-performance conclusion" in report
+
+    no_text = extract_pdf_text(b"not a pdf")
+    assert no_text["status"] == "UNAVAILABLE"

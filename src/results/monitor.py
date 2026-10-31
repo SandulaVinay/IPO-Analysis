@@ -140,22 +140,20 @@ def parse_nse_financial_results_payload(
 def bse_api_headers() -> Dict[str, str]:
     """Browser-like headers required by BSE's public announcement endpoint."""
     return {
-        "Host": "api.bseindia.com",
-        "Referer": BSE_RESULTS_PAGE_URL,
+        # Match the BSE web client's Chromium fingerprint; Akamai may reject
+        # otherwise valid API requests when client hints or the corporate-page
+        # Referer are missing/mismatched.
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.5",
         "Origin": "https://www.bseindia.com",
-        "User-Agent": "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
-        "Sec-CH-UA": '"Google Chrome";v="155", "Chromium";v="155", "Not?A_Brand";v="99"',
-        "Sec-CH-UA-Mobile": "?0",
-        "Sec-CH-UA-Platform": '"Windows"',
+        "Referer": "https://www.bseindia.com/corporates/ann",
         "Sec-Fetch-Site": "same-site",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Dest": "empty",
-        "DNT": "1",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
+        "sec-ch-ua": '"Chromium";v="157", "Not(A:Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
     }
 
 
@@ -163,7 +161,7 @@ def bse_results_request_params(page_no: int, scrip_code: str, from_date, to_date
     """Build the minimal BSE financial-announcement query; Result/Financial Results are defaults."""
     return {
         "pageno": page_no,
-        "strCat": "-1",
+        "strCat": "Result",
         "subcategory": "-1",
         "strPrevDate": from_date.strftime("%Y%m%d"),
         "strToDate": to_date.strftime("%Y%m%d"),

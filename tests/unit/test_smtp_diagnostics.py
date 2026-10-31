@@ -97,3 +97,19 @@ def test_smtp_auth_probe_reports_missing_configuration():
 
     assert result["success"] is False
     assert result["stage"] == "configuration"
+
+
+def test_settings_map_uppercase_github_actions_smtp_variables(monkeypatch):
+    from src.common.config import Settings
+
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("SMTP_PORT", "465")
+    monkeypatch.setenv("SMTP_USER", "sender@example.test")
+    monkeypatch.setenv("SMTP_PASSWORD", "app-password")
+
+    loaded = Settings(_env_file=None)
+
+    assert loaded.smtp_host == "smtp.example.test"
+    assert loaded.smtp_port == 465
+    assert loaded.smtp_user == "sender@example.test"
+    assert loaded.smtp_password == "app-password"

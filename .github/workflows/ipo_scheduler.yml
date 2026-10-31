@@ -166,7 +166,7 @@ jobs:
 
       - name: Upload daily IPO digest
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: daily-ipo-digest
           path: reports/daily/
@@ -175,7 +175,7 @@ jobs:
 
       - name: Upload results reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: financial-results-reports
           path: reports/results/
@@ -184,7 +184,7 @@ jobs:
 
       - name: Upload prospectus evidence reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: prospectus-evidence-reports
           path: reports/prospectus/

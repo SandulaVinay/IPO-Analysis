@@ -6,6 +6,7 @@ import sys
 from src.common.config import settings
 from src.notifications.email import EmailProvider
 from src.results.email_analysis import build_results_email
+from src.results.email_html import results_email_html
 
 
 async def main() -> int:
@@ -64,6 +65,7 @@ async def main() -> int:
         recipient=settings.email_to,
         subject=subject,
         content=body,
+        metadata={"html_body": results_email_html(body)},
     )
     print(f"TEST_SUBJECT={subject}")
     print(f"TEST_BODY_CHARACTERS={len(body)}")

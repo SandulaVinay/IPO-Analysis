@@ -27,7 +27,7 @@ jobs:
       DATABASE_URL: sqlite+aiosqlite:///./ci_test.db
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v5

@@ -8,6 +8,12 @@ on:
     - cron: '0 9 * * 1-5'
     - cron: '0 12 * * 1-5'
   workflow_dispatch:
+    inputs:
+      resend_digest:
+        description: "Resend today's digest even if an earlier run marked it as sent"
+        required: false
+        type: boolean
+        default: false
   # Run a production smoke check when scheduler, exchange adapters, or notification code changes.
   push:
     branches: [main]
@@ -131,6 +137,7 @@ jobs:
       - name: Run daily IPO status digest
         if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.schedule == '0 12 * * 1-5')
         env:
+          FORCE_RESEND_DIGEST: ${{ inputs.resend_digest || 'false' }}
           APP_ENV: production
           STATE_DIR: state-branch/state
           ENABLE_DEMO_ANALYSIS: "false"

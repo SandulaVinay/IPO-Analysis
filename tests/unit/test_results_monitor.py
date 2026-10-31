@@ -265,11 +265,11 @@ def test_bse_api_request_uses_browser_headers_and_default_result_filters():
     headers = bse_api_headers()
     params = bse_results_request_params(1, "517286", date(2026, 10, 23), date(2026, 10, 30))
 
-    assert "User-Agent" in headers and "Chrome/157.0.0.0" in headers["User-Agent"]
+    assert "User-Agent" in headers and "Chrome/153.0.0.0" in headers["User-Agent"]
     assert headers["Origin"] == "https://www.bseindia.com"
     assert headers["Referer"] == "https://www.bseindia.com/corporates/ann"
     assert headers["Sec-Fetch-Site"] == "same-site"
-    assert headers["sec-ch-ua"] == '"Chromium";v="157", "Not(A:Brand";v="24"'
+    assert headers["sec-ch-ua"] == '"Chromium";v="153", "Not(A:Brand";v="24"'
     assert params == {
         "pageno": 1,
         "strPrevDate": "20261023",
@@ -277,79 +277,72 @@ def test_bse_api_request_uses_browser_headers_and_default_result_filters():
         "strCat": "Result",
         "subcategory": "-1",
         "strSearch": "P",
-        "strscrip": "517286",
+        "strScrip": "517286",
         "strType": "C",
     }
 
 
 
-@pytest.mark.asyncio
-async def test_bse_api_is_attempted_when_optional_announcement_page_returns_403(tmp_path, monkeypatch):
-    import httpx
+def test_bse_requests_transport_retries_temporary_403_and_uses_scrip_filter(monkeypatch):
+    from datetime import date
     import src.results.monitor as monitor_module
 
-    requested_urls = []
-    recorded_runs = []
-
-    class FakeStore:
-        def load_watchlist(self):
-            return [{
-                "symbol": "EXAMPLE",
-                "exchange": "BSE",
-                "bse_scrip_code": "123456",
-                "company_name": "Example Industries Limited",
-            }]
-
-        def has_processed_event(self, event_key):
-            return False
-
-        def record_run(self, **kwargs):
-            recorded_runs.append(kwargs)
-
-        def record_event(self, *args, **kwargs):
-            raise AssertionError("No events should be recorded for an empty API response.")
+    calls = []
+    sessions = []
 
     class FakeResponse:
-        def __init__(self, url, status_code=200, payload=None):
-            self.url = url
+        def __init__(self, status_code, payload=None):
             self.status_code = status_code
             self._payload = payload or {}
 
         def raise_for_status(self):
             if self.status_code >= 400:
-                request = httpx.Request("GET", self.url)
-                response = httpx.Response(self.status_code, request=request)
-                raise httpx.HTTPStatusError("HTTP error", request=request, response=response)
+                raise monitor_module.requests.HTTPError(
+                    f"HTTP {self.status_code}",
+                    response=self,
+                )
 
         def json(self):
             return self._payload
 
-    class FakeAsyncClient:
-        def __init__(self, *args, **kwargs):
-            pass
+    class FakeSession:
+        def __init__(self):
+            self.headers = {}
+            sessions.append(self)
 
-        async def __aenter__(self):
+        def __enter__(self):
             return self
 
-        async def __aexit__(self, *args):
+        def __exit__(self, *args):
             return False
 
-        async def get(self, url, **kwargs):
-            requested_urls.append(url)
-            if url == monitor_module.BSE_RESULTS_PAGE_URL:
-                return FakeResponse(url, status_code=403)
-            if url == monitor_module.BSE_RESULTS_API_URL:
-                return FakeResponse(url, payload={"Table": []})
-            raise AssertionError(f"Unexpected URL: {url}")
+        def get(self, url, *, params, timeout):
+            calls.append((url, params, timeout))
+            if len(calls) == 1:
+                return FakeResponse(403)
+            return FakeResponse(200, {"Table": [], "Table1": [{"ROWCNT": 0}]})
 
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(monitor_module, "StateStore", FakeStore)
-    monkeypatch.setattr(monitor_module.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(monitor_module.requests, "Session", FakeSession)
+    monkeypatch.setattr(monitor_module.time, "sleep", lambda _seconds: None)
 
-    result = await monitor_module.monitor_financial_results()
+    companies = [{
+        "symbol": "EXAMPLE",
+        "exchange": "BSE",
+        "bse_scrip_code": "123456",
+        "company_name": "Example Industries Limited",
+    }]
+    rows, errors = monitor_module._fetch_bse_results_sync(
+        companies,
+        date(2026, 10, 31),
+    )
 
-    assert monitor_module.BSE_RESULTS_PAGE_URL in requested_urls
-    assert monitor_module.BSE_RESULTS_API_URL in requested_urls
-    assert result["status"] == "SUCCESS"
-    assert result["errors"] == 0
-    assert recorded_runs[-1]["status"] == "SUCCESS"
+    assert errors == 0
+    assert rows == {"EXAMPLE": []}
+    assert len(sessions) == 1
+    assert sessions[0].headers["Referer"] == "https://www.bseindia.com/corporates/ann"
+    assert sessions[0].headers["sec-ch-ua"] == '"Chromium";v="153", "Not(A:Brand";v="24"'
+    assert len(calls) == 2
+    assert calls[0][0] == monitor_module.BSE_RESULTS_API_URL
+    assert calls[0][1]["strCat"] == "Result"
+    assert calls[0][1]["strScrip"] == "123456"
+    assert calls[0][2] == (15.0, 45.0)

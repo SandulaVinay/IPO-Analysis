@@ -58,15 +58,15 @@ jobs:
           STATE_DIR: state-branch/state
           ENABLE_DEMO_ANALYSIS: "false"
           ENABLE_AUTOMATED_SCHEDULER: "false"
-          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP || 'false' }}
+          ENABLE_WHATSAPP: ${{ github.event_name == 'push' && 'false' || secrets.ENABLE_WHATSAPP || 'false' }}
           WHATSAPP_PROVIDER: cloud_api
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
           WHATSAPP_API_VERSION: v26.0
           WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
-          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL || 'false' }}
+          ENABLE_EMAIL: ${{ github.event_name == 'push' && 'false' || secrets.ENABLE_EMAIL || 'false' }}
           EMAIL_PROVIDER: smtp
-          SMTP_HOST: smtp.gmail.com
+          SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
           SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
@@ -81,15 +81,15 @@ jobs:
           STATE_DIR: state-branch/state
           ENABLE_DEMO_ANALYSIS: "false"
           ENABLE_AUTOMATED_SCHEDULER: "false"
-          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP || 'false' }}
+          ENABLE_WHATSAPP: ${{ github.event_name == 'push' && 'false' || secrets.ENABLE_WHATSAPP || 'false' }}
           WHATSAPP_PROVIDER: cloud_api
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
           WHATSAPP_API_VERSION: v26.0
           WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
-          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL || 'false' }}
+          ENABLE_EMAIL: ${{ github.event_name == 'push' && 'false' || secrets.ENABLE_EMAIL || 'false' }}
           EMAIL_PROVIDER: smtp
-          SMTP_HOST: smtp.gmail.com
+          SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
           SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
@@ -104,15 +104,15 @@ jobs:
           STATE_DIR: state-branch/state
           ENABLE_DEMO_ANALYSIS: "false"
           ENABLE_AUTOMATED_SCHEDULER: "false"
-          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP || 'false' }}
+          ENABLE_WHATSAPP: ${{ github.event_name == 'push' && 'false' || secrets.ENABLE_WHATSAPP || 'false' }}
           WHATSAPP_PROVIDER: cloud_api
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
           WHATSAPP_API_VERSION: v26.0
           WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
-          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL || 'false' }}
+          ENABLE_EMAIL: ${{ github.event_name == 'push' && 'false' || secrets.ENABLE_EMAIL || 'false' }}
           EMAIL_PROVIDER: smtp
-          SMTP_HOST: smtp.gmail.com
+          SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
           SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
@@ -126,15 +126,15 @@ jobs:
           APP_ENV: production
           STATE_DIR: state-branch/state
           ENABLE_DEMO_ANALYSIS: "false"
-          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP || 'false' }}
+          ENABLE_WHATSAPP: ${{ github.event_name == 'push' && 'false' || secrets.ENABLE_WHATSAPP || 'false' }}
           WHATSAPP_PROVIDER: cloud_api
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
           WHATSAPP_API_VERSION: v26.0
           WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
-          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL || 'false' }}
+          ENABLE_EMAIL: ${{ github.event_name == 'push' && 'false' || secrets.ENABLE_EMAIL || 'false' }}
           EMAIL_PROVIDER: smtp
-          SMTP_HOST: smtp.gmail.com
+          SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
           SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}

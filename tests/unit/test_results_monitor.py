@@ -346,3 +346,32 @@ def test_bse_requests_transport_retries_temporary_403_and_uses_scrip_filter(monk
     assert calls[0][1]["strCat"] == "Result"
     assert calls[0][1]["strScrip"] == "123456"
     assert calls[0][2] == (15.0, 45.0)
+
+
+def test_broadcast_datetime_rejects_exchange_placeholders():
+    from src.results.monitor import _parse_broadcast_datetime
+
+    for value in ("-", "--", "—", "N/A", "Not provided by NSE"):
+        assert _parse_broadcast_datetime(value) is None
+
+
+def test_nse_parser_falls_back_when_primary_broadcast_field_is_placeholder():
+    from src.results.monitor import parse_nse_financial_results_payload
+
+    payload = {"data": [{
+        "symbol": "RELIANCE",
+        "companyName": "Reliance Industries Limited",
+        "toDate": "30-Sep-2026",
+        "broadCastDate": "-",
+        "broadcastDate": "31-Oct-2026 10:30:00",
+        "relatingTo": "Quarterly",
+        "consolidated": "Consolidated",
+    }]}
+    rows = parse_nse_financial_results_payload(
+        payload,
+        "RELIANCE",
+        {"symbol": "RELIANCE", "company_name": "Reliance Industries Limited"},
+        "Quarterly",
+    )
+    assert len(rows) == 1
+    assert rows[0]["broadcast_time"] == "31-Oct-2026 10:30:00"

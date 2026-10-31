@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -141,7 +141,7 @@ def bse_api_headers() -> Dict[str, str]:
     """Browser-like headers required by BSE's public announcement endpoint."""
     return {
         "Host": "api.bseindia.com",
-        "Referer": "https://www.bseindia.com/",
+        "Referer": BSE_RESULTS_PAGE_URL,
         "Origin": "https://www.bseindia.com",
         "User-Agent": "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
         "Sec-CH-UA": '"Google Chrome";v="155", "Chromium";v="155", "Not?A_Brand";v="99"',
@@ -618,19 +618,29 @@ async def monitor_financial_results() -> Dict[str, Any]:
                 timeout=httpx.Timeout(35.0, connect=15.0),
                 follow_redirects=True,
             ) as session:
-                # Prime BSE cookies from a public issues page known to respond in
-                # discovery before querying the corporate-announcement API.
-                bse_landing = await session.get(
-                    "https://www.bseindia.com/markets/PublicIssues/IPOIssues_new.aspx?id=1&Type=p",
-                    headers={
-                        **bse_headers,
-                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                        "Sec-Fetch-Site": "none",
-                        "Sec-Fetch-Mode": "navigate",
-                        "Sec-Fetch-Dest": "document",
-                    },
-                )
-                bse_landing.raise_for_status()
+                # The announcement page is the most relevant cookie warm-up.
+                # It is optional: some hosted runners receive 403 from the page
+                # while the JSON announcement API remains available. Always try
+                # the API directly rather than aborting the whole BSE check here.
+                try:
+                    bse_landing = await session.get(
+                        BSE_RESULTS_PAGE_URL,
+                        headers={
+                            **bse_headers,
+                            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                            "Sec-Fetch-Site": "none",
+                            "Sec-Fetch-Mode": "navigate",
+                            "Sec-Fetch-Dest": "document",
+                        },
+                    )
+                    bse_landing.raise_for_status()
+                except Exception as exc:
+                    status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                    logger.warning(
+                        "BSE announcement-page bootstrap unavailable (HTTP %s; %s); trying the API directly.",
+                        status_code if status_code is not None else "n/a",
+                        type(exc).__name__,
+                    )
 
                 for company in bse_companies:
                     symbol = str(company.get("symbol") or "").strip().upper()
@@ -714,16 +724,29 @@ async def monitor_financial_results() -> Dict[str, Any]:
                 try:
                     xbrl_response = await http_client.get(
                         attachment,
-                        headers={"Referer": "https://www.nseindia.com/"},
-                        timeout=30.0,
+                        headers={
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+                            "Accept": "application/xml,text/xml,application/xhtml+xml,*/*;q=0.8",
+                            "Accept-Language": "en-US,en;q=0.9",
+                            "Referer": NSE_RESULTS_URL,
+                            "Origin": "https://www.nseindia.com",
+                        },
+                        timeout=45.0,
                     )
                     if item.get("period_ended"):
                         metrics = extract_xbrl_metrics(
                             xbrl_response.content, item["period_ended"], item.get("relating_to") or ""
                         )
                 except Exception as exc:
+                    errors += 1
                     metrics = {"status": "UNAVAILABLE", "reason": f"XBRL extraction failed ({type(exc).__name__})."}
-                    logger.warning("XBRL extraction failed for %s (%s).", symbol, type(exc).__name__)
+                    attachment_host = urlparse(attachment).hostname or "unknown-host"
+                    logger.warning(
+                        "XBRL extraction failed for %s from %s (%s).",
+                        symbol,
+                        attachment_host,
+                        type(exc).__name__,
+                    )
 
             safe_period_value = item.get("period_ended") or item.get("broadcast_time") or "filing"
             safe_period = re.sub(r"[^0-9A-Za-z_-]+", "_", str(safe_period_value))

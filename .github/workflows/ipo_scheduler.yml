@@ -32,11 +32,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout application code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout sanitized public state branch
         id: checkout_state
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: state
           path: state-branch

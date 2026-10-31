@@ -23,9 +23,10 @@ class NotificationOrchestrator:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.repo = IPORepository(session)
-        # Architecture policy: WhatsApp primary, email fallback only.
-        # Do not treat mock SMS or console logging as successful delivery.
-        self.providers = [WhatsAppProvider(), EmailProvider()]
+        # Current rollout policy: SMTP email is preferred; WhatsApp remains deferred.
+        # Provider acceptance is not proof of final delivery, and mock/console modes
+        # must never be treated as a delivered alert.
+        self.providers = [EmailProvider(), WhatsAppProvider()]
 
     async def trigger_t_minus_2_alert(self, ipo_id: int, analysis_data: Dict[str, Any]) -> bool:
         """Dispatches T-2 calendar day alert or immediate verified alert."""

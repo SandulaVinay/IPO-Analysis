@@ -1,4 +1,4 @@
-""""Send a real SMTP test email using the financial-results email template."""
+"""Send a real SMTP test email using the financial-results email template."""
 
 import asyncio
 import sys

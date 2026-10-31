@@ -203,6 +203,12 @@
       "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; errors=0",
       "status": "SUCCESS",
       "timestamp": "2026-10-31T06:40:40.955368+00:00"
+    },
+    {
+      "command": "results",
+      "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; errors=0",
+      "status": "SUCCESS",
+      "timestamp": "2026-10-31T06:42:09.774490+00:00"
     }
   ],
   "schema_version": 1

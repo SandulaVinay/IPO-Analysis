@@ -164,7 +164,10 @@ def parse_nse_financial_results_payload(
                     row.get("filingDate"),
                     row.get("broadcast_time"),
                 )
-                if _clean(str(value or "")).lower() not in {"", "-", "--", "—", "n/a", "na", "null", "none"}
+                if (
+                    _clean(str(value or "")).lower() not in {"", "-", "--", "—", "n/a", "na", "null", "none"}
+                    and not _clean(str(value or "")).lower().startswith("not provided")
+                )
             ),
             "",
         )

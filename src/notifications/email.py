@@ -34,7 +34,9 @@ class EmailProvider(NotificationProvider):
         smtp_user = (settings.smtp_user or "").strip()
         # Google displays app passwords in four-character groups. Remove embedded
         # spaces/newlines so a copied key is submitted as the expected 16 characters.
-        smtp_password = (settings.smtp_password or "").strip().replace(" ", "").replace("\n", "").replace("\r", "")
+        # App passwords are often copied with embedded whitespace. Remove all
+        # whitespace characters, including tabs and non-ASCII line separators.
+        smtp_password = "".join((settings.smtp_password or "").split())
 
         # Email is disabled: this is a normal no-op, not a successful delivery.
         if not settings.enable_email:
@@ -128,7 +130,7 @@ class EmailProvider(NotificationProvider):
                         with smtplib.SMTP_SSL(
                             settings.smtp_host,
                             port,
-                            timeout=20,
+                            timeout=30,
                             context=ssl.create_default_context(),
                         ) as server:
                             stage = "ehlo"
@@ -138,7 +140,7 @@ class EmailProvider(NotificationProvider):
                             stage = "sendmail"
                             refused = server.sendmail(msg["From"], [to_addr], msg.as_string())
                     else:
-                        with smtplib.SMTP(settings.smtp_host, port, timeout=20) as server:
+                        with smtplib.SMTP(settings.smtp_host, port, timeout=30) as server:
                             stage = "ehlo"
                             server.ehlo()
                             stage = "starttls"
@@ -169,10 +171,22 @@ class EmailProvider(NotificationProvider):
 
             if last_failure is not None:
                 port, stage, exc = last_failure
-                safe_error = (
-                    f"SMTP failed during {stage} on port {port} "
-                    f"({type(exc).__name__}); check Gmail app-password, TLS, and runner network access."
-                )
+                if isinstance(exc, smtplib.SMTPAuthenticationError):
+                    safe_error = (
+                        f"SMTP authentication was rejected by the server (code {exc.smtp_code}) "
+                        "during login; verify the SMTP username and current provider app password."
+                    )
+                elif isinstance(exc, smtplib.SMTPServerDisconnected):
+                    safe_error = (
+                        f"SMTP server closed the connection during {stage} on port {port}; "
+                        "the server returned no authentication status. Check provider account "
+                        "security/app-password access and retry from the manual email-test workflow."
+                    )
+                else:
+                    safe_error = (
+                        f"SMTP failed during {stage} on port {port} "
+                        f"({type(exc).__name__}); check TLS settings and runner network access."
+                    )
                 logger.error("Email dispatch failed (%s); credentials and message data were not logged.", type(exc).__name__)
                 return {
                     "success": False,

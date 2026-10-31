@@ -34,6 +34,12 @@ def main() -> int:
         password=settings.smtp_password,
     )
 
+    for index, attempt in enumerate(result.get("attempts", []), start=1):
+        print(f"SMTP_ATTEMPT_{index}_PORT={attempt['port']}")
+        print(f"SMTP_ATTEMPT_{index}_STAGE={attempt['stage']}")
+        if attempt["error"]:
+            print(f"SMTP_ATTEMPT_{index}_ERROR={attempt['error']}")
+
     print(f"SMTP_AUTHENTICATED={result['success']}")
     print(f"CONNECTED_PORT={result['port']}")
     print(f"STAGE={result['stage']}")

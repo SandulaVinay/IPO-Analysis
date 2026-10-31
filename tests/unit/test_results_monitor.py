@@ -265,7 +265,7 @@ def test_bse_api_request_uses_browser_headers_and_default_result_filters():
     headers = bse_api_headers()
     params = bse_results_request_params(1, "517286", date(2026, 10, 23), date(2026, 10, 30))
 
-    assert headers["Host"] == "api.bseindia.com"
+    assert "User-Agent" in headers and "Chrome/157.0.0.0" in headers["User-Agent"]
     assert headers["Origin"] == "https://www.bseindia.com"
     assert headers["Referer"] == "https://www.bseindia.com/corporates/ann"
     assert headers["Sec-Fetch-Site"] == "same-site"

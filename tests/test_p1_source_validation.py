@@ -8,6 +8,7 @@ from src.results.monitor import (
     extract_xbrl_metrics,
     parse_bse_financial_results_payload,
     parse_nse_financial_results_payload,
+    is_official_attachment_url,
 )
 
 
@@ -112,3 +113,20 @@ def test_pdf_extraction_rejects_non_pdf_attachment():
     result = extract_pdf_text(b"not a PDF")
     assert result["status"] == "UNAVAILABLE"
     assert "PDF signature" in result["reason"]
+
+
+
+@pytest.mark.parametrize(
+    ("url", "exchange", "expected"),
+    [
+        ("https://www.bseindia.com/file.pdf", "BSE", True),
+        ("https://api.bseindia.com/file.pdf", "BSE", True),
+        ("https://bseindia.com.attacker.example/file.pdf", "BSE", False),
+        ("http://www.bseindia.com/file.pdf", "BSE", False),
+        ("https://www.nseindia.com/file.xml", "NSE", True),
+        ("https://nseindia.com.attacker.example/file.xml", "NSE", False),
+        ("https://example.com/file.xml", "NSE", False),
+    ],
+)
+def test_attachment_url_must_use_https_and_official_exchange_domain(url, exchange, expected):
+    assert is_official_attachment_url(url, exchange) is expected

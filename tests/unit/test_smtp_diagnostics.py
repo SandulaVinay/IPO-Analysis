@@ -36,7 +36,7 @@ def test_smtp_auth_probe_normalizes_password_and_sends_no_message(monkeypatch):
         host="smtp.example.test",
         preferred_port=587,
         username="sender@example.test",
-        password=" app-pass word\\n",
+        password=" app-pass word\n",
     )
 
     assert result["success"] is True

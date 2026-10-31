@@ -194,7 +194,7 @@ def _fetch_bse_results_sync(
         for company in companies:
             symbol = str(company.get("symbol") or "").strip().upper()
             scrip_code = str(company.get("bse_scrip_code") or "").strip()
-            if not symbol or not company.get("company_name") or not re.fullmatch(r"\\d{6}", scrip_code):
+            if not symbol or not company.get("company_name") or not re.fullmatch(r"\d{6}", scrip_code):
                 errors += 1
                 logger.warning(
                     "Skipping BSE watchlist entry %s: company_name and six-digit bse_scrip_code are required.",

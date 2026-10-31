@@ -1,3 +1,5 @@
+import pytest
+
 from src.results.monitor import parse_financial_results_page
 
 

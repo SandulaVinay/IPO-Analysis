@@ -30,6 +30,17 @@ def _inline_markup(value: str) -> str:
         lambda match: f'<link href="{match.group(2)}" color="#1D4ED8">{match.group(1)}</link>',
         safe,
     )
+    # Long naked exchange URLs can overflow ReportLab Paragraphs. Keep the exact
+    # destination clickable while displaying a compact, readable label.
+    safe = re.sub(
+        r"(?<![=\"'>])(https://[^\s<]+)",
+        lambda match: (
+            f'<link href="{match.group(1).rstrip(".,;")}" color="#1D4ED8">'
+            f'{escape(match.group(1).rstrip(".,;")[:58])}'
+            f'{"..." if len(match.group(1).rstrip(".,;")) > 58 else ""}</link>'
+        ),
+        safe,
+    )
     safe = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", safe)
     safe = re.sub(r"`([^`]+)`", r"<font name='Courier'>\1</font>", safe)
     return safe

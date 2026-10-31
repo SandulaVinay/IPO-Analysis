@@ -11,7 +11,7 @@ A production-quality, evidence-driven, deterministic intelligence platform for d
 3. **Fail-closed production analysis**: Missing, conflicting or unverified critical inputs produce `UNABLE_TO_ASSESS`. The system must not invent financial values or issue unsupported `APPLY` / `AVOID` recommendations.
 4. **IPO discovery and results monitoring**: Official NSE/BSE IPO pages are checked; financial-results monitoring uses the configured company watchlist, exact issuer-name matching, NSE filings/XBRL facts, and BSE scrip-code announcements for BSE-listed companies.
 5. **GitHub Actions automation**: Weekday checks run at 08:30, 11:30, 14:30 and 17:30 IST. The final weekday run generates a daily status digest. Reports are retained as seven-day workflow artifacts and sanitized state is persisted to the public `state` branch.
-6. **Notifications**: WhatsApp Cloud API is primary and SMTP email is the fallback when the owner configures the required GitHub Actions secrets. Without credentials, reports are generated in report-only mode. WhatsApp eligibility and charges depend on provider terms.
+6. **Notifications**: SMTP email is the currently supported and preferred delivery channel when the owner configures the required GitHub Actions secrets. WhatsApp delivery is deferred and must not be treated as enabled. Without valid email credentials and an explicitly configured recipient, reports should remain in report-only mode.
 7. **Dashboard and CLI**: A FastAPI dashboard and command-line interface are available for local use. No separate always-on server is required for the GitHub Actions scheduled workflow.
 
 **Production limitation:** full automated IPO investment recommendations are not yet enabled. Table-aware prospectus financial extraction, period/unit reconciliation, consolidated-versus-standalone verification, and a fully validated live-source pipeline remain open gates. The safe result is `UNABLE_TO_ASSESS` until those checks are complete.
@@ -81,17 +81,17 @@ Run the complete test suite (Unit, Integration, and 11 Realistic Scenario Fixtur
 
 ## 📚 Complete Technical Documentation Suite
 
-- [ARCHITECTURE.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/ARCHITECTURE.md): 12-section comprehensive architecture design.
-- [ANALYSIS_SPEC.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/ANALYSIS_SPEC.md): Mathematical formulas, forensic checks, and metrics specification.
-- [DATA_SOURCES.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/DATA_SOURCES.md): Source priority tiers, scraping policies, and conflict rules.
-- [DATA_MODEL.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/DATA_MODEL.md): Relational database schema and ER diagram.
-- [NOTIFICATION_ARCHITECTURE.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/NOTIFICATION_ARCHITECTURE.md): Notification state machine, timing, and fallback engine.
-- [SCORING_MODEL.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/SCORING_MODEL.md): Multi-pillar weights, safety gates, and horizon scores.
-- [SECURITY.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/SECURITY.md): Secret management, log sanitization, and privacy.
-- [COST_CONTROL.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/COST_CONTROL.md): Zero-cost cloud allowances and fallback strategies.
-- [OPERATIONS.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/OPERATIONS.md): Local runbook, Docker, and GitHub Actions cron workflows.
-- [FAILURE_HANDLING.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/FAILURE_HANDLING.md): Resilience, retry backoffs, and stale data handling.
-- [TESTING.md](file:///c:/Users/LENOVO/OneDrive/Desktop/Vinay%20Projects/IPO%20Analysis/TESTING.md): Test execution guide and 11 scenario definitions.
+- [ARCHITECTURE.md](ARCHITECTURE.md): 12-section comprehensive architecture design.
+- [ANALYSIS_SPEC.md](ANALYSIS_SPEC.md): Mathematical formulas, forensic checks, and metrics specification.
+- [DATA_SOURCES.md](DATA_SOURCES.md): Source priority tiers, scraping policies, and conflict rules.
+- [DATA_MODEL.md](DATA_MODEL.md): Relational database schema and ER diagram.
+- [NOTIFICATION_ARCHITECTURE.md](NOTIFICATION_ARCHITECTURE.md): Notification state machine, timing, and fallback engine.
+- [SCORING_MODEL.md](SCORING_MODEL.md): Multi-pillar weights, safety gates, and horizon scores.
+- [SECURITY.md](SECURITY.md): Secret management, log sanitization, and privacy.
+- [COST_CONTROL.md](COST_CONTROL.md): Zero-cost cloud allowances and fallback strategies.
+- [OPERATIONS.md](OPERATIONS.md): Local runbook, Docker, and GitHub Actions cron workflows.
+- [FAILURE_HANDLING.md](FAILURE_HANDLING.md): Resilience, retry backoffs, and stale data handling.
+- [TESTING.md](TESTING.md): Test execution guide and 11 scenario definitions.
 
 
 ## GitHub Actions deployment and operations
@@ -102,7 +102,7 @@ The scheduled automation is deployed from `main`. Its workflow runs discovery, r
 - Add exchange-specific watchlist entries to `state/watchlist.json` on the `state` branch. NSE entries use the NSE symbol; BSE entries also require `exchange: \"BSE\"` and a six-digit `bse_scrip_code`. Both require exact official issuer names and verified aliases.
 - Result reports are generated as short-lived GitHub Actions artifacts. XBRL values are extracted only when the attachment is a supported XBRL instance; other formats are reported as unavailable rather than guessed.
 - `ENABLE_DEMO_ANALYSIS` defaults to `false`. Never enable demo analysis in production.
-- Configure WhatsApp and email values through GitHub repository Actions Secrets, not in files or chat. The application defaults recipient fields to blank to prevent accidental sends.
+- Configure SMTP email values through GitHub repository Actions Secrets, not in files or chat. WhatsApp is deferred. Keep recipient fields blank until a real recipient is intentionally configured to prevent accidental sends.
 - This is not yet a full investment recommendation service: verified RHP/DRHP financial extraction, full IPO scoring on real issuer data, and broader results-format coverage remain rollout gates. Production analysis returns `UNABLE_TO_ASSESS` until verified inputs are wired into the analysis pipeline.
 
 
@@ -115,4 +115,4 @@ See [Automation v2 Architecture and Rollout Gates](docs/ARCHITECTURE_V2.md) for 
 
 ### PDF research artifacts
 
-The daily IPO digest, supported financial-results alerts, and prospectus evidence reviews are generated as Markdown and PDF files. The scheduler uploads these as seven-day GitHub Actions artifacts. WhatsApp messages link to the workflow run; when email fallback is used, the relevant PDF is attached. The daily digest remains `UNABLE_TO_ASSESS` until the real prospectus financial verification workflow is complete.
+The daily IPO digest, supported financial-results alerts, and prospectus evidence reviews are generated as Markdown and PDF files. The scheduler uploads these as seven-day GitHub Actions artifacts. When email alerts are explicitly enabled and SMTP is configured, the relevant PDF can be attached to the email. Push-triggered validation runs keep email delivery disabled. The daily digest remains `UNABLE_TO_ASSESS` until the real prospectus financial verification workflow is complete.

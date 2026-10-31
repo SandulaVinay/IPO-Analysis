@@ -16,7 +16,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "RELIANCE",
-      "updated_at": "2026-10-31T04:37:51.867076+00:00"
+      "updated_at": "2026-10-31T04:41:20.268479+00:00"
     },
     {
       "channel": null,
@@ -25,7 +25,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "RELIANCE",
-      "updated_at": "2026-10-31T04:37:52.274026+00:00"
+      "updated_at": "2026-10-31T04:41:20.559796+00:00"
     },
     {
       "channel": null,
@@ -34,7 +34,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "TCS",
-      "updated_at": "2026-10-31T04:37:52.572321+00:00"
+      "updated_at": "2026-10-31T04:41:20.914583+00:00"
     },
     {
       "channel": null,
@@ -43,7 +43,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "TCS",
-      "updated_at": "2026-10-31T04:37:52.850605+00:00"
+      "updated_at": "2026-10-31T04:41:21.239513+00:00"
     },
     {
       "channel": null,
@@ -52,7 +52,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "CLEAN",
-      "updated_at": "2026-10-31T04:37:53.129292+00:00"
+      "updated_at": "2026-10-31T04:41:21.565026+00:00"
     },
     {
       "channel": null,
@@ -61,7 +61,7 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "CLEAN",
-      "updated_at": "2026-10-31T04:37:53.476670+00:00"
+      "updated_at": "2026-10-31T04:41:21.859231+00:00"
     },
     {
       "channel": null,
@@ -70,9 +70,9 @@
       "event_type": "FINANCIAL_RESULTS_FILING",
       "status": "FAILED",
       "symbol": "GODAVARIB",
-      "updated_at": "2026-10-31T04:37:53.839793+00:00"
+      "updated_at": "2026-10-31T04:41:22.279830+00:00"
     }
   ],
   "schema_version": 1,
-  "updated_at": "2026-10-31T04:37:53.839803+00:00"
+  "updated_at": "2026-10-31T04:41:22.279840+00:00"
 }

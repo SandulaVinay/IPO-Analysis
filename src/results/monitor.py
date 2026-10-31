@@ -73,6 +73,57 @@ def _matches_watchlist_company(filing: Dict[str, Any], company: Dict[str, Any]) 
     return bool(expected_keys and _key(str(filing.get("company_name", ""))) in expected_keys)
 
 
+RESULT_LOOKBACK_HOURS = max(1, int(os.getenv("RESULT_LOOKBACK_HOURS", "72")))
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def _parse_broadcast_datetime(value: Any) -> Optional[datetime]:
+    """Parse an exchange announcement timestamp; unparseable timestamps are not treated as recent."""
+    if not value:
+        return None
+    raw = _clean(str(value))
+    if raw.lower().startswith("not provided"):
+        return None
+    normalized = raw.replace(" UTC", "+00:00").replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+        return parsed.replace(tzinfo=IST) if parsed.tzinfo is None else parsed.astimezone(IST)
+    except ValueError:
+        pass
+
+    for fmt in (
+        "%d-%b-%Y %H:%M:%S", "%d-%b-%Y %H:%M",
+        "%d-%b-%y %H:%M:%S", "%d-%b-%y %H:%M",
+        "%d %b %Y %H:%M:%S", "%d %b %Y %H:%M",
+        "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M",
+        "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M",
+        "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M",
+        "%d-%b-%Y", "%d %b %Y", "%d/%m/%Y", "%d-%m-%Y",
+    ):
+        try:
+            return datetime.strptime(raw, fmt).replace(tzinfo=IST)
+        except ValueError:
+            continue
+    return None
+
+
+def _is_recent_filing(item: Dict[str, Any], *, now: datetime) -> bool:
+    """Keep only filings announced within the configured rolling lookback window."""
+    announced_at = _parse_broadcast_datetime(item.get("broadcast_time"))
+    if announced_at is None:
+        logger.warning(
+            "Skipping %s filing because exchange announcement time could not be parsed: %s",
+            item.get("symbol", "UNKNOWN"),
+            item.get("broadcast_time", "missing"),
+        )
+        return False
+    cutoff = now - timedelta(hours=RESULT_LOOKBACK_HOURS)
+    if announced_at > now + timedelta(minutes=15):
+        logger.warning("Skipping %s filing with a future announcement timestamp.", item.get("symbol", "UNKNOWN"))
+        return False
+    return cutoff <= announced_at <= now
+
+
 def parse_nse_financial_results_payload(
     payload: Any,
     symbol: str,
@@ -663,14 +714,8 @@ async def monitor_financial_results() -> Dict[str, Any]:
                                 response.json(), symbol, company, period_type
                             )
                             if parsed:
-                                dates = [
-                                    (Normalizer.parse_date(item.get("period_ended")), item)
-                                    for item in parsed
-                                ]
-                                valid_dates = [period for period, _ in dates if period is not None]
-                                if valid_dates:
-                                    latest_period = max(valid_dates)
-                                    parsed = [item for period, item in dates if period == latest_period]
+                                # Keep every recent announcement, including amended filings for
+                                # earlier periods; freshness is determined by broadcast time below.
                                 consolidated = [
                                     item for item in parsed
                                     if "consolidated" in (item.get("consolidation") or "").lower()
@@ -728,6 +773,7 @@ async def monitor_financial_results() -> Dict[str, Any]:
             for company in bse_companies:
                 bse_rows_by_symbol[str(company.get("symbol") or "").strip().upper()] = []
 
+    now_ist = datetime.now(IST)
     for company in watchlist:
         symbol = str(company.get("symbol") or "").strip().upper()
         checked += 1
@@ -737,8 +783,13 @@ async def monitor_financial_results() -> Dict[str, Any]:
             if exchange == "BSE"
             else nse_rows_by_symbol.get(symbol, [])
         )
+        recent_filings = [item for item in filings if _is_recent_filing(item, now=now_ist)]
+        logger.info(
+            "%s results monitor: %s fetched, %s within the last %s hours.",
+            symbol, len(filings), len(recent_filings), RESULT_LOOKBACK_HOURS,
+        )
 
-        for item in filings:
+        for item in recent_filings:
             if store.has_processed_event(item["event_key"]):
                 continue
             new_filings += 1

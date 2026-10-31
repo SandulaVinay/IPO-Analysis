@@ -265,7 +265,7 @@ def test_bse_api_request_uses_browser_headers_and_default_result_filters():
 
     assert headers["Host"] == "api.bseindia.com"
     assert headers["Origin"] == "https://www.bseindia.com"
-    assert headers["Referer"] == "https://www.bseindia.com/"
+    assert headers["Referer"] == "https://www.bseindia.com/corporates/ann.html"
     assert headers["Sec-Fetch-Site"] == "same-site"
     assert params == {
         "pageno": 1,
@@ -277,3 +277,76 @@ def test_bse_api_request_uses_browser_headers_and_default_result_filters():
         "strscrip": "517286",
         "strType": "C",
     }
+
+
+
+@pytest.mark.asyncio
+async def test_bse_api_is_attempted_when_optional_announcement_page_returns_403(tmp_path, monkeypatch):
+    import httpx
+    import src.results.monitor as monitor_module
+
+    requested_urls = []
+    recorded_runs = []
+
+    class FakeStore:
+        def load_watchlist(self):
+            return [{
+                "symbol": "EXAMPLE",
+                "exchange": "BSE",
+                "bse_scrip_code": "123456",
+                "company_name": "Example Industries Limited",
+            }]
+
+        def has_processed_event(self, event_key):
+            return False
+
+        def record_run(self, **kwargs):
+            recorded_runs.append(kwargs)
+
+        def record_event(self, *args, **kwargs):
+            raise AssertionError("No events should be recorded for an empty API response.")
+
+    class FakeResponse:
+        def __init__(self, url, status_code=200, payload=None):
+            self.url = url
+            self.status_code = status_code
+            self._payload = payload or {}
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                request = httpx.Request("GET", self.url)
+                response = httpx.Response(self.status_code, request=request)
+                raise httpx.HTTPStatusError("HTTP error", request=request, response=response)
+
+        def json(self):
+            return self._payload
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, **kwargs):
+            requested_urls.append(url)
+            if url == monitor_module.BSE_RESULTS_PAGE_URL:
+                return FakeResponse(url, status_code=403)
+            if url == monitor_module.BSE_RESULTS_API_URL:
+                return FakeResponse(url, payload={"Table": []})
+            raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(monitor_module, "StateStore", FakeStore)
+    monkeypatch.setattr(monitor_module.httpx, "AsyncClient", FakeAsyncClient)
+
+    result = await monitor_module.monitor_financial_results()
+
+    assert monitor_module.BSE_RESULTS_PAGE_URL in requested_urls
+    assert monitor_module.BSE_RESULTS_API_URL in requested_urls
+    assert result["status"] == "SUCCESS"
+    assert result["errors"] == 0
+    assert recorded_runs[-1]["status"] == "SUCCESS"

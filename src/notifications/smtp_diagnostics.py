@@ -7,6 +7,24 @@ import ssl
 from typing import Any
 
 
+def _describe_attempt_error(port: int, stage: str, exc: Exception) -> str:
+    """Create a useful, credential-safe error summary for one SMTP attempt."""
+    smtp_code = getattr(exc, "smtp_code", None)
+    detail = f"SMTP {type(exc).__name__} during {stage} on port {port}"
+    if smtp_code is not None:
+        detail += f" (server code {smtp_code})"
+
+    # Disconnect errors often contain the only clue about why the server
+    # closed the socket. Never log usernames or password values.
+    message = " ".join(str(exc).split())
+    if message and isinstance(
+        exc,
+        (smtplib.SMTPServerDisconnected, OSError, TimeoutError),
+    ):
+        detail += f": {message[:200]}"
+    return detail
+
+
 def authenticate_smtp(
     host: str,
     preferred_port: int,
@@ -25,6 +43,7 @@ def authenticate_smtp(
             "port": None,
             "stage": "configuration",
             "error": "SMTP_HOST, SMTP_USER and SMTP_PASSWORD are required.",
+            "attempts": [],
         }
 
     ports = [int(preferred_port)]
@@ -33,7 +52,7 @@ def authenticate_smtp(
         if alternate not in ports:
             ports.append(alternate)
 
-    last_error: tuple[int, str, Exception] | None = None
+    attempts: list[dict[str, Any]] = []
     for port in ports:
         stage = "connect"
         try:
@@ -63,36 +82,47 @@ def authenticate_smtp(
                     code, _response = server.noop()
 
             if code != 250:
-                raise smtplib.SMTPResponseException(code, b"SMTP NOOP was not accepted.")
+                raise smtplib.SMTPResponseException(
+                    code,
+                    b"SMTP NOOP was not accepted.",
+                )
 
+            attempts.append({
+                "port": port,
+                "stage": "authenticated",
+                "error": None,
+            })
             return {
                 "success": True,
                 "host": host,
                 "port": port,
                 "stage": "authenticated",
                 "error": None,
+                "attempts": attempts,
             }
         except Exception as exc:
-            last_error = (port, stage, exc)
+            attempts.append({
+                "port": port,
+                "stage": stage,
+                "error": _describe_attempt_error(port, stage, exc),
+            })
 
-    if last_error is None:
+    if not attempts:
         return {
             "success": False,
             "host": host,
             "port": None,
             "stage": "connect",
             "error": "No SMTP connection attempt was made.",
+            "attempts": [],
         }
 
-    port, stage, exc = last_error
-    smtp_code = getattr(exc, "smtp_code", None)
-    detail = f"SMTP {type(exc).__name__} during {stage} on port {port}"
-    if smtp_code is not None:
-        detail += f" (server code {smtp_code})"
+    last_attempt = attempts[-1]
     return {
         "success": False,
         "host": host,
-        "port": port,
-        "stage": stage,
-        "error": detail,
+        "port": last_attempt["port"],
+        "stage": last_attempt["stage"],
+        "error": last_attempt["error"],
+        "attempts": attempts,
     }

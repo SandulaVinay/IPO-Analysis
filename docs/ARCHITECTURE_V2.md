@@ -84,6 +84,13 @@ Example watchlist entry (use the exact issuer name displayed on the NSE filing p
 
 The BSE adapter currently detects and reports official result-announcement metadata; it does not yet extract financial metrics from BSE attachments. The NSE XBRL extractor is deliberately conservative and currently supports only a subset of tags and period contexts. It is **not** a general-purpose parser for every Indian GAAP/Ind AS filing. A reported metric must be checked against the source filing before it is used in an investment decision.
 
+### P1 implementation and validation status (2026-10-31)
+
+The results monitor now retries transient NSE JSON endpoint failures (HTTP 429/5xx and network timeouts) per period, with bounded exponential backoff. A failed period request is isolated from the other period request and issuer loop; errors still make the run status partial rather than silently successful. Downloaded attachments are restricted to HTTPS URLs on official NSE/BSE domains, HTTP status is checked, and download size is bounded before PDF/XBRL parsing. XBRL DTD/entity rejection and conservative unavailable states remain in force.
+
+PDF support is still source-text extraction with page labels, not trusted numeric table extraction. The report can include an excerpt for analyst verification, but extracted prose must not be treated as structured financial facts. BSE PDF/XBRL metric parity, OCR/scanned-PDF support, comprehensive Ind AS tag coverage, and fully reconciled prospectus financial extraction remain open work. These limitations must not be represented as completed functionality.
+
+
 ## IPO analysis workflow
 
 The current production analysis path must remain fail-closed until a verified RHP/DRHP ingestion pipeline is connected. That pipeline still needs:

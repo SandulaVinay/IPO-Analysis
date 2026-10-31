@@ -803,12 +803,33 @@ async def monitor_financial_results() -> Dict[str, Any]:
                     company_filings: List[Dict[str, Any]] = []
                     try:
                         for period_type in ("Quarterly", "Annual"):
-                            response = await session.get(
-                                NSE_RESULTS_API_URL,
-                                params={"index": "equities", "period": period_type, "symbol": symbol},
-                                headers=nse_headers,
-                            )
-                            response.raise_for_status()
+                            response = None
+                            last_error = None
+                            # Retry transient exchange failures per period; a single
+                            # feed failure must not discard already fetched filings.
+                            for attempt in range(3):
+                                try:
+                                    candidate = await session.get(
+                                        NSE_RESULTS_API_URL,
+                                        params={"index": "equities", "period": period_type, "symbol": symbol},
+                                        headers=nse_headers,
+                                    )
+                                    if candidate.status_code in {429, 500, 502, 503, 504} and attempt < 2:
+                                        await asyncio.sleep(0.5 * (2 ** attempt))
+                                        continue
+                                    candidate.raise_for_status()
+                                    response = candidate
+                                    break
+                                except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                                    last_error = exc
+                                    if attempt < 2:
+                                        await asyncio.sleep(0.5 * (2 ** attempt))
+                                        continue
+                                    raise
+                            if response is None:
+                                if last_error:
+                                    raise last_error
+                                raise RuntimeError("NSE results request failed after retries.")
                             parsed = parse_nse_financial_results_payload(
                                 response.json(), symbol, company, period_type
                             )
@@ -897,6 +918,13 @@ async def monitor_financial_results() -> Dict[str, Any]:
             attachment = item.get("xbrl_url") or item.get("attachment_url") or ""
             if attachment.lower().split("?", 1)[0].endswith(".pdf"):
                 try:
+                    attachment_host = (urlparse(attachment).hostname or "").lower()
+                    allowed_hosts = {"bseindia.com", "www.bseindia.com", "nseindia.com", "www.nseindia.com"}
+                    if urlparse(attachment).scheme != "https" or not any(
+                        attachment_host == host or attachment_host.endswith("." + host)
+                        for host in allowed_hosts
+                    ):
+                        raise ValueError("PDF attachment URL is not an approved official exchange HTTPS URL.")
                     pdf_response = await http_client.get(
                         attachment,
                         headers={
@@ -906,6 +934,9 @@ async def monitor_financial_results() -> Dict[str, Any]:
                         },
                         timeout=45.0,
                     )
+                    pdf_response.raise_for_status()
+                    if len(pdf_response.content) > 15_000_000:
+                        raise ValueError("PDF attachment exceeds the 15 MB download safety limit.")
                     document_text = extract_pdf_text(pdf_response.content)
                 except Exception as exc:
                     document_text = {
@@ -919,6 +950,11 @@ async def monitor_financial_results() -> Dict[str, Any]:
                     )
             if attachment.lower().endswith((".xml", ".xbrl")) or "/xbrl/" in attachment.lower():
                 try:
+                    attachment_host = (urlparse(attachment).hostname or "").lower()
+                    if urlparse(attachment).scheme != "https" or not (
+                        attachment_host == "nseindia.com" or attachment_host.endswith(".nseindia.com")
+                    ):
+                        raise ValueError("XBRL attachment URL is not an approved official NSE HTTPS URL.")
                     xbrl_response = await http_client.get(
                         attachment,
                         headers={
@@ -930,6 +966,9 @@ async def monitor_financial_results() -> Dict[str, Any]:
                         },
                         timeout=45.0,
                     )
+                    xbrl_response.raise_for_status()
+                    if len(xbrl_response.content) > 10_000_000:
+                        raise ValueError("XBRL attachment exceeds the 10 MB download safety limit.")
                     if item.get("period_ended"):
                         metrics = extract_xbrl_metrics(
                             xbrl_response.content, item["period_ended"], item.get("relating_to") or ""

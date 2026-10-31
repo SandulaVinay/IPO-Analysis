@@ -467,3 +467,11 @@ async def test_gmail_smtp_falls_back_to_implicit_tls_on_465(tmp_path, monkeypatc
     assert result["success"] is True
     assert result["accepted"] is True
     assert result["delivered"] is False
+
+
+
+def test_notification_orchestrator_prefers_email_before_deferred_whatsapp():
+    from src.notifications.orchestrator import NotificationOrchestrator
+
+    orchestrator = NotificationOrchestrator(session=None)
+    assert [provider.channel_name for provider in orchestrator.providers] == ["EMAIL", "WHATSAPP"]

@@ -267,13 +267,14 @@ def test_bse_api_request_uses_browser_headers_and_default_result_filters():
 
     assert headers["Host"] == "api.bseindia.com"
     assert headers["Origin"] == "https://www.bseindia.com"
-    assert headers["Referer"] == "https://www.bseindia.com/corporates/ann.html"
+    assert headers["Referer"] == "https://www.bseindia.com/corporates/ann"
     assert headers["Sec-Fetch-Site"] == "same-site"
+    assert headers["sec-ch-ua"] == '"Chromium";v="157", "Not(A:Brand";v="24"'
     assert params == {
         "pageno": 1,
         "strPrevDate": "20261023",
         "strToDate": "20261030",
-        "strCat": "-1",
+        "strCat": "Result",
         "subcategory": "-1",
         "strSearch": "P",
         "strscrip": "517286",

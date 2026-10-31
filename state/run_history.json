@@ -155,6 +155,24 @@
       "detail": "records=0; channel=NONE",
       "status": "REPORT_ONLY",
       "timestamp": "2026-10-31T04:45:16.987191+00:00"
+    },
+    {
+      "command": "discover",
+      "detail": "restored=1; discovered=1; registry_total=1; source_coverage=PARTIAL",
+      "status": "PARTIAL",
+      "timestamp": "2026-10-31T05:53:15.429245+00:00"
+    },
+    {
+      "command": "results",
+      "detail": "symbols_checked=5; new_filings=8; notifications_accepted=0; errors=0",
+      "status": "SUCCESS",
+      "timestamp": "2026-10-31T05:53:24.077404+00:00"
+    },
+    {
+      "command": "digest",
+      "detail": "records=0; channel=NONE",
+      "status": "REPORT_ONLY",
+      "timestamp": "2026-10-31T05:53:26.841801+00:00"
     }
   ],
   "schema_version": 1

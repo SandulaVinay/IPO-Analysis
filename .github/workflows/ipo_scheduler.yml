@@ -86,7 +86,7 @@ jobs:
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
           WHATSAPP_API_VERSION: v26.0
           WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
-          ENABLE_EMAIL: ${{ github.event_name == 'push' && 'false' || (github.event_name == 'workflow_dispatch' && vars.RUN_SMTP_SMOKE_TEST == 'true' && 'true') || secrets.ENABLE_EMAIL || 'false' }}
+          ENABLE_EMAIL: ${{ github.event_name == 'push' && 'false' || 'true' }}
           EMAIL_PROVIDER: smtp
           SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
           SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
@@ -109,7 +109,7 @@ jobs:
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
           WHATSAPP_API_VERSION: v26.0
           WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
-          ENABLE_EMAIL: ${{ github.event_name == 'push' && 'false' || (github.event_name == 'workflow_dispatch' && vars.RUN_SMTP_SMOKE_TEST == 'true' && 'true') || secrets.ENABLE_EMAIL || 'false' }}
+          ENABLE_EMAIL: ${{ github.event_name == 'push' && 'false' || 'true' }}
           EMAIL_PROVIDER: smtp
           SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
           SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
@@ -132,7 +132,7 @@ jobs:
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
           WHATSAPP_API_VERSION: v26.0
           WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
-          ENABLE_EMAIL: ${{ github.event_name == 'push' && 'false' || (github.event_name == 'workflow_dispatch' && vars.RUN_SMTP_SMOKE_TEST == 'true' && 'true') || secrets.ENABLE_EMAIL || 'false' }}
+          ENABLE_EMAIL: ${{ github.event_name == 'push' && 'false' || 'true' }}
           EMAIL_PROVIDER: smtp
           SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
           SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
@@ -154,7 +154,7 @@ jobs:
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
           WHATSAPP_API_VERSION: v26.0
           WHATSAPP_RECIPIENT_PHONE: ${{ secrets.WHATSAPP_RECIPIENT_PHONE }}
-          ENABLE_EMAIL: ${{ github.event_name == 'push' && 'false' || (github.event_name == 'workflow_dispatch' && vars.RUN_SMTP_SMOKE_TEST == 'true' && 'true') || secrets.ENABLE_EMAIL || 'false' }}
+          ENABLE_EMAIL: ${{ github.event_name == 'push' && 'false' || 'true' }}
           EMAIL_PROVIDER: smtp
           SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
           SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}

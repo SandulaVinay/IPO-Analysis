@@ -669,7 +669,7 @@ def extract_pdf_text(pdf_content: bytes, *, max_pages: int = 12, max_chars: int 
             if not page_text:
                 continue
             excerpt = page_text[:chars_left]
-            pages.append(f"[Page {index}]\\n{excerpt}")
+            pages.append(f"[Page {index}]\n{excerpt}")
             chars_left -= len(excerpt)
         if not pages:
             return {
@@ -678,7 +678,7 @@ def extract_pdf_text(pdf_content: bytes, *, max_pages: int = 12, max_chars: int 
             }
         return {
             "status": "EXTRACTED",
-            "text": "\\n\\n".join(pages),
+            "text": "\n\n".join(pages),
             "pages_extracted": len(pages),
             "truncated": len(reader.pages) > max_pages or chars_left <= 0,
         }
@@ -689,7 +689,8 @@ def extract_pdf_text(pdf_content: bytes, *, max_pages: int = 12, max_chars: int 
         }
 
 
-def _report_text(item: Dict[str, Any], metrics: Dict[str, Any], document_text: Optional[Dict[str, Any]] = None) -> str:\n    attachment = item.get("attachment_url") or item["source_url"]
+def _report_text(item: Dict[str, Any], metrics: Dict[str, Any], document_text: Optional[Dict[str, Any]] = None) -> str:
+    attachment = item.get("attachment_url") or item["source_url"]
     if metrics.get("status") == "EXTRACTED":
         analysis = (
             f"- **Revenue from operations:** ₹{_format_metric(metrics.get('revenue_cr'))} Cr\n"
@@ -713,9 +714,9 @@ def _report_text(item: Dict[str, Any], metrics: Dict[str, Any], document_text: O
         f"- **Statement basis:** {item.get('consolidation') or 'Not specified'}\n"
         f"- **Official source:** {item['source_url']}\n"
         f"- **Filing attachment:** {attachment}\n"
-        f"- **Details / PDF attachment:** {item.get('details_url') or 'Not available'}\\n"
-        f"- **Announcement:** {item.get('headline') or 'Not provided'}\\n\\n"
-        f"## Extracted financial metrics\\n\\n{analysis}\\n{analysis_note}\\n"
+        f"- **Details / PDF attachment:** {item.get('details_url') or 'Not available'}\n"
+        f"- **Announcement:** {item.get('headline') or 'Not provided'}\n\n"
+        f"## Extracted financial metrics\n\n{analysis}\n{analysis_note}\n"
         + _pdf_text_section(document_text)
     )
 
@@ -725,16 +726,16 @@ def _pdf_text_section(document_text: Optional[Dict[str, Any]]) -> str:
         return ""
     if document_text.get("status") != "EXTRACTED":
         return (
-            "\\n## Source document text\\n\\n"
-            f"Text extraction unavailable: {document_text.get('reason', 'No readable PDF text was found.')}\\n"
-            "The official filing link above remains the authoritative source.\\n"
+            "\n## Source document text\n\n"
+            f"Text extraction unavailable: {document_text.get('reason', 'No readable PDF text was found.')}\n"
+            "The official filing link above remains the authoritative source.\n"
         )
-    suffix = "\\n\\n*Excerpt only; verify figures, units, statement basis, and reporting period against the original filing.*"
+    suffix = "\n\n*Excerpt only; verify figures, units, statement basis, and reporting period against the original filing.*"
     if document_text.get("truncated"):
         suffix += " The excerpt was truncated to keep the report readable."
     return (
-        "\\n## Source document text (page-labelled excerpt)\\n\\n"
-        f"{document_text.get('text', '')}{suffix}\\n"
+        "\n## Source document text (page-labelled excerpt)\n\n"
+        f"{document_text.get('text', '')}{suffix}\n"
     )
 
 

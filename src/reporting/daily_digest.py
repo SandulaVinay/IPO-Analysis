@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, Optional
 from zoneinfo import ZoneInfo
 
 from src.common.config import settings
+from src.common.logging import logger
 from src.notifications.email import EmailProvider
 from src.notifications.whatsapp import WhatsAppProvider
 from src.state.store import StateStore
@@ -173,13 +174,24 @@ async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateSt
     report_path.write_text(report_text, encoding="utf-8")
     markdown_to_pdf(report_text, report_path.with_suffix(".pdf"), title="Daily Indian IPO Status Digest")
 
-    if store.has_processed_event(event_key):
+    # A previous SMTP acceptance is not proof the recipient received the message.
+    # Allow an explicitly requested manual resend for the current day's digest, while
+    # preserving the normal once-per-day idempotency guard for scheduled runs.
+    force_resend = os.getenv("FORCE_RESEND_DIGEST", "").strip().lower() in {"1", "true", "yes"}
+    if store.has_processed_event(event_key) and not force_resend:
+        logger.info(
+            "Daily digest already accepted earlier today; skipping duplicate send. "
+            "Set FORCE_RESEND_DIGEST=true only for a deliberate manual retry."
+        )
         return {
             "status": "ALREADY_SENT",
             "event_key": event_key,
             "report_path": str(report_path),
             "notifications_accepted": 0,
+            "resend_available": True,
         }
+    if force_resend and store.has_processed_event(event_key):
+        logger.warning("Manual digest resend override enabled for today's already-processed digest.")
 
     accepted = False
     channel = None

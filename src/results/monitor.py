@@ -426,6 +426,8 @@ def parse_financial_results_page(html: str, symbol: str, page_url: str) -> List[
                 if "xbrl" in item["label"].lower()
                 or any(ext in item["url"].lower() for ext in (".xml", ".xbrl"))
                 or "/xbrl/" in item["url"].lower()
+                or "/ixbrl/" in item["url"].lower()
+                or "/ixbrl" in item["url"].lower()
             ), None)
             details_attachment = next((
                 item["url"] for item in links
@@ -433,7 +435,7 @@ def parse_financial_results_page(html: str, symbol: str, page_url: str) -> List[
                 or item["url"].lower().split("?")[0].endswith(".pdf")
             ), None)
             attachment = xbrl_attachment or details_attachment or next(
-                (item["url"] for item in links if item["url"].lower().split("?")[0].endswith(".xlsx")),
+                (item["url"] for item in links if item["url"].lower().split("?")[0].endswith((".xlsx", ".csv", ".html"))),
                 None,
             )
             event_material = "|".join([symbol.upper(), period_end, relating, broadcast, consolidation, attachment or page_url])

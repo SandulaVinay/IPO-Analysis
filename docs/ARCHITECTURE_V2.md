@@ -153,12 +153,12 @@ This is an initial adapter, not proof of complete prospectus coverage. NSE/BSE p
 
 ## Daily IPO digest
 
-The scheduler's final weekday run (17:30 IST) and manual dispatch now invoke `python -m src.cli.digest`. It produces a Markdown artifact listing future-dated or source-conflict IPO records, links to the official NSE/BSE issue pages, and explicitly labels each item `UNABLE_TO_ASSESS` until verified RHP/DRHP financial data is available. It includes the last discovery-run status and warns when the report is based on cached state. It sends WhatsApp first and email fallback only when the corresponding settings/secrets are configured. With both channels disabled, the report is created in report-only mode and no delivery is claimed.
+The scheduler's final weekday run (17:30 IST) and manual dispatch now invoke `python -m src.cli.digest`. It produces a Markdown artifact listing future-dated or source-conflict IPO records, links to the official NSE/BSE issue pages, and explicitly labels each item `UNABLE_TO_ASSESS` until verified RHP/DRHP financial data is available. It includes the last discovery-run status and warns when the report is based on cached state. SMTP email is the preferred channel and is attempted only when explicitly enabled and configured. WhatsApp remains deferred and must not be treated as enabled by default. With email disabled or misconfigured, the report is created in report-only mode and no delivery is claimed.
 
 
 ## PDF reports and email attachments
 
-Daily IPO status, supported financial-results filing reports, and prospectus evidence reports are rendered to both Markdown and PDF. PDFs are uploaded as short-lived GitHub Actions artifacts. When email fallback is enabled, the daily digest and results monitor attach the corresponding PDF, restricted to existing PDF files inside the generated `reports/` directory with a 10 MB total attachment limit. WhatsApp sends the PDF as a document with a short caption when available; the caption also links to the workflow run for artifact access.
+Daily IPO status, supported financial-results filing reports, and prospectus evidence reports are rendered to both Markdown and PDF. PDFs are uploaded as short-lived GitHub Actions artifacts. When email alerts are enabled and configured, the daily digest and results monitor may attach the corresponding PDF, restricted to existing PDF files inside the generated `reports/` directory with a 10 MB total attachment limit. WhatsApp delivery is deferred.
 
 
 ## Source coverage status
@@ -166,7 +166,7 @@ Daily IPO status, supported financial-results filing reports, and prospectus evi
 The IPO discovery adapter now distinguishes a recognized-but-empty official issue table from an unrecognized page layout. If both exchange layouts are unrecognized or both requests fail, discovery fails instead of reporting success. If one source remains usable while another fails or changes layout, the run is recorded as `PARTIAL`; the daily digest warns that cached state may be stale or incomplete.
 
 
-When a generated PDF exists, the WhatsApp adapter now uploads it through the Cloud API media endpoint and sends a document message with a short caption. The attachment must be a valid PDF inside the generated `reports/` directory and remain under 10 MB. If upload or document delivery is rejected, the email fallback receives the PDF attachment instead.
+A WhatsApp document-upload adapter exists in the codebase, but it is not the active rollout path. Do not enable it until WhatsApp delivery has been explicitly approved, configured, and tested.
 
 
 The completeness engine now counts only explicit verified date fields and provenance-bearing facts marked `VERIFIED`; non-null but unverified numeric IPO fields no longer inflate completeness or confidence. A zero count of verified sources remains zero rather than being reported as one.
@@ -174,7 +174,7 @@ The completeness engine now counts only explicit verified date fields and proven
 
 ## Persistent prospectus registry
 
-The public state branch now stores only prospectus metadata (symbol, sanitized source URL, URL hash, document SHA-256, version label, page count, extraction counts, and timestamps). It deliberately does not store candidate text or notification content. The same source URL is rechecked at least daily; unchanged content retains its version, while a changed PDF gets a new version label. New content generates a page-cited Markdown/PDF review artifact and a WhatsApp document alert with email fallback. URL query parameters that look like tokens or signatures are removed from public metadata and reports.
+The public state branch now stores only prospectus metadata (symbol, sanitized source URL, URL hash, document SHA-256, version label, page count, extraction counts, and timestamps). It deliberately does not store candidate text or notification content. The same source URL is rechecked at least daily; unchanged content retains its version, while a changed PDF gets a new version label. New content generates a page-cited Markdown/PDF review artifact. Notification delivery follows the current email-first rollout policy; WhatsApp is deferred. URL query parameters that look like tokens or signatures are removed from public metadata and reports.
 
 
 ## Prospectus table candidates

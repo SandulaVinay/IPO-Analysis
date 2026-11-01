@@ -66,8 +66,10 @@ async def test_full_pipeline_flow(async_session: AsyncSession):
     # 4. Run Analysis Pipeline
     pipeline_result = await run_pipeline_for_ipo(ipo, async_session)
     assert "score_data" in pipeline_result
-    assert pipeline_result["score_data"]["overall_score"] > 0
-    assert pipeline_result["score_data"]["verdict"] in ("ATTRACTIVE", "NEUTRAL", "AVOID")
+    # Demo financial inputs are synthetic and must not yield a recommendation.
+    assert pipeline_result["score_data"]["overall_score"] == 0.0
+    assert pipeline_result["score_data"]["verdict"] == "UNABLE_TO_ASSESS"
+    assert pipeline_result["score_data"]["is_safety_gated"] is True
 
     # 5. Verify Multi-Format Reports
     assert len(pipeline_result["executive_summary"]) > 50
@@ -79,8 +81,9 @@ async def test_full_pipeline_flow(async_session: AsyncSession):
     outcome = await feedback_engine.record_actual_listing(
         ipo_id=ipo.id,
         actual_listing_price=570.0,  # ₹570 vs ₹475 issue price (+20.0%)
-        predicted_listing_gain_pct=18.0,
+        predicted_listing_gain_pct=None,
         verdict=pipeline_result["score_data"]["verdict"],
     )
     assert outcome.listing_gain_pct == 20.0
-    assert outcome.was_recommendation_profitable is True
+    # A gated/unknown assessment must not be counted as a profitable recommendation.
+    assert outcome.was_recommendation_profitable is False

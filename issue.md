@@ -172,3 +172,15 @@ The `Fact` ORM model and repository helper defaulted `verification_status` to `V
 
 ### Remaining check
 Review all fact-creation paths for explicit status assignments and ensure none blindly labels scraped or extracted candidate values as `VERIFIED`. Existing databases may already contain incorrectly verified records; this code change does not migrate or reclassify existing rows.
+
+
+## 8. Prospectus financial candidate persistence and reconciliation integration
+
+### Implemented on the current feature branch
+- Connects the table extractor's `financial_candidates` to the reconciliation helper when generating the prospectus review report.
+- The report now summarizes comparable groups, unresolved metadata, conflicts, represented source URLs, and the explicit `assessment eligible: no` safety statement.
+- Persists each extracted table-cell candidate as JSON text in a `Fact` record with `value_type=JSON`, `value_numeric=NULL`, low confidence, tier-3 provenance, and `verification_status=UNVERIFIED`.
+- Adds regression coverage for report reconciliation and safe candidate persistence.
+
+### Safety boundary
+This is evidence storage and review only. Matching values do not become verified, JSON candidates do not populate numeric scoring inputs, and no live financial recommendation is enabled. The branch must pass CI and the current database/schema path must be tested before merge.

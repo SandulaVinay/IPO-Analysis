@@ -90,3 +90,28 @@ def test_financial_table_candidates_do_not_guess_missing_units():
     revenue = next(item for item in evidence if item["field_name"] == "revenue_from_operations")
     assert all(item["normalized_value_inr_crore"] is None for item in revenue["financial_candidates"])
     assert all(item["verification_status"] == "CANDIDATE_UNVERIFIED" for item in revenue["financial_candidates"])
+
+
+
+def test_stacked_financial_headers_preserve_each_year_unit_and_basis():
+    evidence = extract_candidate_evidence_from_tables(
+        [[[
+            ["Consolidated statement of profit and loss (₹ in lakhs)", "", ""],
+            ["", "Audited", "Audited"],
+            ["Particulars", "FY 2023-24", "FY 2024-25"],
+            ["Revenue from operations", "12,450.75", "14,100.00"],
+        ]]],
+        source_url="https://www.nseindia.com/example-rhp.pdf",
+        document_hash="e" * 64,
+    )
+    revenue = next(item for item in evidence if item["field_name"] == "revenue_from_operations")
+    fy23, fy24 = revenue["financial_candidates"]
+
+    assert fy23["period"]["label"] == "FY2023-2024"
+    assert fy24["period"]["label"] == "FY2024-2025"
+    assert fy23["statement_basis"] == "CONSOLIDATED"
+    assert fy24["statement_basis"] == "CONSOLIDATED"
+    assert fy23["unit"] == fy24["unit"] == "lakh"
+    assert fy23["normalized_value_inr_crore"] == "124.5075"
+    assert fy24["normalized_value_inr_crore"] == "141.0000"
+    assert fy23["verification_status"] == fy24["verification_status"] == "CANDIDATE_UNVERIFIED"

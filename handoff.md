@@ -305,3 +305,12 @@ Branch: `feature/end-to-end-assessment-status-safety` (pending CI/PR review).
 - Added a verification-engine regression test showing that unverified prospectus candidate JSON cannot satisfy `revenue_latest` completeness just because the candidate has a field name and source URL.
 - Added an integration assertion that gated analysis results surface `assessment_status=UNABLE_TO_ASSESS`.
 - These are synthetic safety tests only; official filing validation and verified issuer-data adapters remain open requirements.
+
+
+### Latest feature branch — synthetic prospectus-layout safety matrix
+
+Branch: `feature/prospectus-fixture-safety-matrix` (PR/CI pending).
+
+- Added synthetic-only financial-statement layout fixtures with multiple FY columns, explicit units, standalone/consolidated basis, negative values, em dashes, ambiguous units, and conflicting values.
+- Tests ensure ambiguous values remain unresolved, comparable conflicts are reported without selecting a winner, and candidate values never become verified or assessment-eligible.
+- These are invented fixtures, not official issuer evidence. Real official filing validation and production-safe verified financial ingestion remain outstanding.

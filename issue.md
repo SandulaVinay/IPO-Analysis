@@ -141,3 +141,20 @@ The updated unit tests are part of the current PR CI run. Confirm the latest run
 The first full-suite run after tightening the gate exposed two tests that still expected synthetic/demo financial inputs to produce an attractive or positive score. Those expectations contradicted the fail-closed rule.
 
 **Fix:** the strong-IPO scenario now explicitly declares its fixture evidence verified; the end-to-end pipeline test now expects synthetic demo inputs to return `UNABLE_TO_ASSESS`, a zero score, and no profitable recommendation classification. The next full CI run must confirm these changes.
+
+
+## 9. Financial candidate reconciliation across sources
+
+### Problem
+Extracted numeric candidates from different periods, statement bases, or source documents must not be compared as if they describe the same fact. Matching values also do not, by themselves, prove that either source is authoritative or that the extraction mapped the correct column.
+
+### Fix implemented on the follow-up branch
+- Added `src/verification/financial_evidence.py` to group candidates only by field, explicit period, and statement basis.
+- Conflicting normalized values for the same comparable key are flagged as `CONFLICT`.
+- One URL is labelled `SINGLE_SOURCE_UNCONFIRMED`; matching values from multiple URLs are labelled `MATCHING_CANDIDATES_UNVERIFIED`.
+- Missing value/unit normalization, period, basis, or provenance stays unresolved.
+- The module always preserves `CANDIDATE_UNVERIFIED` and sets `assessment_eligible=False`; it never selects a winning value or upgrades evidence to verified.
+- Added tests for conflicts, same-value candidates, duplicate source URLs, missing metadata, separate periods, and standalone/consolidated separation.
+
+### Still pending
+Wire reconciliation into the document/Fact storage and analysis orchestration without bypassing official-source validation; add real official filing fixtures; define a reviewed source authority policy; and only allow scoring from independently verified facts. Full issue #31 remains open.

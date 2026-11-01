@@ -521,6 +521,24 @@
       "detail": "records=0; channel=EMAIL",
       "status": "ACCEPTED",
       "timestamp": "2026-11-01T14:30:17.491122+00:00"
+    },
+    {
+      "command": "discover",
+      "detail": "restored=1; discovered=1; registry_total=1; source_coverage=PARTIAL",
+      "status": "PARTIAL",
+      "timestamp": "2026-11-01T14:47:42.374463+00:00"
+    },
+    {
+      "command": "results",
+      "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; errors=0",
+      "status": "SUCCESS",
+      "timestamp": "2026-11-01T14:47:49.350502+00:00"
+    },
+    {
+      "command": "digest",
+      "detail": "records=0; channel=EMAIL",
+      "status": "ACCEPTED",
+      "timestamp": "2026-11-01T14:47:54.247956+00:00"
     }
   ],
   "schema_version": 1

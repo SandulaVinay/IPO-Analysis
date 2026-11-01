@@ -134,6 +134,14 @@ def identify_financial_period(context: str) -> Optional[Dict[str, str]]:
             end = int(end_text)
             if end == start + 1:
                 return {"period_type": "FINANCIAL_YEAR", "label": f"FY{start}-{end}"}
+    financial_year = re.search(
+        r"\b(?:financial|fiscal)\s+year\b[^0-9]{0,50}(20\d{2})\b",
+        text,
+        re.I,
+    )
+    if financial_year:
+        year = int(financial_year.group(1))
+        return {"period_type": "FINANCIAL_YEAR", "label": f"FY{year}"}
     single = re.search(r"\bFY\s*(20\d{2})\b", text, re.I)
     if single:
         year = int(single.group(1))

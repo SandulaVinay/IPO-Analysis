@@ -105,6 +105,17 @@ def test_candidate_report_is_explicitly_unverified_and_contains_page_citation(tm
                 "field_name": "revenue_from_operations",
                 "page_number": 4,
                 "evidence_text": "Revenue from operations 100",
+                "financial_candidates": [{
+                    "field_name": "revenue_from_operations",
+                    "raw_value": "100",
+                    "normalized_value_inr_crore": "100",
+                    "period": {"period_type": "FINANCIAL_YEAR", "label": "FY2025"},
+                    "statement_basis": "CONSOLIDATED",
+                    "source_url": "https://www.nseindia.com/example.pdf",
+                    "document_hash": "c" * 64,
+                    "page_number": 4,
+                    "verification_status": "CANDIDATE_UNVERIFIED",
+                }],
             }],
         },
     )

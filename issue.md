@@ -205,3 +205,20 @@ These checks validate status propagation and safety behavior using synthetic fix
 
 ### Validation boundary
 These fixtures mimic common filing layouts but are not sourced from an actual issuer filing. Official-source fixture validation, issuer/document identity checks, scanned-PDF/OCR coverage, and a verified-fact promotion workflow remain open.
+
+
+---
+
+## 11. Additional extractor/source safety gaps found during follow-up (2026-11-01)
+
+- Multi-row table headers could lose the year if an audit/description row sat between the parent statement header and the year labels. Fixed in PR #37 with a stacked-header regression test.
+- Public HTTPS alone did not prove a prospectus URL came from a regulator/exchange or reviewed issuer host. PR #38 added a default SEBI/NSE/BSE host allowlist and explicit issuer-domain configuration. This is a source-origin check, not financial verification.
+- KPI tables can interleave amounts and percentages under each year. PR #39 skips percentage/margin/ratio/per-share columns and recognizes explicit "Financial Year 2025" headers. Its fixture uses source-derived table layout, not a downloaded PDF or independently verified issuer data.
+- PR #37 and PR #38 post-merge main CI passed; PR #39 feature CI passed, with post-merge main CI pending at the time of this note.
+
+### Still required before recommendations can be enabled
+- Validate a real official issuer PDF end to end and record the actual document hash and page citations.
+- Add a reviewed expected-value manifest with independently checked units, periods, statement basis, and values.
+- Implement a human/audited candidate-to-VERIFIED workflow and connect only those verified facts to scoring.
+- Add end-to-end tests proving unverified or ambiguous evidence can never produce a recommendation; keep the default gated result as UNABLE_TO_ASSESS.
+- Add scanned-PDF/OCR handling and audit existing database facts for old incorrect VERIFIED statuses.

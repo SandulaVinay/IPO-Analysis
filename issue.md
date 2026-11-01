@@ -184,3 +184,14 @@ Review all fact-creation paths for explicit status assignments and ensure none b
 
 ### Safety boundary
 This is evidence storage and review only. Matching values do not become verified, JSON candidates do not populate numeric scoring inputs, and no live financial recommendation is enabled. The branch must pass CI and the current database/schema path must be tested before merge.
+
+
+## 9. End-to-end assessment status and candidate fact safety
+
+### Implemented on feature branch
+- The normal analysis pipeline now exposes `assessment_status` explicitly alongside `score_data`; any safety-gated or `UNABLE_TO_ASSESS` result is surfaced as `UNABLE_TO_ASSESS`.
+- Added a regression test proving a prospectus table candidate stored with JSON text, a source URL, and a critical field name does not satisfy verified financial completeness unless its fact status is explicitly `VERIFIED`.
+- Extended the integration test to assert that a gated pipeline result exposes `assessment_status=UNABLE_TO_ASSESS`.
+
+### Validation boundary
+These checks validate status propagation and safety behavior using synthetic fixtures. They do not validate extracted values against a live issuer's official filing or make recommendations production-ready.

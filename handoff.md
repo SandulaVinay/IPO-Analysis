@@ -254,3 +254,27 @@ The files have been committed to the feature branch through GitHub. CI run [#493
 
 ### Latest CI / merge gate
 The latest full configured CI run on commit `5706141934f1e2b660333098b3af667ac42d10ec` passed: dependency installation, Python compilation, and the full configured test step succeeded in [Actions run #503](https://github.com/SandulaVinay/IPO-Analysis/actions/runs/41291114336). The run included the table-candidate integration, strict missing-verification gate, and updated integration/scenario expectations. Re-run CI after any further code changes. This PR is an incremental foundation, not a complete official-source verification/reconciliation pipeline. The full issue #31 remains open.
+
+
+---
+
+## 11. Follow-up — financial candidate reconciliation
+
+**Working branch:** `feature/financial-evidence-reconciliation`  
+**Base:** `main` after merge of PR #32 (merge commit `f63d319a06dfa559a0931cb1c99d7b724ff0df9f`).
+
+### Added on this branch
+- `src/verification/financial_evidence.py`: groups candidate facts by field + explicit period + statement basis; reports conflicts, single-source-only groups, matching-but-unverified candidates, and unresolved metadata.
+- `tests/unit/test_financial_evidence_reconciliation.py`: tests for matching values, conflicts, duplicate URLs, missing metadata, period separation, and standalone/consolidated separation.
+- README and `issue.md` updated with the new milestone and safety limitations.
+
+### Safety contract
+No candidate is marked `VERIFIED`. Exact agreement between URLs is not sufficient to establish source authority or correct extraction. Conflicts are reported, not silently resolved. Missing normalized value, period, basis, or provenance is unresolved. Output explicitly states `assessment_eligible=False`.
+
+### Next actions
+1. Run CI on this branch and fix any test or compatibility issues.
+2. Add official filing fixtures with independently checked expected values and provenance.
+3. Define source-authority rules and a review/verification transition separate from extraction.
+4. Connect reconciliation to document evidence storage and analysis orchestration; do not add synthetic values or hard-code verification status.
+5. Confirm only explicitly verified facts can populate critical financial fields.
+6. Keep issue #31 open until extraction, reconciliation, official verification, scoring, and end-to-end safety tests are complete.

@@ -70,6 +70,7 @@ async def test_full_pipeline_flow(async_session: AsyncSession):
     assert pipeline_result["score_data"]["overall_score"] == 0.0
     assert pipeline_result["score_data"]["verdict"] == "UNABLE_TO_ASSESS"
     assert pipeline_result["score_data"]["is_safety_gated"] is True
+    assert pipeline_result["assessment_status"] == "UNABLE_TO_ASSESS"
 
     # 5. Verify Multi-Format Reports
     assert len(pipeline_result["executive_summary"]) > 50

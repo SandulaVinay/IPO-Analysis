@@ -295,3 +295,13 @@ Branch: `feature/persist-and-reconcile-prospectus-candidates` (pending CI/PR rev
 - Numeric candidates are persisted as JSON text in `facts` with `value_numeric=NULL`, `value_type=JSON`, `verification_status=UNVERIFIED`, low confidence, and tier-3 source provenance. This avoids converting extracted numbers into score-ready facts.
 - Tests cover a report candidate group and persistence of candidate JSON without a numeric score input.
 - This remains a candidate review pipeline, not a verified financial extraction pipeline. Do not enable recommendation scoring until official-source validation, robust table layout fixtures, and caller-level safety tests pass.
+
+
+### Latest feature branch — assessment status propagation and safety tests
+
+Branch: `feature/end-to-end-assessment-status-safety` (pending CI/PR review).
+
+- `run_pipeline_for_ipo` now includes `assessment_status` in its standard scored payload, derived from the scoring verdict and safety-gate flag.
+- Added a verification-engine regression test showing that unverified prospectus candidate JSON cannot satisfy `revenue_latest` completeness just because the candidate has a field name and source URL.
+- Added an integration assertion that gated analysis results surface `assessment_status=UNABLE_TO_ASSESS`.
+- These are synthetic safety tests only; official filing validation and verified issuer-data adapters remain open requirements.

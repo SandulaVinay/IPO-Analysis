@@ -150,17 +150,30 @@ def extract_candidate_evidence_from_tables(
             rows = [row for row in rows if any(row)]
             if not rows:
                 continue
-            header_rows = rows[:1]
-            if len(rows) > 1:
-                second_row_text = " | ".join(rows[1])
-                second_row_is_data = any(
-                    pattern.search(second_row_text)
+            # Some prospectuses use stacked headers (e.g. statement/basis, audit
+            # label, then financial year). Find the first numeric financial row and
+            # retain up to four preceding header rows instead of assuming the second
+            # row contains the final year labels.
+            first_financial_row = None
+            for candidate_index, candidate_row in enumerate(rows):
+                candidate_text = " | ".join(candidate_row)
+                has_financial_label = any(
+                    pattern.search(candidate_text)
                     for patterns in compiled.values()
                     for pattern in patterns
                 )
-                if not second_row_is_data:
-                    header_rows = rows[:2]
-            header_context = " / ".join(" | ".join(row) for row in header_rows)[:400]
+                has_numeric_cell = any(
+                    parse_numeric_value(cell) is not None
+                    for cell in candidate_row[1:]
+                )
+                if has_financial_label and has_numeric_cell:
+                    first_financial_row = candidate_index
+                    break
+            if first_financial_row is not None and first_financial_row > 0:
+                header_rows = rows[max(0, first_financial_row - 4):first_financial_row]
+            else:
+                header_rows = rows[:1]
+            header_context = " / ".join(" | ".join(row) for row in header_rows)[:800]
             for row_index, row in enumerate(rows):
                 row_text = " | ".join(row).strip()
                 if len(row) < 2 or not row_text:
@@ -180,9 +193,14 @@ def extract_candidate_evidence_from_tables(
                 for cell_index, raw_cell in enumerate(row[1:], start=1):
                     if parse_numeric_value(raw_cell) is None:
                         continue
-                    column_header = ""
-                    if header_rows and cell_index < len(header_rows[-1]):
-                        column_header = header_rows[-1][cell_index]
+                    # Join this column's cells across stacked header rows. Period
+                    # parsing sees only this column, while unit/basis detection uses
+                    # the whole header context; adjacent FY columns cannot bleed together.
+                    column_header = " ".join(
+                        header_row[cell_index]
+                        for header_row in header_rows
+                        if cell_index < len(header_row) and header_row[cell_index]
+                    )
                     explicit_unit = detect_explicit_unit(header_context)
                     explicit_basis = identify_statement_basis(header_context)
                     context_parts = [column_header]

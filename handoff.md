@@ -314,3 +314,23 @@ Branch: `feature/prospectus-fixture-safety-matrix` (PR/CI pending).
 - Added synthetic-only financial-statement layout fixtures with multiple FY columns, explicit units, standalone/consolidated basis, negative values, em dashes, ambiguous units, and conflicting values.
 - Tests ensure ambiguous values remain unresolved, comparable conflicts are reported without selecting a winner, and candidate values never become verified or assessment-eligible.
 - These are invented fixtures, not official issuer evidence. Real official filing validation and production-safe verified financial ingestion remain outstanding.
+
+
+---
+
+## 12. Current status after header, source-origin, and KPI-column fixes (2026-11-01)
+
+### Merged safety improvements
+- PR #37: multi-row prospectus headers are retained and combined per numeric column so period labels do not bleed across adjacent years.
+- PR #38: source ingestion accepts regulator/exchange domains SEBI, NSE, and BSE by default; direct issuer domains require explicit configuration through IPO_ALLOWED_SOURCE_DOMAINS. Redirect destinations are checked too. The synthetic integration test explicitly allows its example.com fixture only within the test.
+- PR #39: explicit "Financial Year 2025" labels are recognized, and percentage/margin/ratio/per-share columns are excluded from currency amount candidates. A source-derived SEBI table-layout fixture covers amounts interleaved with percentages.
+- PR #37 and PR #38 post-merge main CI passed. PR #39 feature CI passed; post-merge main CI is pending at the time this note was written.
+
+### Remaining release gates (do not claim production-ready)
+1. Download and validate at least one real official issuer DRHP/RHP PDF end to end, recording the actual SHA-256, issuer/document identity, and page-level references. The source-derived fixture is not a bundled PDF and does not count as full-file validation.
+2. Independently check expected financial figures, units, periods, and standalone/consolidated basis against the official statement and a reviewed expected-value manifest.
+3. Implement an auditable reviewer-controlled transition from candidate to VERIFIED fact; do not promote based only on cross-source agreement or the source-host allowlist.
+4. Prove that only reviewer-verified facts can populate critical numeric scoring fields, including a complete end-to-end regression test. Keep all production recommendations fail-closed until this passes.
+5. Add OCR/scanned-PDF handling and review existing persisted facts for historical false VERIFIED statuses before production use.
+
+The application must continue returning UNABLE_TO_ASSESS for synthetic/demo inputs or when critical financial evidence is absent, ambiguous, conflicting, or unverified.

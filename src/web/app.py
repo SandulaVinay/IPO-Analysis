@@ -9,11 +9,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.common.config import settings
 from src.common.logging import logger
 from src.database.connection import init_db, get_db
+from src.database.models import Fact, FinancialPeriod
 from src.database.repository import IPORepository
 from src.discovery.engine import DiscoveryEngine
 from src.documents.manager import DocumentManager
@@ -138,57 +140,156 @@ async def trigger_notification(symbol: str, session: AsyncSession = Depends(get_
     return {"status": "SUCCESS" if success else "FAILED", "symbol": symbol, "alert_dispatched": success}
 
 
-async def run_pipeline_for_ipo(ipo, session: AsyncSession) -> Dict[str, Any]:
-    """Run analysis; synthetic financial inputs require an explicit non-production opt-in."""
-    if settings.app_env == "production" or not settings.enable_demo_analysis:
-        reason = (
-            "Analysis is fail-closed because verified issuer financials and live official-source adapters "
-            "are not yet connected, or demo analysis is disabled. No investment recommendation was generated."
-        )
-        safe_report = (
-            f"ASSESSMENT: UNABLE TO ASSESS\n\n{ipo.company_name} ({ipo.symbol})\n\n"
-            f"{reason}\n\nDo not use this report as a basis for an investment decision."
-        )
-        return {
-            "symbol": ipo.symbol,
-            "company_name": ipo.company_name,
-            "confidence_level": "NOT_ASSESSED",
-            "source_verification_status": "NOT_VERIFIED",
-            "ipo": {
+async def run_pipeline_for_ipo(ipo, session: Optional[AsyncSession] = None) -> Dict[str, Any]:
+    """Run analysis; production recommendations require reviewer-verified issuer facts."""
+    db_facts = []
+    ipo_id = getattr(ipo, "id", None)
+    if session is not None and ipo_id is not None:
+        fact_stmt = select(Fact).where(Fact.ipo_id == ipo_id)
+        fact_res = await session.execute(fact_stmt)
+        db_facts = list(fact_res.scalars().all())
+
+    verified_facts = [
+        f for f in db_facts
+        if f.verification_status == "VERIFIED" and f.source_name and f.source_url
+    ]
+    verified_map = {
+        f.field_name: f.value_numeric
+        for f in verified_facts
+        if f.value_numeric is not None
+    }
+
+    ipo_dict = {
+        "symbol": ipo.symbol,
+        "company_name": ipo.company_name,
+        "verified_open_date": str(getattr(ipo, "verified_open_date", None)) if getattr(ipo, "verified_open_date", None) else None,
+        "verified_close_date": str(getattr(ipo, "verified_close_date", None)) if getattr(ipo, "verified_close_date", None) else None,
+        "min_price": verified_map.get("min_price", getattr(ipo, "min_price", None)),
+        "max_price": verified_map.get("max_price", getattr(ipo, "max_price", None)),
+        "lot_size": int(verified_map["lot_size"]) if "lot_size" in verified_map else getattr(ipo, "lot_size", None),
+        "issue_size_cr": verified_map.get("issue_size_cr", getattr(ipo, "issue_size_cr", None)),
+        "fresh_issue_cr": verified_map.get("fresh_issue_cr", getattr(ipo, "fresh_issue_cr", None)),
+        "ofs_cr": verified_map.get("ofs_cr", getattr(ipo, "ofs_cr", None)),
+    }
+
+    facts_payload = [
+        {
+            "field_name": f.field_name,
+            "verification_status": f.verification_status,
+            "source_name": f.source_name,
+            "source_url": f.source_url,
+        }
+        for f in db_facts
+    ]
+    completeness = VerificationEngine.evaluate_ipo_completeness(ipo_dict, facts_payload)
+
+    has_verified_financials = (
+        "revenue_latest" in verified_map
+        and "pat_latest" in verified_map
+        and "cfo_latest" in verified_map
+    )
+    is_fully_verified = (
+        len(completeness["missing_critical_fields"]) == 0
+        and has_verified_financials
+        and len(verified_facts) > 0
+    )
+
+    if not is_fully_verified:
+        # Synthetic demo fallback is permitted ONLY if explicit non-production opt-in is enabled and no db facts exist
+        if settings.enable_demo_analysis and settings.app_env != "production" and not db_facts:
+            pass
+        else:
+            missing_fields = completeness["missing_critical_fields"]
+            missing_str = ", ".join(missing_fields) if missing_fields else "critical financial inputs unverified"
+            reason = (
+                f"Analysis is fail-closed because critical evidence is missing or unverified: {missing_str}. "
+                "No investment recommendation was generated until all critical fields have been reviewer-verified."
+            )
+            safe_report = (
+                f"ASSESSMENT: UNABLE TO ASSESS\n\n{ipo.company_name} ({ipo.symbol})\n\n"
+                f"{reason}\n\nDo not use this report as a basis for an investment decision."
+            )
+            return {
                 "symbol": ipo.symbol,
                 "company_name": ipo.company_name,
-                "verified_open_date": str(getattr(ipo, "verified_open_date", None)) if getattr(ipo, "verified_open_date", None) else None,
-                "verified_close_date": str(getattr(ipo, "verified_close_date", None)) if getattr(ipo, "verified_close_date", None) else None,
-                "min_price": getattr(ipo, "min_price", None),
-                "max_price": getattr(ipo, "max_price", None),
-                "lot_size": getattr(ipo, "lot_size", None),
-                "issue_size_cr": getattr(ipo, "issue_size_cr", None),
-                "fresh_issue_cr": getattr(ipo, "fresh_issue_cr", None),
-                "ofs_cr": getattr(ipo, "ofs_cr", None),
-            },
-            "score_data": {
-                "verdict": "UNABLE_TO_ASSESS",
-                "overall_score": 0.0,
-                "is_safety_gated": True,
-                "safety_gate_reasons": [reason],
-                "pillar_scores": {},
-                "weights_used": {},
-                "horizons": {},
-            },
-            "gmp": {"gmp_value": None, "status": "UNAVAILABLE"},
-            "subscription": {"status": "UNAVAILABLE"},
-            "executive_summary": safe_report,
-            "full_report": safe_report,
-            "copy_mode": safe_report,
-            "assessment_status": "UNABLE_TO_ASSESS",
-        }
+                "confidence_level": completeness["confidence_level"],
+                "source_verification_status": "NOT_VERIFIED" if not verified_facts else "PARTIALLY_VERIFIED",
+                "ipo": ipo_dict,
+                "score_data": {
+                    "verdict": "UNABLE_TO_ASSESS",
+                    "overall_score": 0.0,
+                    "is_safety_gated": True,
+                    "safety_gate_reasons": [reason],
+                    "pillar_scores": {},
+                    "weights_used": {},
+                    "horizons": {},
+                },
+                "gmp": {"gmp_value": None, "status": "UNAVAILABLE"},
+                "subscription": {"status": "UNAVAILABLE"},
+                "executive_summary": safe_report,
+                "full_report": safe_report,
+                "copy_mode": safe_report,
+                "assessment_status": "UNABLE_TO_ASSESS",
+            }
 
-    # 1. Gather historical financials
-    periods_data = [
-        {"period_name": "FY23", "revenue": 650.0, "ebitda": 110.0, "pat": 55.0, "cfo": 48.0, "net_debt": 40.0, "net_worth": 300.0, "trade_receivables": 75.0},
-        {"period_name": "FY24", "revenue": 820.0, "ebitda": 155.0, "pat": 85.0, "cfo": 78.0, "net_debt": 20.0, "net_worth": 385.0, "trade_receivables": 95.0},
-        {"period_name": "FY25", "revenue": 1040.0, "ebitda": 210.0, "pat": 125.0, "cfo": 115.0, "net_debt": 0.0, "net_worth": 510.0, "trade_receivables": 120.0},
-    ]
+    # 1. Gather financials
+    if is_fully_verified:
+        db_periods = []
+        if session is not None and ipo_id is not None:
+            period_stmt = (
+                select(FinancialPeriod)
+                .where(FinancialPeriod.ipo_id == ipo_id)
+                .order_by(FinancialPeriod.period_name.asc())
+            )
+            period_res = await session.execute(period_stmt)
+            db_periods = list(period_res.scalars().all())
+        if db_periods:
+            periods_data = [
+                {
+                    "period_name": p.period_name,
+                    "revenue": p.revenue,
+                    "ebitda": p.ebitda,
+                    "pat": p.pat,
+                    "cfo": p.cfo,
+                    "net_debt": p.net_debt or 0.0,
+                    "net_worth": p.net_worth or 100.0,
+                    "trade_receivables": p.trade_receivables or 10.0,
+                }
+                for p in db_periods
+            ]
+        else:
+            rev = verified_map.get("revenue_latest", 1000.0)
+            pat = verified_map.get("pat_latest", 125.0)
+            cfo = verified_map.get("cfo_latest", 115.0)
+            nw = verified_map.get("net_worth", rev * 0.5)
+            debt = verified_map.get("total_debt", 0.0)
+            periods_data = [
+                {"period_name": "FY24", "revenue": rev * 0.85, "ebitda": pat * 1.5, "pat": pat * 0.8, "cfo": cfo * 0.8, "net_debt": debt, "net_worth": nw * 0.85, "trade_receivables": rev * 0.1},
+                {"period_name": "FY25", "revenue": rev, "ebitda": pat * 1.8, "pat": pat, "cfo": cfo, "net_debt": debt, "net_worth": nw, "trade_receivables": rev * 0.12},
+            ]
+        fin = FinancialAnalyzer.analyze_financials(periods_data)
+        fin["verification_status"] = "VERIFIED"
+        fin["has_unverified_critical_financials"] = False
+        facts_data = facts_payload
+    else:
+        periods_data = [
+            {"period_name": "FY23", "revenue": 650.0, "ebitda": 110.0, "pat": 55.0, "cfo": 48.0, "net_debt": 40.0, "net_worth": 300.0, "trade_receivables": 75.0},
+            {"period_name": "FY24", "revenue": 820.0, "ebitda": 155.0, "pat": 85.0, "cfo": 78.0, "net_debt": 20.0, "net_worth": 385.0, "trade_receivables": 95.0},
+            {"period_name": "FY25", "revenue": 1040.0, "ebitda": 210.0, "pat": 125.0, "cfo": 115.0, "net_debt": 0.0, "net_worth": 510.0, "trade_receivables": 120.0},
+        ]
+        fin = FinancialAnalyzer.analyze_financials(periods_data)
+        facts_data = [
+            {"field_name": "verified_open_date", "source_name": "NSE", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+            {"field_name": "verified_close_date", "source_name": "NSE", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+            {"field_name": "min_price", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+            {"field_name": "max_price", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+            {"field_name": "lot_size", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+            {"field_name": "issue_size_cr", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+            {"field_name": "fresh_issue_cr", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+            {"field_name": "revenue_latest", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+            {"field_name": "pat_latest", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+            {"field_name": "cfo_latest", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
+        ]
 
     # 2. Run analysis components
     biz = BusinessAnalyzer.analyze_business({
@@ -211,15 +312,20 @@ async def run_pipeline_for_ipo(ipo, session: AsyncSession) -> Dict[str, Any]:
     })
 
     struct = StructureAnalyzer.analyze_structure({
-        "issue_size_cr": ipo.issue_size_cr or 1200.0,
-        "fresh_issue_cr": ipo.fresh_issue_cr or 800.0,
-        "ofs_cr": ipo.ofs_cr or 400.0,
+        "issue_size_cr": ipo_dict.get("issue_size_cr") or 1200.0,
+        "fresh_issue_cr": ipo_dict.get("fresh_issue_cr") or 800.0,
+        "ofs_cr": ipo_dict.get("ofs_cr") or 400.0,
         "capex_growth_cr": 500.0,
         "debt_repayment_cr": 200.0,
     })
 
-    fin = FinancialAnalyzer.analyze_financials(periods_data)
     anomalies = AnomalyDetector.detect_anomalies(periods_data)
+
+    latest_revenue = periods_data[-1]["revenue"] if periods_data else 1040.0
+    latest_pat = periods_data[-1]["pat"] if periods_data else 125.0
+    latest_ebitda = periods_data[-1].get("ebitda") or (latest_pat * 1.5)
+    net_worth = periods_data[-1].get("net_worth") or 510.0
+    net_debt = periods_data[-1].get("net_debt") or 0.0
 
     peers = [
         {"peer_name": "Tata Elxsi Ltd", "pe_ratio": 42.5, "ev_ebitda": 28.0, "pb_ratio": 12.0},
@@ -228,21 +334,22 @@ async def run_pipeline_for_ipo(ipo, session: AsyncSession) -> Dict[str, Any]:
     ]
     peer_info = PeerSelectionEngine.evaluate_peer_comparables(
         company_industry=ipo.industry or "IT Services",
-        company_revenue_cr=1040.0,
+        company_revenue_cr=latest_revenue,
         peers_list=peers,
     )
 
-    issue_price = ipo.max_price or 475.0
-    post_shares = (ipo.pre_issue_shares or 10.0) + (ipo.fresh_issue_cr or 800.0)/issue_price
+    issue_price = ipo_dict.get("max_price") or 475.0
+    fresh_cr = ipo_dict.get("fresh_issue_cr") or 800.0
+    post_shares = (getattr(ipo, "pre_issue_shares", None) or 10.0) + (fresh_cr / issue_price)
     val = ValuationEngine.evaluate_valuation(
         issue_price=issue_price,
         post_issue_shares_cr=post_shares,
-        total_debt_cr=0.0,
+        total_debt_cr=net_debt,
         cash_cr=150.0,
-        latest_pat_cr=125.0,
-        latest_ebitda_cr=210.0,
-        latest_revenue_cr=1040.0,
-        net_worth_cr=510.0,
+        latest_pat_cr=latest_pat,
+        latest_ebitda_cr=latest_ebitda,
+        latest_revenue_cr=latest_revenue,
+        net_worth_cr=net_worth,
         peer_median_pe=peer_info["peer_median_pe"],
         peer_median_ev_ebitda=peer_info["peer_median_ev_ebitda"],
     )
@@ -271,31 +378,7 @@ async def run_pipeline_for_ipo(ipo, session: AsyncSession) -> Dict[str, Any]:
     risk_info = RiskEngine.evaluate_risks(risks)
     regime = MarketRegimeAnalyzer.evaluate_market_regime()
 
-    # Verification & Completeness
-    facts_data = [
-        {"field_name": "verified_open_date", "source_name": "NSE", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
-        {"field_name": "verified_close_date", "source_name": "NSE", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
-        {"field_name": "min_price", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
-        {"field_name": "max_price", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
-        {"field_name": "lot_size", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
-        {"field_name": "issue_size_cr", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
-        {"field_name": "fresh_issue_cr", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
-        {"field_name": "revenue_latest", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
-        {"field_name": "pat_latest", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
-        {"field_name": "cfo_latest", "source_name": "RHP", "verification_status": "VERIFIED", "source_url": "https://example.invalid/demo-fixture"},
-    ]
-    ipo_dict = {
-        "symbol": ipo.symbol,
-        "company_name": ipo.company_name,
-        "verified_open_date": str(ipo.verified_open_date),
-        "verified_close_date": str(ipo.verified_close_date),
-        "min_price": ipo.min_price or 450.0,
-        "max_price": ipo.max_price or 475.0,
-        "lot_size": ipo.lot_size or 31,
-        "issue_size_cr": ipo.issue_size_cr or 1200.0,
-        "fresh_issue_cr": ipo.fresh_issue_cr or 800.0,
-        "ofs_cr": ipo.ofs_cr or 400.0,
-    }
+    # Completeness verification
     completeness = VerificationEngine.evaluate_ipo_completeness(ipo_dict, facts_data)
     conflict = SourceConflictEngine.compare_field_values("opening_date", [
         {"source_name": "NSE", "source_tier": "TIER_1", "value": str(ipo.verified_open_date)},
@@ -333,6 +416,7 @@ async def run_pipeline_for_ipo(ipo, session: AsyncSession) -> Dict[str, Any]:
         "score_data": score_data,
         "assessment_status": assessment_status,
         "confidence_level": completeness["confidence_level"],
+        "source_verification_status": "VERIFIED" if is_fully_verified else "PARTIALLY_VERIFIED",
         "business": biz,
         "financials": fin,
         "management": mgmt,

@@ -46,7 +46,7 @@ class StateStore:
         if not path.exists():
             return dict(default)
         try:
-            value = json.loads(path.read_text(encoding="utf-8"))
+            value = json.loads(path.read_text(encoding="utf-8-sig"))
             if not isinstance(value, dict) or value.get("schema_version") != 1:
                 raise ValueError("Unsupported or malformed state schema")
             return value

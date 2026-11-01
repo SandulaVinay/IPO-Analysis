@@ -1,0 +1,83 @@
+{
+  "manifest_version": "1.0",
+  "issuer": {
+    "symbol": "CLEAN",
+    "company_name": "Clean Science and Technology Limited",
+    "industry": "Specialty Chemicals",
+    "issue_type": "MAINBOARD"
+  },
+  "document": {
+    "document_type": "RHP",
+    "document_title": "Red Herring Prospectus",
+    "source_url": "https://www.sebi.gov.in/filings/public-issues/clean-science-rhp.pdf",
+    "document_hash": "8daa9a26e304630ec16e05e3df0771ccdf6e79a6eb82ffa7322c2f303a9c1751",
+    "page_count": 5,
+    "unit": "lakh",
+    "statement_basis": "CONSOLIDATED"
+  },
+  "reviewed_issue_parameters": {
+    "min_price": 450.0,
+    "max_price": 475.0,
+    "lot_size": 31,
+    "issue_size_cr": 1200.0,
+    "fresh_issue_cr": 800.0,
+    "ofs_cr": 400.0
+  },
+  "reviewed_financial_facts": [
+    {
+      "field_name": "revenue_from_operations",
+      "canonical_field": "revenue_latest",
+      "period": "FY 2024-25",
+      "period_label": "FY2024-2025",
+      "statement_basis": "CONSOLIDATED",
+      "raw_value": "82,300.00",
+      "unit": "lakh",
+      "expected_normalized_inr_crore": 823.0,
+      "page_number": 3
+    },
+    {
+      "field_name": "profit_after_tax",
+      "canonical_field": "pat_latest",
+      "period": "FY 2024-25",
+      "period_label": "FY2024-2025",
+      "statement_basis": "CONSOLIDATED",
+      "raw_value": "14,800.00",
+      "unit": "lakh",
+      "expected_normalized_inr_crore": 148.0,
+      "page_number": 3
+    },
+    {
+      "field_name": "operating_cash_flow",
+      "canonical_field": "cfo_latest",
+      "period": "FY 2024-25",
+      "period_label": "FY2024-2025",
+      "statement_basis": "CONSOLIDATED",
+      "raw_value": "11,200.00",
+      "unit": "lakh",
+      "expected_normalized_inr_crore": 112.0,
+      "page_number": 4
+    },
+    {
+      "field_name": "net_worth",
+      "canonical_field": "net_worth",
+      "period": "FY 2024-25",
+      "period_label": "FY2024-2025",
+      "statement_basis": "CONSOLIDATED",
+      "raw_value": "59,500.00",
+      "unit": "lakh",
+      "expected_normalized_inr_crore": 595.0,
+      "page_number": 5
+    },
+    {
+      "field_name": "borrowings",
+      "canonical_field": "total_debt",
+      "period": "FY 2024-25",
+      "period_label": "FY2024-2025",
+      "statement_basis": "CONSOLIDATED",
+      "raw_value": "0.00",
+      "unit": "lakh",
+      "expected_normalized_inr_crore": 0.0,
+      "page_number": 5
+    }
+  ]
+}

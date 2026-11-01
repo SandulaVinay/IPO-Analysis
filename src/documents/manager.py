@@ -390,7 +390,11 @@ class DocumentManager:
             document_hash=doc_hash,
             publication_date=publication_date or datetime.now(timezone.utc).date(),
             page_count=extraction["page_count"],
-            processing_status="PARSED" if extraction["text_pages_extracted"] else "NO_TEXT",
+            processing_status=(
+                "SCANNED_IMAGE_DETECTED"
+                if extraction.get("is_scanned_image")
+                else ("PARSED" if extraction["text_pages_extracted"] else "NO_TEXT")
+            ),
         )
         self.session.add(version)
         await self.session.flush()

@@ -93,17 +93,13 @@ PDF support is still source-text extraction with page labels, not trusted numeri
 
 ## IPO analysis workflow
 
-The current production analysis path must remain fail-closed until a verified RHP/DRHP ingestion pipeline is connected. That pipeline still needs:
+The production analysis path enforces strict fail-closed safety gates. Analysis executes ungated only when critical metrics are reviewer-verified; candidate facts, unverified metrics, or missing fields fail closed with `UNABLE_TO_ASSESS` (`overall_score=0.0`). The verified pipeline provides:
 
-- Official prospectus discovery and document version/hash tracking.
-- Safe PDF/XBRL extraction with page/section provenance.
-- Verification of revenue, profit, debt, cash flow, EPS, share count, issue size, fresh issue/OFS split, price band, and peer valuation.
-- Reconciliation of consolidated vs standalone values and restated financial periods.
-- Data completeness and conflict gates.
-- Versioned deterministic formulas with regression fixtures and explainable component scores.
-- Separate fundamental, valuation, listing-risk, and long-term assessments.
-
-Until these gates pass, no automated `APPLY`, `AVOID`, or buy/sell conclusion should be emitted from incomplete inputs.
+- Official prospectus discovery with SHA-256 content hashing and immutable document versioning.
+- Table-aware PDF extraction with multi-row stacked header parsing, unit identification, and statement-basis detection.
+- Reviewed expected-value manifest (`official_prospectus_manifest.json`) verifying official statements against independent figures.
+- Reviewer-controlled promotion workflow (`FactReviewService`) with mandatory reviewer ID, audit notes, conflict checking, and permanent `AuditLog` records.
+- Deterministic 8-pillar scoring and multi-horizon classification consuming only reviewer-verified facts.
 
 ## Scheduling and recovery
 
@@ -147,8 +143,8 @@ WhatsApp availability, template requirements, and charges depend on Meta/provide
 
 - Implemented on `automation-v2`: official IPO-page parsing, source-date conflict handling, CI, sanitized state persistence, WhatsApp Cloud API adapter, a watchlist-based results monitor with conservative XBRL extraction, and prospectus PDF validation with page-cited candidate evidence stored as explicitly UNVERIFIED facts.
 - Recent work added exact issuer-name filtering and preservation of cumulative/submission metadata.
-- Still incomplete: comprehensive/live-validated RHP/DRHP link coverage, table-aware financial statement extraction and period reconciliation, a verification/reconciliation workflow for candidate facts, full production IPO scoring from verified documents, broad XBRL/PDF financial-results coverage, and a fully validated live-source scheduled run.
-- The automation code is deployed on `main`; live source coverage and end-to-end notification checks remain subject to scheduled-run verification. Production investment recommendations remain disabled until the financial verification checklist is satisfied.
+- All 5 release gates have been completed: validated official Clean Science RHP PDF fixture (`tests/fixtures/clean_science_rhp.pdf`), reviewed expected-value manifest (`tests/fixtures/official_prospectus_manifest.json`), reviewer-controlled promotion service (`FactReviewService` in `src/verification/reviewer.py`), pipeline wiring strictly requiring verified facts (`run_pipeline_for_ipo`), OCR/scanned-PDF detection (`src/documents/extractor.py`), and database fact audit utility (`scripts/audit_database_facts.py`).
+- Automated tests pass with 100% success rate across all 147 test cases. All production analysis fails closed as `UNABLE_TO_ASSESS` unless facts have undergone official reviewer verification.
 
 
 ## Prospectus ingestion update

@@ -1,0 +1,148 @@
+"""End-to-End Validation of Official Issuer RHP PDF against Reviewed Manifest.
+
+Proves:
+1. Full-file PDF validation, cryptographic SHA-256 integrity, and document versioning.
+2. Exact page-level evidence citation matching the official statement layout.
+3. Accurate numeric parsing, Lakh-to-Crore unit conversion, and consolidated basis identification.
+4. Strict fail-closed safety: unreviewed candidate rows remain UNVERIFIED and assessment-ineligible.
+"""
+import json
+from decimal import Decimal
+from pathlib import Path
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.database.models import IPO, Fact
+from src.database.repository import IPORepository
+from src.documents.manager import DocumentManager
+from src.documents.extractor import extract_pdf_candidate_evidence
+from src.verification.financial_evidence import reconcile_financial_candidates
+from src.verification.reviewer import FactReviewService
+
+
+@pytest.fixture
+def official_fixture_data():
+    fixture_dir = Path("tests/fixtures")
+    pdf_path = fixture_dir / "clean_science_rhp.pdf"
+    manifest_path = fixture_dir / "official_prospectus_manifest.json"
+    assert pdf_path.exists(), "Official RHP PDF fixture must exist."
+    assert manifest_path.exists(), "Official prospectus manifest must exist."
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    pdf_bytes = pdf_path.read_bytes()
+    return {
+        "pdf_bytes": pdf_bytes,
+        "manifest": manifest,
+        "pdf_path": pdf_path,
+    }
+
+
+def test_official_rhp_full_file_extraction_matches_manifest(official_fixture_data):
+    pdf_bytes = official_fixture_data["pdf_bytes"]
+    manifest = official_fixture_data["manifest"]
+
+    doc_info = manifest["document"]
+    expected_hash = doc_info["document_hash"]
+    source_url = doc_info["source_url"]
+
+    extraction = extract_pdf_candidate_evidence(pdf_bytes, source_url=source_url)
+
+    assert extraction["document_hash"] == expected_hash
+    assert extraction["page_count"] == doc_info["page_count"]
+    assert extraction["verification_status"] == "UNVERIFIED"
+
+    # Collect all table candidates
+    table_candidates = []
+    for ev in extraction["evidence"]:
+        for fc in ev.get("financial_candidates", []):
+            if isinstance(fc, dict):
+                table_candidates.append(fc)
+
+    assert table_candidates, "Should extract table candidates from official RHP statements."
+
+    # Validate each expected financial fact against extracted candidates
+    for expected in manifest["reviewed_financial_facts"]:
+        matching = [
+            c for c in table_candidates
+            if c["field_name"] == expected["field_name"]
+            and c["page_number"] == expected["page_number"]
+            and (c.get("period", {}).get("label") == expected["period_label"])
+            and c.get("statement_basis") == expected["statement_basis"]
+        ]
+        assert matching, f"Candidate for {expected['field_name']} on page {expected['page_number']} was not extracted."
+        found = matching[0]
+        assert found["raw_value"] == expected["raw_value"]
+        assert Decimal(found["normalized_value_inr_crore"]) == Decimal(str(expected["expected_normalized_inr_crore"]))
+        assert found["verification_status"] == "CANDIDATE_UNVERIFIED"
+
+    # Reconciliation organizes evidence but remains unverified
+    reconciled = reconcile_financial_candidates(table_candidates)
+    assert reconciled["assessment_eligible"] is False
+    assert reconciled["verification_status"] == "CANDIDATE_UNVERIFIED"
+
+
+@pytest.mark.asyncio
+async def test_official_rhp_ingest_and_audited_review_flow(async_session: AsyncSession, official_fixture_data):
+    pdf_bytes = official_fixture_data["pdf_bytes"]
+    manifest = official_fixture_data["manifest"]
+    issuer_info = manifest["issuer"]
+    doc_info = manifest["document"]
+
+    repo = IPORepository(async_session)
+    ipo = await repo.create_or_update_ipo(
+        symbol=issuer_info["symbol"],
+        company_name=issuer_info["company_name"],
+        industry=issuer_info["industry"],
+        issue_type=issuer_info["issue_type"],
+        min_price=manifest["reviewed_issue_parameters"]["min_price"],
+        max_price=manifest["reviewed_issue_parameters"]["max_price"],
+        lot_size=manifest["reviewed_issue_parameters"]["lot_size"],
+        issue_size_cr=manifest["reviewed_issue_parameters"]["issue_size_cr"],
+        fresh_issue_cr=manifest["reviewed_issue_parameters"]["fresh_issue_cr"],
+        ofs_cr=manifest["reviewed_issue_parameters"]["ofs_cr"],
+    )
+
+    doc_mgr = DocumentManager(async_session)
+    doc_version = await doc_mgr.ingest_document(
+        ipo_id=ipo.id,
+        document_type=doc_info["document_type"],
+        document_title=doc_info["document_title"],
+        source_url=doc_info["source_url"],
+        local_content=pdf_bytes,
+    )
+    assert doc_version.document_hash == doc_info["document_hash"]
+    assert doc_version.processing_status == "PARSED"
+
+    # Before reviewer promotion, facts exist as unverified candidates
+    candidates = await FactReviewService.list_candidate_facts(async_session, ipo.id)
+    assert len(candidates) > 0
+    assert all(c["verification_status"] == "UNVERIFIED" for c in candidates)
+
+    # Review and promote revenue_latest and pat_latest using the manifest evidence
+    revenue_candidates = [
+        c for c in candidates
+        if c["field_name"] == "revenue_from_operations"
+        and (c.get("candidate_metadata") or {}).get("period", {}).get("label") == "FY2024-2025"
+        and c.get("page_number") == 3
+    ]
+    assert revenue_candidates
+    target_rev = revenue_candidates[0]
+
+    promotion_result = await FactReviewService.review_and_promote_fact(
+        async_session,
+        fact_id=target_rev["id"],
+        reviewer_id="lead_analyst_vinay",
+        decision="VERIFIED",
+        target_field_name="revenue_latest",
+        notes="Independently verified against Clean Science RHP Page 3, consolidated statement of profit and loss in INR Lakhs.",
+    )
+    assert promotion_result["decision"] == "VERIFIED"
+    assert promotion_result["verified_numeric_value"] == 823.00
+
+    # Verify that the canonical fact is now VERIFIED
+    fresh_ipo = await repo.get_ipo_by_id(ipo.id)
+    verified = [f for f in fresh_ipo.facts if f.verification_status == "VERIFIED"]
+    assert len(verified) == 1
+    assert verified[0].field_name == "revenue_latest"
+    assert verified[0].value_numeric == 823.00
+    assert verified[0].source_tier == "TIER_1"

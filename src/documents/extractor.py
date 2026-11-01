@@ -428,12 +428,41 @@ def extract_pdf_candidate_evidence(pdf_bytes: bytes, *, source_url: str) -> Dict
     except Exception:
         # Linear page text remains available if table-layout extraction fails.
         pass
+
+    text_pages_count = sum(bool(text.strip()) for text in page_texts)
+    has_text = text_pages_count > 0
+    has_images = False
+    if not has_text:
+        try:
+            has_images = any(len(getattr(page, "images", [])) > 0 for page in reader.pages)
+        except Exception:
+            has_images = False
+
+    is_scanned_image = bool(has_images and not has_text)
+    ocr_required = is_scanned_image
+
+    if is_scanned_image:
+        status = "SCANNED_IMAGE_DETECTED"
+        notice = (
+            "SCANNED_PDF_NEEDS_OCR: Document contains scanned/rasterized image pages without "
+            "an embedded text layer. Automated extraction requires OCR preprocessing before candidate analysis."
+        )
+    elif evidence:
+        status = "CANDIDATES_FOUND"
+        notice = None
+    else:
+        status = "NO_CANDIDATES_FOUND"
+        notice = None
+
     return {
         "document_hash": document_hash,
         "page_count": len(reader.pages),
-        "text_pages_extracted": sum(bool(text.strip()) for text in page_texts),
+        "text_pages_extracted": text_pages_count,
         "evidence_count": len(evidence),
         "evidence": evidence,
-        "status": "CANDIDATES_FOUND" if evidence else "NO_CANDIDATES_FOUND",
+        "status": status,
         "verification_status": "UNVERIFIED",
+        "is_scanned_image": is_scanned_image,
+        "ocr_required": ocr_required,
+        "notice": notice,
     }

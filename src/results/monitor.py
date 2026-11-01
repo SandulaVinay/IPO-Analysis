@@ -925,9 +925,12 @@ async def monitor_financial_results() -> Dict[str, Any]:
             symbol, len(filings), len(recent_filings), RESULT_LOOKBACK_HOURS,
         )
 
+        force_resend_results = os.getenv("FORCE_RESEND_RESULTS", "").strip().lower() in {"1", "true", "yes"}
         for item in recent_filings:
-            if store.has_processed_event(item["event_key"]):
+            if store.has_processed_event(item["event_key"]) and not force_resend_results:
                 continue
+            if force_resend_results and store.has_processed_event(item["event_key"]):
+                logger.warning("Manual results resend override enabled for already-processed filing %s.", item.get("event_key"))
             new_filings += 1
             metrics: Dict[str, Any] = {"status": "UNAVAILABLE", "reason": "No supported XBRL attachment was detected."}
             document_text: Optional[Dict[str, Any]] = None

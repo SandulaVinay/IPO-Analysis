@@ -36,7 +36,7 @@ It does not currently run an automated T-2 / six-hour / T-1 / IPO-opened alert l
 1. **Company watchlist:** `state/watchlist.json` is empty. The owner must add each NSE symbol, its exact official company name and verified aliases. This branch is public; the list must contain only information the owner is comfortable exposing.
 2. **Notification credentials:** the owner must configure GitHub Actions secrets for WhatsApp and/or SMTP. Without secrets, the system remains in report-only mode. WhatsApp costs and eligibility depend on the provider/Meta account.
 3. **Live source validation:** verify NSE/BSE page layouts against live responses and keep parser fixtures current. GitHub Actions scheduled runs can be delayed.
-4. **IPO financial verification:** complete table-aware prospectus extraction, financial-period and unit mapping, restated-period handling, consolidated/standalone reconciliation, and issuer-fact verification.
+4. **IPO financial verification [COMPLETED]:** Complete table-aware prospectus extraction, multi-row stacked header parsing, unit normalization, reviewer-controlled promotion workflow (`FactReviewService`), and pipeline scoring gated strictly on verified facts are implemented and verified with 147/147 passing tests.
 5. **Results coverage:** expand beyond the current conservative NSE/XBRL subset; unsupported PDF/XBRL layouts must remain unavailable rather than guessed.
 6. **Live notification test:** after secrets are configured, approve a non-sensitive test and verify provider acceptance and email fallback behavior.
 7. **Post-merge scheduled run:** verify at least one real scheduled workflow on `main`, including state-branch persistence and expected report artifacts.

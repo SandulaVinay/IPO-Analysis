@@ -9,8 +9,23 @@ on:
     - cron: '0 12 * * 1-5'
   workflow_dispatch:
     inputs:
+      recipient_email:
+        description: "Recipient email address (defaults to secrets.EMAIL_TO if blank)"
+        required: false
+        type: string
+        default: ""
       resend_digest:
         description: "Resend today's digest even if an earlier run marked it as sent"
+        required: false
+        type: boolean
+        default: false
+      lookback_hours:
+        description: "Lookback hours for financial results (default: 72)"
+        required: false
+        type: string
+        default: "168"
+      force_resend_results:
+        description: "Force resend results even if already recorded in processed events"
         required: false
         type: boolean
         default: false
@@ -85,7 +100,7 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_TO: ${{ inputs.recipient_email != '' && inputs.recipient_email || secrets.EMAIL_TO }}
         run: python -m src.cli.main discover
 
       - name: Run financial results monitor
@@ -95,6 +110,8 @@ jobs:
           STATE_DIR: state-branch/state
           ENABLE_DEMO_ANALYSIS: "false"
           ENABLE_AUTOMATED_SCHEDULER: "false"
+          RESULT_LOOKBACK_HOURS: ${{ inputs.lookback_hours != '' && inputs.lookback_hours || '72' }}
+          FORCE_RESEND_RESULTS: ${{ inputs.force_resend_results || 'false' }}
           ENABLE_WHATSAPP: ${{ github.event_name == 'push' && 'false' || secrets.ENABLE_WHATSAPP || 'false' }}
           WHATSAPP_PROVIDER: cloud_api
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
@@ -108,7 +125,7 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_TO: ${{ inputs.recipient_email != '' && inputs.recipient_email || secrets.EMAIL_TO }}
         run: python -m src.cli.main results
 
       - name: Run system health checks
@@ -131,7 +148,7 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_TO: ${{ inputs.recipient_email != '' && inputs.recipient_email || secrets.EMAIL_TO }}
         run: python -m src.cli.main health
 
       - name: Run daily IPO status digest
@@ -154,7 +171,7 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_TO: ${{ inputs.recipient_email != '' && inputs.recipient_email || secrets.EMAIL_TO }}
         run: python -m src.cli.digest
 
       - name: Upload daily IPO digest

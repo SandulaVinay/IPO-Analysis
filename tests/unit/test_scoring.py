@@ -35,12 +35,22 @@ def test_safety_gate_triggering():
     )
     assert is_gated2 is True
 
-    # 3. Clean case (No gates triggered)
-    is_gated_clean, reasons_clean = SafetyGateEvaluator.evaluate_gates(
+    # Missing verification status must fail closed even when other gates are clear.
+    is_gated_missing, reasons_missing = SafetyGateEvaluator.evaluate_gates(
         completeness_info={"missing_critical_fields": []},
         conflict_info={"is_critical_tier1_conflict": False},
         management_info={"has_critical_governance_flag": False},
         financial_info={},
+    )
+    assert is_gated_missing is True
+    assert any("status: MISSING" in reason for reason in reasons_missing)
+
+    # A clean case requires an explicit verification status.
+    is_gated_clean, reasons_clean = SafetyGateEvaluator.evaluate_gates(
+        completeness_info={"missing_critical_fields": []},
+        conflict_info={"is_critical_tier1_conflict": False},
+        management_info={"has_critical_governance_flag": False},
+        financial_info={"verification_status": "VERIFIED"},
     )
     assert is_gated_clean is False
     assert len(reasons_clean) == 0
@@ -91,7 +101,7 @@ def test_scoring_engine_composite():
         completeness_info={"missing_critical_fields": []},
         conflict_info={"is_critical_tier1_conflict": False},
         management_info={"has_critical_governance_flag": False},
-        financial_info={},
+        financial_info={"verification_status": "VERIFIED"},
     )
     assert result["is_safety_gated"] is False
     assert result["verdict"] == "ATTRACTIVE"

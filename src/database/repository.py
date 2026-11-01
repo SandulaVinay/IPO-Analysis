@@ -219,7 +219,7 @@ class IPORepository:
         document_version: Optional[str] = None,
         page_number: Optional[int] = None,
         confidence: str = "HIGH",
-        verification_status: str = "VERIFIED",
+        verification_status: str = "UNVERIFIED",
     ) -> Fact:
         """Store an atomic factual evidence record."""
         fact = Fact(

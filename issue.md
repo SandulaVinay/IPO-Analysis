@@ -195,3 +195,13 @@ This is evidence storage and review only. Matching values do not become verified
 
 ### Validation boundary
 These checks validate status propagation and safety behavior using synthetic fixtures. They do not validate extracted values against a live issuer's official filing or make recommendations production-ready.
+
+
+## 10. Synthetic prospectus-layout safety matrix
+
+### Added on feature branch
+- Added invented, clearly synthetic statement-table fixtures covering multiple FY columns, explicit lakh units, consolidated versus standalone basis, parentheses-negative amounts, em-dash cells, absent unit context, and conflicting comparable values.
+- Tests assert period/basis separation, conservative INR-crore conversion, unresolved metadata handling, conflict reporting without winner selection, and that all outputs remain candidate/unverified and ineligible for assessment.
+
+### Validation boundary
+These fixtures mimic common filing layouts but are not sourced from an actual issuer filing. Official-source fixture validation, issuer/document identity checks, scanned-PDF/OCR coverage, and a verified-fact promotion workflow remain open.

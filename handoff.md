@@ -243,3 +243,14 @@ The files have been committed to the feature branch through GitHub. CI run [#493
 - Unit recognition is intentionally conservative and may return unresolved for unusual issuer-specific notation.
 - No automatic cross-source reconciliation or OCR is included in this helper.
 - PR #30 remains a separate open change at the time of this handoff; inspect its live status before duplicating or merging related format-extraction work.
+
+
+### Additional implementation — table candidates wired to normalization
+
+- `src/documents/extractor.py` now attaches `financial_candidates` to table-row evidence for numeric cells. Candidate period detection uses each column header independently, avoiding the common error of assigning every value the first year found in a multi-year table.
+- Unit and statement basis are taken only from explicit table header markers. A missing unit leaves `normalized_value_inr_crore` null. Every candidate retains source URL, document hash, page, row label, raw value, and stays `CANDIDATE_UNVERIFIED`.
+- Added extractor tests for explicit unit normalization across FY columns and for refusing to guess units.
+- Hardened `SafetyGateEvaluator`: an absent financial verification status now blocks assessment. Updated scoring tests to require explicit `VERIFIED` status for an ungated decision. Do not work around this by hard-coding verification status.
+
+### Latest CI / merge gate
+The first implementation-only CI runs passed, but newer commits add table integration and a stricter safety gate. Wait for the latest Actions run on the current PR head to finish; merge only if the current head has a successful test run. The normalization helper is still not a complete official-source verification/reconciliation pipeline. The full issue #31 remains open.

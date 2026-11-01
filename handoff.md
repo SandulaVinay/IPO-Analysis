@@ -226,7 +226,7 @@ Alerting rules:
 The helper never emits `VERIFIED`. Amounts without explicit units are not normalized. Period and statement basis are only set when explicit and unambiguous. Candidate metadata still requires official-source verification and reconciliation before it may enter scoring.
 
 ### Validation status
-The files have been committed to the feature branch through GitHub. **Tests have not yet been executed in a local checkout in this session.** Treat the code as unvalidated until CI runs on the PR head; inspect the Actions logs and fix any failures before merging.
+The files have been committed to the feature branch through GitHub. CI run [#493](https://github.com/SandulaVinay/IPO-Analysis/actions/runs/41290504806) completed successfully on the current code head: dependency installation, Python compilation, and the configured full test step passed. No local checkout was used in this session. Re-check CI after any additional code changes and do not merge if later checks fail.
 
 ### Next actions, in order
 1. Review the new normalization helpers against existing extractor conventions; run `pytest -q tests/unit/test_financial_normalization.py tests/unit/test_document_extractor.py tests/unit/test_prospectus_extractor.py tests/unit/test_verification_engine.py tests/unit/test_financial_evidence_safety.py`.

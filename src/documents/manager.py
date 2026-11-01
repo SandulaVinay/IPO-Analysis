@@ -6,6 +6,7 @@ real PDF from a verified source; otherwise ingestion fails and the analysis rema
 """
 import hashlib
 import ipaddress
+import json
 import os
 import re
 from pathlib import Path
@@ -21,6 +22,7 @@ from src.common.logging import logger
 from src.database.models import IPO, IPODocument, DocumentVersion, Fact
 from src.state.store import StateStore
 from src.documents.extractor import extract_pdf_candidate_evidence
+from src.verification.financial_evidence import reconcile_financial_candidates
 from src.reporting.pdf import markdown_to_pdf
 from src.ingestion.client import http_client
 
@@ -82,6 +84,13 @@ def _write_candidate_report(
     report_dir = Path("reports/prospectus")
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"{ipo_id}_{_safe_component(document_type, 'DOC')}_{document_hash[:12]}.md"
+    financial_candidates = [
+        candidate
+        for evidence_item in extraction.get("evidence", [])
+        for candidate in evidence_item.get("financial_candidates", [])
+        if isinstance(candidate, dict)
+    ]
+    reconciliation = reconcile_financial_candidates(financial_candidates)
     lines = [
         "# Prospectus evidence candidates",
         "",
@@ -97,9 +106,38 @@ def _write_candidate_report(
         f"- Text pages extracted: {extraction['text_pages_extracted']}",
         f"- Candidate passages: {extraction['evidence_count']}",
         "",
-        "## Candidate passages",
+        "## Financial candidate reconciliation",
+        "",
+        "**Assessment eligible: No. Reconciliation never verifies financial figures.**",
+        "",
+        f"- Numeric candidates: {reconciliation['candidate_count']}",
+        f"- Comparable groups: {reconciliation['comparable_group_count']}",
+        f"- Unresolved candidates: {reconciliation['unresolved_count']}",
+        f"- Conflicting groups: {reconciliation['conflict_count']}",
         "",
     ]
+    if not reconciliation["groups"]:
+        lines.append("No candidates had sufficient explicit period, unit, statement basis, and provenance for comparison.")
+        lines.append("")
+    for group in reconciliation["groups"]:
+        lines.extend([
+            f"### {group['field_name']} — {group['period']} — {group['statement_basis']}",
+            "",
+            f"- Reconciliation: {group['status']}",
+            f"- Values (₹ crore): {', '.join(group['values_inr_crore'])}",
+            f"- Source URLs represented: {group['distinct_source_count']}",
+            "- Verification: CANDIDATE_UNVERIFIED",
+            "",
+        ])
+    if reconciliation["unresolved_candidates"]:
+        lines.extend(["### Unresolved numeric candidates", ""])
+        for candidate in reconciliation["unresolved_candidates"]:
+            lines.append(
+                f"- {candidate.get('field_name') or 'Unknown field'} (page {candidate.get('page_number') or 'unknown'}): "
+                + ", ".join(candidate.get("reconciliation_reasons", []))
+            )
+        lines.append("")
+    lines.extend(["## Candidate passages", ""])
     if not extraction["evidence"]:
         lines.append("No supported text candidates were found. Scanned/image-only PDFs may require OCR.")
     for item in extraction["evidence"]:
@@ -349,6 +387,27 @@ class DocumentManager:
                 confidence="LOW",
                 verification_status="UNVERIFIED",
             ))
+        # Persist table-cell candidates as JSON text for audit/review. Never
+        # populate value_numeric: unverified extraction must not become score input.
+        for evidence_item in extraction.get("evidence", []):
+            for candidate in evidence_item.get("financial_candidates", []):
+                if not isinstance(candidate, dict):
+                    continue
+                self.session.add(Fact(
+                    ipo_id=ipo_id,
+                    field_name=str(candidate.get("field_name") or "financial_candidate")[:100],
+                    value_text=json.dumps(candidate, sort_keys=True, ensure_ascii=False),
+                    value_numeric=None,
+                    value_type="JSON",
+                    source_name="PROSPECTUS_TABLE_CANDIDATE",
+                    source_url=source_url,
+                    source_tier="TIER_3",
+                    document_id=doc.id,
+                    document_version=safe_version,
+                    page_number=candidate.get("page_number"),
+                    confidence="LOW",
+                    verification_status="UNVERIFIED",
+                ))
         await self.session.flush()
         ipo_result = await self.session.execute(select(IPO).where(IPO.id == ipo_id))
         ipo_row = ipo_result.scalars().first()

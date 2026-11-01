@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from src.common.config import settings
-from src.database.models import Base, IPO, IPODocument, DocumentVersion
+from src.database.models import Base, IPO, IPODocument, DocumentVersion, Fact
 from src.documents.manager import DocumentManager
 
 
@@ -105,6 +105,17 @@ def test_candidate_report_is_explicitly_unverified_and_contains_page_citation(tm
                 "field_name": "revenue_from_operations",
                 "page_number": 4,
                 "evidence_text": "Revenue from operations 100",
+                "financial_candidates": [{
+                    "field_name": "revenue_from_operations",
+                    "raw_value": "100",
+                    "normalized_value_inr_crore": "100",
+                    "period": {"period_type": "FINANCIAL_YEAR", "label": "FY2025"},
+                    "statement_basis": "CONSOLIDATED",
+                    "source_url": "https://www.nseindia.com/example.pdf",
+                    "document_hash": "c" * 64,
+                    "page_number": 4,
+                    "verification_status": "CANDIDATE_UNVERIFIED",
+                }],
             }],
         },
     )
@@ -113,6 +124,9 @@ def test_candidate_report_is_explicitly_unverified_and_contains_page_citation(tm
     assert "UNVERIFIED" in content
     assert "revenue_from_operations — page 4" in content
     assert "not an investment recommendation" in content
+    assert "Financial candidate reconciliation" in content
+    assert "SINGLE_SOURCE_UNCONFIRMED" in content
+    assert "Assessment eligible: No" in content
 
 
 
@@ -165,3 +179,71 @@ def test_public_prospectus_source_urls_redact_token_like_query_parameters():
     assert "secret-value" not in public_url
     assert "signature=abc" not in public_url
     assert "download=1" in public_url
+
+
+@pytest.mark.asyncio
+async def test_ingestion_persists_financial_candidates_as_non_scoring_json(tmp_path, monkeypatch):
+    import json
+    import src.documents.manager as manager_module
+
+    monkeypatch.setenv("STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setattr(settings, "document_storage_dir", tmp_path)
+    monkeypatch.setattr(manager_module, "_notify_new_document", _async_noop)
+    monkeypatch.setattr(manager_module, "_write_candidate_report", lambda **kwargs: tmp_path / "report.md")
+    monkeypatch.setattr(manager_module, "extract_pdf_candidate_evidence", lambda content, source_url: {
+        "document_hash": __import__("hashlib").sha256(content).hexdigest(),
+        "page_count": 1,
+        "text_pages_extracted": 1,
+        "evidence_count": 1,
+        "evidence": [{
+            "field_name": "revenue_from_operations",
+            "page_number": 1,
+            "evidence_text": "Revenue from operations 100",
+            "financial_candidates": [{
+                "field_name": "revenue_from_operations",
+                "raw_value": "100",
+                "normalized_value_inr_crore": "100",
+                "period": {"period_type": "FINANCIAL_YEAR", "label": "FY2025"},
+                "statement_basis": "CONSOLIDATED",
+                "source_url": "https://www.nseindia.com/example.pdf",
+                "document_hash": __import__("hashlib").sha256(content).hexdigest(),
+                "page_number": 1,
+                "verification_status": "CANDIDATE_UNVERIFIED",
+            }],
+        }],
+        "status": "CANDIDATES_FOUND",
+        "verification_status": "UNVERIFIED",
+    })
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with session_factory() as session:
+            ipo = IPO(symbol="CANDIDATE_TEST", company_name="Synthetic Test Issuer")
+            session.add(ipo)
+            await session.flush()
+            manager = DocumentManager(session)
+            await manager.ingest_document(
+                ipo_id=ipo.id,
+                document_type="RHP",
+                document_title="Synthetic Test Filing",
+                source_url="https://www.nseindia.com/example.pdf",
+                local_content=_blank_pdf(72),
+            )
+            facts = (await session.execute(
+                select(Fact).where(Fact.source_name == "PROSPECTUS_TABLE_CANDIDATE")
+            )).scalars().all()
+            assert len(facts) == 1
+            fact = facts[0]
+            payload = json.loads(fact.value_text)
+            assert payload["verification_status"] == "CANDIDATE_UNVERIFIED"
+            assert fact.value_type == "JSON"
+            assert fact.value_numeric is None
+            assert fact.verification_status == "UNVERIFIED"
+    finally:
+        await engine.dispose()
+
+
+async def _async_noop(**kwargs):
+    return None

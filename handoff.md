@@ -2,7 +2,7 @@
 
 > **Purpose:** This file is an operational handoff for a future GPT/AI coding agent. Read this first, then inspect the live repository and CI before changing anything. Treat repository state and current GitHub checks as authoritative; this document is a snapshot and can become stale.
 >
-> **Last updated:** 2026-10-31  
+> **Last updated:** 2026-11-01  
 > **Repository:** https://github.com/SandulaVinay/IPO-Analysis  
 > **Default branch:** `main`  
 > **Estimated overall project completion: 65%** — a practical engineering estimate, not a measured KPI. Core workflow and safety foundations exist, but verified financial extraction/reconciliation and production-grade IPO assessment are not complete.
@@ -206,3 +206,51 @@ Alerting rules:
 - [ ] Review deployment/operations and notification behaviour before any production recommendation rollout.
 
 **Resume from Section 1 and execute Step 1 first.**
+
+
+---
+
+## 10. Update — 2026-11-01: conservative normalization foundation
+
+**Working branch:** `feature/verified-financial-evidence-pipeline`  
+**Base branch:** `main` at `2c7ea5d9151eec4951f5d8b46bba846cc613d41e`  
+**Progress estimate:** retain 65% until the new tests and full CI are confirmed. Do not count this helper as a completed end-to-end pipeline.
+
+### Added on this branch
+- `src/documents/financial_normalization.py`: conservative pure helpers for numeric parsing (Indian comma grouping and parenthesized negatives), explicit unit detection and INR-crore normalization, explicit FY-label parsing, statement-basis identification, and provenance-bearing candidate records.
+- `tests/unit/test_financial_normalization.py`: tests for ambiguous/missing units, number parsing, period/basis ambiguity, and candidate provenance.
+- `issue.md`: issue/fix log for financial evidence safety, extraction gaps, email-test confusion, source reliability, dependency issues, and remaining release gates.
+- README update documenting what the helper does and, importantly, what it does not prove.
+
+### Safety contract
+The helper never emits `VERIFIED`. Amounts without explicit units are not normalized. Period and statement basis are only set when explicit and unambiguous. Candidate metadata still requires official-source verification and reconciliation before it may enter scoring.
+
+### Validation status
+The files have been committed to the feature branch through GitHub. CI run [#493](https://github.com/SandulaVinay/IPO-Analysis/actions/runs/41290504806) completed successfully on the current code head: dependency installation, Python compilation, and the configured full test step passed. No local checkout was used in this session. Re-check CI after any additional code changes and do not merge if later checks fail.
+
+### Next actions, in order
+1. Review the new normalization helpers against existing extractor conventions; run `pytest -q tests/unit/test_financial_normalization.py tests/unit/test_document_extractor.py tests/unit/test_prospectus_extractor.py tests/unit/test_verification_engine.py tests/unit/test_financial_evidence_safety.py`.
+2. Add integration that attaches parsed metadata to the existing page/table candidate evidence without promoting it to verified.
+3. Add official filing fixtures covering unit headers, comparative periods, standalone/consolidated sections, negative values, and multi-page tables.
+4. Reconcile candidate values across official filings and reject unresolved conflicts.
+5. Trace all callers of `SafetyGateEvaluator.evaluate_gates` and `ScoringEngine.compute_decision`; ensure missing/None/unverified data cannot become a neutral numeric score or positive verdict.
+6. Open/update the PR, review CI, and merge only after relevant checks pass. Keep the production recommendation gate closed.
+7. Validate email delivery as separate stages (workflow, report generation, SMTP acceptance, event ledger, actual inbox); do not send live test email or change recipients/secrets without explicit approval.
+
+### Known unresolved issues
+- Candidate normalization is not yet wired through the end-to-end extraction-to-verification-to-scoring path.
+- Explicit FY recognition does not yet cover all quarter/half-year labels or comparative table layouts.
+- Unit recognition is intentionally conservative and may return unresolved for unusual issuer-specific notation.
+- No automatic cross-source reconciliation or OCR is included in this helper.
+- PR #30 remains a separate open change at the time of this handoff; inspect its live status before duplicating or merging related format-extraction work.
+
+
+### Additional implementation — table candidates wired to normalization
+
+- `src/documents/extractor.py` now attaches `financial_candidates` to table-row evidence for numeric cells. Candidate period detection uses each column header independently, avoiding the common error of assigning every value the first year found in a multi-year table.
+- Unit and statement basis are taken only from explicit table header markers. A missing unit leaves `normalized_value_inr_crore` null. Every candidate retains source URL, document hash, page, row label, raw value, and stays `CANDIDATE_UNVERIFIED`.
+- Added extractor tests for explicit unit normalization across FY columns and for refusing to guess units.
+- Hardened `SafetyGateEvaluator`: an absent financial verification status now blocks assessment. Updated scoring tests to require explicit `VERIFIED` status for an ungated decision. Do not work around this by hard-coding verification status.
+
+### Latest CI / merge gate
+The latest full configured CI run on commit `5706141934f1e2b660333098b3af667ac42d10ec` passed: dependency installation, Python compilation, and the full configured test step succeeded in [Actions run #503](https://github.com/SandulaVinay/IPO-Analysis/actions/runs/41291114336). The run included the table-candidate integration, strict missing-verification gate, and updated integration/scenario expectations. Re-run CI after any further code changes. This PR is an incremental foundation, not a complete official-source verification/reconciliation pipeline. The full issue #31 remains open.

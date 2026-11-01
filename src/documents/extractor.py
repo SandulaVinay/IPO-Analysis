@@ -13,6 +13,13 @@ from typing import Any, Dict, List, Optional
 from pypdf import PdfReader
 import pdfplumber
 
+from src.documents.financial_normalization import (
+    build_financial_candidate,
+    detect_explicit_unit,
+    identify_statement_basis,
+    parse_numeric_value,
+)
+
 MAX_PDF_BYTES = 50 * 1024 * 1024
 MAX_PDF_PAGES = 1500
 MAX_PAGE_TEXT = 200_000
@@ -165,6 +172,38 @@ def extract_candidate_evidence_from_tables(
                 if not matched_fields:
                     continue
                 snippet = f"TABLE {table_index}; HEADER: {header_context}; ROW: {row_text}"[:1000]
+
+                # Parse each numeric table cell into provenance-bearing metadata, but
+                # never treat it as a verified fact. Use only the corresponding column
+                # header for period detection so adjacent FY columns cannot be confused.
+                financial_candidates = []
+                for cell_index, raw_cell in enumerate(row[1:], start=1):
+                    if parse_numeric_value(raw_cell) is None:
+                        continue
+                    column_header = ""
+                    if header_rows and cell_index < len(header_rows[-1]):
+                        column_header = header_rows[-1][cell_index]
+                    explicit_unit = detect_explicit_unit(header_context)
+                    explicit_basis = identify_statement_basis(header_context)
+                    context_parts = [column_header]
+                    if explicit_unit:
+                        context_parts.append(f"in {explicit_unit}")
+                    if explicit_basis:
+                        context_parts.append(explicit_basis.lower())
+                    candidate_context = " ".join(part for part in context_parts if part)
+                    for field in matched_fields:
+                        financial_candidates.append(
+                            build_financial_candidate(
+                                field_name=field,
+                                raw_value=raw_cell,
+                                row_label=row[0] if row else "",
+                                header_context=candidate_context,
+                                source_url=source_url,
+                                document_hash=document_hash,
+                                page_number=page_number,
+                            )
+                        )
+
                 for field in matched_fields:
                     key = (field, page_number, snippet.casefold())
                     if key in seen:
@@ -179,6 +218,7 @@ def extract_candidate_evidence_from_tables(
                         "extraction_status": "CANDIDATE_UNVERIFIED",
                         "extraction_method": "TABLE_ROW_CANDIDATE",
                         "table_row_index": row_index + 1,
+                        "financial_candidates": financial_candidates,
                         "value": None,
                         "extracted_at": timestamp,
                     })

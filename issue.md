@@ -135,3 +135,9 @@ The scoring safety gate rejected a non-empty verification status when it was not
 
 ### Validation
 The updated unit tests are part of the current PR CI run. Confirm the latest run succeeds before merging. If an application caller relies on an empty `financial_info`, update it to pass a genuine verification result only after official-source validation; do not insert a hard-coded `VERIFIED` value to make tests pass.
+
+
+### Follow-up found by full-suite CI
+The first full-suite run after tightening the gate exposed two tests that still expected synthetic/demo financial inputs to produce an attractive or positive score. Those expectations contradicted the fail-closed rule.
+
+**Fix:** the strong-IPO scenario now explicitly declares its fixture evidence verified; the end-to-end pipeline test now expects synthetic demo inputs to return `UNABLE_TO_ASSESS`, a zero score, and no profitable recommendation classification. The next full CI run must confirm these changes.

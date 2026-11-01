@@ -127,16 +127,18 @@ Prospectus ingestion accepts HTTPS sources from sebi.gov.in, nseindia.com, and b
 
 The prospectus extractor captures page-cited text/table candidates and preserves provenance, but those candidates are not verified facts. The feature branch `feature/verified-financial-evidence-pipeline` adds `src/documents/financial_normalization.py` and attaches candidate metadata to numeric table cells. It handles numeric parsing, explicit amount units, explicit FY labels, and standalone/consolidated markers; each candidate retains source URL, document hash, page, raw value, and normalization metadata, and remains `CANDIDATE_UNVERIFIED`. The scoring safety gate now fails closed if financial verification status is absent.
 
-**Important:** this helper is a foundation, not a completed production financial pipeline. It is not yet proof that all official filings can be parsed, reconciled, or safely scored. Missing units/periods/basis remain unresolved; OCR, broader table layouts, official-source reconciliation, and end-to-end scoring integration remain pending. Do not enable production investment recommendations based on candidate values.
+**Current implementation:** the extractor now handles up to four stacked header rows, joins headers per column, recognizes explicit "Financial Year 2025" labels, and excludes adjacent percentage/margin/ratio/per-share columns from currency candidates. Source ingestion is restricted to HTTPS SEBI/NSE/BSE hosts by default, with issuer domains requiring explicit configuration. Reconciliation, candidate persistence, report generation, and the fail-closed assessment status are connected.
+
+**Still not production-ready:** tests include synthetic layouts and a source-derived table-layout regression, but no downloaded real issuer PDF has been independently validated end to end in CI. OCR/scanned-PDF support, issuer/document identity checks, reviewer-controlled promotion from candidate to VERIFIED fact, migration/review of existing database facts, and verified-fact-to-scoring integration remain release gates. Missing units/periods/basis and conflicting values must remain unresolved. Do not enable real investment recommendations based on candidate values.
 
 - [Issues faced and fixes log](issue.md)
 - [GPT handoff and next steps](handoff.md)
 - [Automation v2 architecture and rollout gates](docs/ARCHITECTURE_V2.md)
 
 
-### Candidate reconciliation (next milestone)
+### Candidate reconciliation (implemented; candidates remain unverified)
 
-The next feature branch adds `src/verification/financial_evidence.py`, which groups numeric financial candidates only when field, explicit period, and statement basis match. It reports conflicting values, single-source groups, matching candidates from distinct URLs, and candidates missing comparable metadata. **Matching candidates remain unverified**; this module never marks a fact `VERIFIED` and explicitly says its output is not eligible for scoring. This is a reconciliation foundation, not official-source validation.
+`src/verification/financial_evidence.py` groups numeric financial candidates only when field, explicit period, and statement basis match. It reports conflicting values, single-source groups, matching candidates from distinct URLs, and candidates missing comparable metadata. **Matching candidates remain unverified**; this module never marks a fact `VERIFIED` and explicitly says its output is not eligible for scoring. This is a reconciliation foundation, not official-source validation.
 
 
 **Persistence safety:** newly created database facts now default to `UNVERIFIED` unless a caller explicitly supplies a verified status after review. This does not automatically reclassify rows already stored in an existing database.

@@ -115,3 +115,32 @@ def test_stacked_financial_headers_preserve_each_year_unit_and_basis():
     assert fy23["normalized_value_inr_crore"] == "124.5075"
     assert fy24["normalized_value_inr_crore"] == "141.0000"
     assert fy23["verification_status"] == fy24["verification_status"] == "CANDIDATE_UNVERIFIED"
+
+
+def test_sebi_hosted_prospectus_kpi_layout_skips_percent_columns():
+    """Regression fixture transcribed from a SEBI-hosted prospectus table layout.
+
+    This is source-derived table text, not a bundled PDF or independent financial
+    verification. The parser must separate currency columns from adjacent percentages.
+    Source: https://www.sebi.gov.in/sebi_data/attachdocs/sep-2025/1758005828714.pdf
+    """
+    evidence = extract_candidate_evidence_from_tables(
+        [[[
+            ["Particulars", "Financial Year", "", "", "", "", ""],
+            ["", "2025", "2025", "2024", "2024", "2023", "2023"],
+            ["", "(₹ in millions)", "% of Total Income", "(₹ in millions)", "% of Total Income", "(₹ in millions)", "% of Total Income"],
+            ["Revenue from Operations", "9,226.80", "97.91", "7,802.30", "98.12", "7,968.25", "98.89"],
+        ]]],
+        source_url="https://www.sebi.gov.in/sebi_data/attachdocs/sep-2025/1758005828714.pdf",
+        document_hash="fixture-only-no-downloaded-pdf-hash",
+    )
+    revenue = next(item for item in evidence if item["field_name"] == "revenue_from_operations")
+    candidates = revenue["financial_candidates"]
+
+    assert len(candidates) == 3
+    assert [item["period"]["label"] for item in candidates] == ["FY2025", "FY2024", "FY2023"]
+    assert [item["raw_value"] for item in candidates] == ["9,226.80", "7,802.30", "7,968.25"]
+    assert [item["unit"] for item in candidates] == ["million", "million", "million"]
+    assert [item["normalized_value_inr_crore"] for item in candidates] == ["922.680", "780.230", "796.825"]
+    assert all(item["statement_basis"] is None for item in candidates)
+    assert all(item["verification_status"] == "CANDIDATE_UNVERIFIED" for item in candidates)

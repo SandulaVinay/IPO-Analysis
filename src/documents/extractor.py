@@ -126,6 +126,25 @@ def extract_candidate_evidence_from_pages(
     return output
 
 
+def _is_non_currency_metric_column(header: str) -> bool:
+    """Exclude percentage/ratio/per-share columns from currency amount candidates."""
+    text = str(header or "").casefold()
+    patterns = (
+        r"%",
+        r"\bpercent(?:age)?\b",
+        r"\bmargin\b",
+        r"\bratio\b",
+        r"\bper\s+share\b",
+        r"\beps\b",
+        r"\broe\b",
+        r"\broce\b",
+        r"\breturn\s+on\s+(?:equity|capital|net\s+worth)\b",
+        r"\bworking\s+capital\s+days\b",
+        r"\b(?:multiple|times)\b",
+    )
+    return any(re.search(pattern, text) for pattern in patterns)
+
+
 def extract_candidate_evidence_from_tables(
     tables_by_page: List[List[List[List[Optional[str]]]]],
     *,
@@ -201,9 +220,21 @@ def extract_candidate_evidence_from_tables(
                         for header_row in header_rows
                         if cell_index < len(header_row) and header_row[cell_index]
                     )
+                    # KPI tables interleave currency amounts with percentages for the
+                    # same year. Do not normalize those percentage cells as currency.
+                    if _is_non_currency_metric_column(column_header):
+                        continue
                     explicit_unit = detect_explicit_unit(header_context)
                     explicit_basis = identify_statement_basis(header_context)
                     context_parts = [column_header]
+                    # In some extracted table layouts, a spanning "Financial Year"
+                    # label is not repeated in each year cell. Preserve that explicit
+                    # parent header when this specific column contains a four-digit year.
+                    if (
+                        re.search(r"\b(?:financial|fiscal)\s+year\b", header_context, re.I)
+                        and re.search(r"\b20\d{2}\b", column_header)
+                    ):
+                        context_parts.insert(0, "Financial Year")
                     if explicit_unit:
                         context_parts.append(f"in {explicit_unit}")
                     if explicit_basis:

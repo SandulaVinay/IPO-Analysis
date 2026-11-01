@@ -161,7 +161,7 @@ class Fact(Base):
     page_number = Column(Integer, nullable=True)
     
     confidence = Column(String(20), default="HIGH")  # HIGH, MEDIUM, LOW
-    verification_status = Column(String(20), default="VERIFIED")  # VERIFIED, UNVERIFIED, CONFLICTED
+    verification_status = Column(String(20), default="UNVERIFIED")  # VERIFIED, UNVERIFIED, CONFLICTED
     extracted_at = Column(DateTime, default=datetime.utcnow)
 
     ipo = relationship("IPO", back_populates="facts")

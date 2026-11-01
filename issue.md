@@ -141,3 +141,34 @@ The updated unit tests are part of the current PR CI run. Confirm the latest run
 The first full-suite run after tightening the gate exposed two tests that still expected synthetic/demo financial inputs to produce an attractive or positive score. Those expectations contradicted the fail-closed rule.
 
 **Fix:** the strong-IPO scenario now explicitly declares its fixture evidence verified; the end-to-end pipeline test now expects synthetic demo inputs to return `UNABLE_TO_ASSESS`, a zero score, and no profitable recommendation classification. The next full CI run must confirm these changes.
+
+
+## 9. Financial candidate reconciliation across sources
+
+### Problem
+Extracted numeric candidates from different periods, statement bases, or source documents must not be compared as if they describe the same fact. Matching values also do not, by themselves, prove that either source is authoritative or that the extraction mapped the correct column.
+
+### Fix implemented on the follow-up branch
+- Added `src/verification/financial_evidence.py` to group candidates only by field, explicit period, and statement basis.
+- Conflicting normalized values for the same comparable key are flagged as `CONFLICT`.
+- One URL is labelled `SINGLE_SOURCE_UNCONFIRMED`; matching values from multiple URLs are labelled `MATCHING_CANDIDATES_UNVERIFIED`.
+- Missing value/unit normalization, period, basis, or provenance stays unresolved.
+- The module always preserves `CANDIDATE_UNVERIFIED` and sets `assessment_eligible=False`; it never selects a winning value or upgrades evidence to verified.
+- Added tests for conflicts, same-value candidates, duplicate source URLs, missing metadata, separate periods, and standalone/consolidated separation.
+
+### Still pending
+Wire reconciliation into the document/Fact storage and analysis orchestration without bypassing official-source validation; add real official filing fixtures; define a reviewed source authority policy; and only allow scoring from independently verified facts. Full issue #31 remains open.
+
+
+## 10. New database facts defaulted to VERIFIED
+
+### Problem found during follow-up review
+The `Fact` ORM model and repository helper defaulted `verification_status` to `VERIFIED`. A caller that omitted the status could therefore create a fact that the completeness engine later counted as verified, despite no explicit verification step.
+
+### Fix implemented on the follow-up branch
+- Changed the ORM model default and `IPORepository.add_fact` argument default to `UNVERIFIED`.
+- Added an async regression test that stores a fact without passing verification status and confirms it does not satisfy critical financial completeness.
+- Callers must now explicitly set a verified status only after the relevant official-source review has actually succeeded.
+
+### Remaining check
+Review all fact-creation paths for explicit status assignments and ensure none blindly labels scraped or extracted candidate values as `VERIFIED`. Existing databases may already contain incorrectly verified records; this code change does not migrate or reclassify existing rows.

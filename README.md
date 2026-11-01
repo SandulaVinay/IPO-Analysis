@@ -127,3 +127,11 @@ The prospectus extractor captures page-cited text/table candidates and preserves
 - [Issues faced and fixes log](issue.md)
 - [GPT handoff and next steps](handoff.md)
 - [Automation v2 architecture and rollout gates](docs/ARCHITECTURE_V2.md)
+
+
+### Candidate reconciliation (next milestone)
+
+The next feature branch adds `src/verification/financial_evidence.py`, which groups numeric financial candidates only when field, explicit period, and statement basis match. It reports conflicting values, single-source groups, matching candidates from distinct URLs, and candidates missing comparable metadata. **Matching candidates remain unverified**; this module never marks a fact `VERIFIED` and explicitly says its output is not eligible for scoring. This is a reconciliation foundation, not official-source validation.
+
+
+**Persistence safety:** newly created database facts now default to `UNVERIFIED` unless a caller explicitly supplies a verified status after review. This does not automatically reclassify rows already stored in an existing database.

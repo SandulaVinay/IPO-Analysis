@@ -49,3 +49,18 @@ def test_verified_fact_without_source_name_does_not_count_as_verified_source():
     )
     assert result["verified_sources_count"] == 0
     assert result["completeness_pct"] == 0.0
+
+
+def test_unverified_prospectus_candidate_never_satisfies_critical_financial_field():
+    candidate_fact = {
+        "field_name": "revenue_latest",
+        "value_text": '{"normalized_value_inr_crore":"100","verification_status":"CANDIDATE_UNVERIFIED"}',
+        "value_numeric": None,
+        "verification_status": "UNVERIFIED",
+        "source_name": "PROSPECTUS_TABLE_CANDIDATE",
+        "source_url": "https://www.sebi.gov.in/example-rhp.pdf",
+    }
+    result = VerificationEngine.evaluate_ipo_completeness({}, [candidate_fact])
+    assert "revenue_latest" in result["missing_critical_fields"]
+    assert result["completeness_pct"] == 0.0
+    assert result["verified_sources_count"] == 0

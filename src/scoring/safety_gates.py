@@ -41,10 +41,11 @@ class SafetyGateEvaluator:
             )
 
         # Explicitly reject financial evidence that has not completed verification.
-        status = str(financial_info.get("verification_status", "")).upper()
-        if status and status not in {"VERIFIED", "PASS"}:
+        status = str(financial_info.get("verification_status", "")).strip().upper()
+        if status not in {"VERIFIED", "PASS"}:
+            displayed_status = status or "MISSING"
             gate_reasons.append(
-                f"Financial evidence is not verified (status: {status})."
+                f"Financial evidence is not verified (status: {displayed_status})."
             )
         if financial_info.get("has_unverified_critical_financials"):
             gate_reasons.append("One or more critical financial inputs remain unverified.")

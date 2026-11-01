@@ -158,3 +158,17 @@ Extracted numeric candidates from different periods, statement bases, or source 
 
 ### Still pending
 Wire reconciliation into the document/Fact storage and analysis orchestration without bypassing official-source validation; add real official filing fixtures; define a reviewed source authority policy; and only allow scoring from independently verified facts. Full issue #31 remains open.
+
+
+## 10. New database facts defaulted to VERIFIED
+
+### Problem found during follow-up review
+The `Fact` ORM model and repository helper defaulted `verification_status` to `VERIFIED`. A caller that omitted the status could therefore create a fact that the completeness engine later counted as verified, despite no explicit verification step.
+
+### Fix implemented on the follow-up branch
+- Changed the ORM model default and `IPORepository.add_fact` argument default to `UNVERIFIED`.
+- Added an async regression test that stores a fact without passing verification status and confirms it does not satisfy critical financial completeness.
+- Callers must now explicitly set a verified status only after the relevant official-source review has actually succeeded.
+
+### Remaining check
+Review all fact-creation paths for explicit status assignments and ensure none blindly labels scraped or extracted candidate values as `VERIFIED`. Existing databases may already contain incorrectly verified records; this code change does not migrate or reclassify existing rows.

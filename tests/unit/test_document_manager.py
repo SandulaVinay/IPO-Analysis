@@ -247,3 +247,21 @@ async def test_ingestion_persists_financial_candidates_as_non_scoring_json(tmp_p
 
 async def _async_noop(**kwargs):
     return None
+
+
+def test_official_source_url_requires_approved_regulator_exchange_or_configured_issuer(monkeypatch):
+    from src.documents.manager import _validate_official_source_url
+
+    assert _validate_official_source_url("https://www.sebi.gov.in/filing.pdf").hostname == "www.sebi.gov.in"
+    assert _validate_official_source_url("https://nsearchives.nseindia.com/filing.pdf").hostname == "nsearchives.nseindia.com"
+    assert _validate_official_source_url("https://www.bseindia.com/filing.pdf").hostname == "www.bseindia.com"
+
+    with pytest.raises(ValueError, match="not an approved"):
+        _validate_official_source_url("https://nseindia.com.attacker.example/filing.pdf")
+    with pytest.raises(ValueError, match="not an approved"):
+        _validate_official_source_url("https://random-public-host.example/filing.pdf")
+
+    monkeypatch.setenv("IPO_ALLOWED_SOURCE_DOMAINS", "issuer.example, filings.issuer.test")
+    assert _validate_official_source_url("https://prospectus.issuer.example/rhp.pdf").hostname == "prospectus.issuer.example"
+    with pytest.raises(ValueError, match="not an approved"):
+        _validate_official_source_url("https://issuer.example.attacker.test/rhp.pdf")

@@ -227,6 +227,14 @@ def extract_candidate_evidence_from_tables(
                     explicit_unit = detect_explicit_unit(header_context)
                     explicit_basis = identify_statement_basis(header_context)
                     context_parts = [column_header]
+                    # In some extracted table layouts, a spanning "Financial Year"
+                    # label is not repeated in each year cell. Preserve that explicit
+                    # parent header when this specific column contains a four-digit year.
+                    if (
+                        re.search(r"\b(?:financial|fiscal)\s+year\b", header_context, re.I)
+                        and re.search(r"\b20\d{2}\b", column_header)
+                    ):
+                        context_parts.insert(0, "Financial Year")
                     if explicit_unit:
                         context_parts.append(f"in {explicit_unit}")
                     if explicit_basis:

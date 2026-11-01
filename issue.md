@@ -121,3 +121,17 @@ README and architecture docs state that production recommendations are gated and
 ## Engineering rule
 
 Never describe a fix as production-complete just because a helper, unit test, or workflow exists. Record the exact code change, test evidence, and remaining limitation separately.
+
+
+## 8. Missing financial verification status could bypass a safety gate
+
+### Problem found during review
+The scoring safety gate rejected a non-empty verification status when it was not `VERIFIED`/`PASS`, but an absent/empty status did not itself add a gate reason. This meant a caller supplying otherwise-complete metadata and an empty financial object could be treated as a clean case by the gate unit test.
+
+### Fix made on the feature branch
+- Changed the gate to fail closed unless `financial_info.verification_status` is explicitly `VERIFIED` or `PASS`.
+- Updated tests so a missing status is expected to block assessment and a clean score requires explicit verification.
+- This is deliberately stricter; callers that do not yet pass verified status will now return `UNABLE_TO_ASSESS` rather than an attractive verdict.
+
+### Validation
+The updated unit tests are part of the current PR CI run. Confirm the latest run succeeds before merging. If an application caller relies on an empty `financial_info`, update it to pass a genuine verification result only after official-source validation; do not insert a hard-coded `VERIFIED` value to make tests pass.

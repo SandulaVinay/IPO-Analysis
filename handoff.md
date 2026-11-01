@@ -285,3 +285,13 @@ No candidate is marked `VERIFIED`. Exact agreement between URLs is not sufficien
 - Added `tests/unit/test_fact_verification_defaults.py` to verify that a newly persisted fact without an explicit verification decision cannot satisfy financial completeness.
 - This only changes defaults for newly written rows. Existing database records are not migrated; a separate audited migration/backfill may be needed after reviewing how those records were created.
 - Recheck all fact creation paths and run the full CI suite on the updated PR head before merge.
+
+
+### Latest feature branch — candidate persistence and reconciliation integration
+
+Branch: `feature/persist-and-reconcile-prospectus-candidates` (pending CI/PR review at time of writing).
+
+- Prospectus report generation now invokes `reconcile_financial_candidates` over the extractor's table-cell candidate metadata and shows group status, unresolved metadata, conflicts, source counts, and an explicit non-eligibility notice.
+- Numeric candidates are persisted as JSON text in `facts` with `value_numeric=NULL`, `value_type=JSON`, `verification_status=UNVERIFIED`, low confidence, and tier-3 source provenance. This avoids converting extracted numbers into score-ready facts.
+- Tests cover a report candidate group and persistence of candidate JSON without a numeric score input.
+- This remains a candidate review pipeline, not a verified financial extraction pipeline. Do not enable recommendation scoring until official-source validation, robust table layout fixtures, and caller-level safety tests pass.

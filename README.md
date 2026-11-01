@@ -116,3 +116,14 @@ See [Automation v2 Architecture and Rollout Gates](docs/ARCHITECTURE_V2.md) for 
 ### PDF research artifacts
 
 The daily IPO digest, supported financial-results alerts, and prospectus evidence reviews are generated as Markdown and PDF files. The scheduler uploads these as seven-day GitHub Actions artifacts. When email alerts are explicitly enabled and SMTP is configured, the relevant PDF can be attached to the email. Push-triggered validation runs keep email delivery disabled. The daily digest remains `UNABLE_TO_ASSESS` until the real prospectus financial verification workflow is complete.
+
+
+## Financial evidence pipeline — current implementation status
+
+The prospectus extractor captures page-cited text/table candidates and preserves provenance, but those candidates are not verified facts. The feature branch `feature/verified-financial-evidence-pipeline` adds `src/documents/financial_normalization.py`, a conservative helper layer for parsing numeric cells, explicit amount units, explicit FY labels, and standalone/consolidated markers. It records source URL, document hash, page, raw value, normalization metadata, and keeps every result at `CANDIDATE_UNVERIFIED`.
+
+**Important:** this helper is a foundation, not a completed production financial pipeline. It is not yet proof that all official filings can be parsed, reconciled, or safely scored. Missing units/periods/basis remain unresolved; OCR, broader table layouts, official-source reconciliation, and end-to-end scoring integration remain pending. Do not enable production investment recommendations based on candidate values.
+
+- [Issues faced and fixes log](issue.md)
+- [GPT handoff and next steps](handoff.md)
+- [Automation v2 architecture and rollout gates](docs/ARCHITECTURE_V2.md)

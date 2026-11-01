@@ -120,7 +120,7 @@ The daily IPO digest, supported financial-results alerts, and prospectus evidenc
 
 ## Financial evidence pipeline — current implementation status
 
-The prospectus extractor captures page-cited text/table candidates and preserves provenance, but those candidates are not verified facts. The feature branch `feature/verified-financial-evidence-pipeline` adds `src/documents/financial_normalization.py`, a conservative helper layer for parsing numeric cells, explicit amount units, explicit FY labels, and standalone/consolidated markers. It records source URL, document hash, page, raw value, normalization metadata, and keeps every result at `CANDIDATE_UNVERIFIED`.
+The prospectus extractor captures page-cited text/table candidates and preserves provenance, but those candidates are not verified facts. The feature branch `feature/verified-financial-evidence-pipeline` adds `src/documents/financial_normalization.py` and attaches candidate metadata to numeric table cells. It handles numeric parsing, explicit amount units, explicit FY labels, and standalone/consolidated markers; each candidate retains source URL, document hash, page, raw value, and normalization metadata, and remains `CANDIDATE_UNVERIFIED`. The scoring safety gate now fails closed if financial verification status is absent.
 
 **Important:** this helper is a foundation, not a completed production financial pipeline. It is not yet proof that all official filings can be parsed, reconciled, or safely scored. Missing units/periods/basis remain unresolved; OCR, broader table layouts, official-source reconciliation, and end-to-end scoring integration remain pending. Do not enable production investment recommendations based on candidate values.
 

@@ -12,6 +12,7 @@ from src.notifications.email import EmailProvider
 from src.notifications.whatsapp import WhatsAppProvider
 from src.state.store import StateStore
 from src.reporting.pdf import markdown_to_pdf
+from src.reporting.email_html import digest_email_html
 
 NSE_IPO_URL = "https://www.nseindia.com/market-data/all-upcoming-issues-ipo"
 BSE_IPO_URL = "https://www.bseindia.com/markets/PublicIssues/Issuesummary.aspx"
@@ -209,7 +210,10 @@ async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateSt
             recipient=settings.email_to,
             subject=f"Daily IPO status digest — {now.strftime('%d %b %Y')}",
             content=message,
-            metadata={"attachments": [str(report_path.with_suffix(".pdf"))]},
+            metadata={
+                "attachments": [str(report_path.with_suffix(".pdf"))],
+                "html_body": digest_email_html(report_text),
+            },
         )
         if email.get("success") and (email.get("accepted") or email.get("delivered")):
             accepted = True

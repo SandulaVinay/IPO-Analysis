@@ -323,9 +323,15 @@ async def run_pipeline_for_ipo(ipo, session: AsyncSession) -> Dict[str, Any]:
     yt_engine = YouTubeResearchEngine()
     yt_videos = await yt_engine.search_ipo_videos(ipo.company_name, ipo.symbol)
 
+    assessment_status = (
+        "UNABLE_TO_ASSESS"
+        if score_data.get("verdict") == "UNABLE_TO_ASSESS" or score_data.get("is_safety_gated")
+        else "ASSESSED"
+    )
     payload = {
         "ipo": ipo_dict,
         "score_data": score_data,
+        "assessment_status": assessment_status,
         "confidence_level": completeness["confidence_level"],
         "business": biz,
         "financials": fin,

@@ -24,7 +24,9 @@ def _valid_test_pdf() -> bytes:
 
 
 @pytest.mark.asyncio
-async def test_full_pipeline_flow(async_session: AsyncSession):
+async def test_full_pipeline_flow(async_session: AsyncSession, monkeypatch):
+    # The synthetic test PDF uses example.com; explicitly allow it only in this test.
+    monkeypatch.setenv("IPO_ALLOWED_SOURCE_DOMAINS", "example.com")
     repo = IPORepository(async_session)
 
     # 1. Create IPO entity

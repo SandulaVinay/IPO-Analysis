@@ -57,7 +57,8 @@ def test_scenario_1_strong_ipo():
         completeness_info={"missing_critical_fields": []},
         conflict_info={"is_critical_tier1_conflict": False},
         management_info={"has_critical_governance_flag": False},
-        financial_info=fin,
+        # Scenario fixture represents fully verified historical financial evidence.
+        financial_info={**fin, "verification_status": "VERIFIED"},
     )
     assert res["verdict"] == "ATTRACTIVE"
     assert res["overall_score"] >= 8.0

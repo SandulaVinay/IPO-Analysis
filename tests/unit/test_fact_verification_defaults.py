@@ -21,6 +21,7 @@ async def test_new_fact_defaults_to_unverified_and_cannot_inflate_completeness(a
         source_name="Test source",
         source_url="https://example.com/filing.pdf",
     )
+    await async_session.refresh(fact)
     assert fact.verification_status == "UNVERIFIED"
 
     result = VerificationEngine.evaluate_ipo_completeness(

@@ -118,6 +118,11 @@ See [Automation v2 Architecture and Rollout Gates](docs/ARCHITECTURE_V2.md) for 
 The daily IPO digest, supported financial-results alerts, and prospectus evidence reviews are generated as Markdown and PDF files. The scheduler uploads these as seven-day GitHub Actions artifacts. When email alerts are explicitly enabled and SMTP is configured, the relevant PDF can be attached to the email. Push-triggered validation runs keep email delivery disabled. The daily digest remains `UNABLE_TO_ASSESS` until the real prospectus financial verification workflow is complete.
 
 
+### Official prospectus source allowlist
+
+Prospectus ingestion accepts HTTPS sources from sebi.gov.in, nseindia.com, and bseindia.com by default. If a filing must be retrieved directly from an issuer's official website, explicitly review and configure its hostname in the IPO_ALLOWED_SOURCE_DOMAINS environment variable as a comma-separated list (for example, issuer.example,filings.issuer.test). The allowlist is a host-origin guard, not proof that the filing or extracted numbers are correct. Documents and all extracted financial candidates remain unverified until independently checked; never use the allowlist as a substitute for financial review.
+
+
 ## Financial evidence pipeline — current implementation status
 
 The prospectus extractor captures page-cited text/table candidates and preserves provenance, but those candidates are not verified facts. The feature branch `feature/verified-financial-evidence-pipeline` adds `src/documents/financial_normalization.py` and attaches candidate metadata to numeric table cells. It handles numeric parsing, explicit amount units, explicit FY labels, and standalone/consolidated markers; each candidate retains source URL, document hash, page, raw value, and normalization metadata, and remains `CANDIDATE_UNVERIFIED`. The scoring safety gate now fails closed if financial verification status is absent.

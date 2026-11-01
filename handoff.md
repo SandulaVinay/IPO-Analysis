@@ -278,3 +278,10 @@ No candidate is marked `VERIFIED`. Exact agreement between URLs is not sufficien
 4. Connect reconciliation to document evidence storage and analysis orchestration; do not add synthetic values or hard-code verification status.
 5. Confirm only explicitly verified facts can populate critical financial fields.
 6. Keep issue #31 open until extraction, reconciliation, official verification, scoring, and end-to-end safety tests are complete.
+
+
+### Additional fail-closed persistence fix
+- Changed `Fact.verification_status` in `src/database/models.py` and the default argument of `IPORepository.add_fact` in `src/database/repository.py` from `VERIFIED` to `UNVERIFIED`.
+- Added `tests/unit/test_fact_verification_defaults.py` to verify that a newly persisted fact without an explicit verification decision cannot satisfy financial completeness.
+- This only changes defaults for newly written rows. Existing database records are not migrated; a separate audited migration/backfill may be needed after reviewing how those records were created.
+- Recheck all fact creation paths and run the full CI suite on the updated PR head before merge.

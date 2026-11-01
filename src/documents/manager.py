@@ -59,6 +59,28 @@ def _validate_public_https_url(value: str):
     return parsed
 
 
+def _validate_official_source_url(value: str):
+    """Require an approved regulator/exchange host or an explicitly configured issuer host.
+
+    The allowlist is a source-origin guard, not proof that a PDF's contents are correct.
+    Independent financial review and candidate verification remain separate requirements.
+    """
+    parsed = _validate_public_https_url(value)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    allowed_domains = {"sebi.gov.in", "nseindia.com", "bseindia.com"}
+    configured = os.getenv("IPO_ALLOWED_SOURCE_DOMAINS", "")
+    for domain in configured.split(","):
+        domain = domain.strip().lower().strip(".")
+        if domain:
+            allowed_domains.add(domain)
+    if not any(host == domain or host.endswith("." + domain) for domain in allowed_domains):
+        raise ValueError(
+            "IPO filing host is not an approved regulator/exchange domain; "
+            "add an explicitly reviewed issuer domain to IPO_ALLOWED_SOURCE_DOMAINS if appropriate."
+        )
+    return parsed
+
+
 def _validate_pdf_content(content: bytes) -> None:
     if not content:
         raise ValueError("Downloaded document is empty.")
@@ -273,13 +295,15 @@ class DocumentManager:
         safe_type = _safe_component(document_type, "DOCUMENT")
         safe_version = _safe_component(version_label, "v1")
         safe_title = _safe_component(document_title, "filing")
+        # Validate provenance for downloaded and caller-supplied bytes alike; local
+        # bytes must not let an unapproved URL be persisted as an official source.
+        _validate_official_source_url(source_url)
         if local_content is not None:
             content = local_content
         else:
-            _validate_public_https_url(source_url)
             try:
                 response = await http_client.get(source_url, headers={"Accept": "application/pdf,application/octet-stream;q=0.9,*/*;q=0.1"})
-                _validate_public_https_url(str(response.url))
+                _validate_official_source_url(str(response.url))
                 content = response.content
             except Exception as exc:
                 logger.warning("IPO document download failed (%s); no placeholder was created.", type(exc).__name__)

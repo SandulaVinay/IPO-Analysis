@@ -144,3 +144,47 @@ def test_sebi_hosted_prospectus_kpi_layout_skips_percent_columns():
     assert [item["normalized_value_inr_crore"] for item in candidates] == ["922.680", "780.230", "796.825"]
     assert all(item["statement_basis"] is None for item in candidates)
     assert all(item["verification_status"] == "CANDIDATE_UNVERIFIED" for item in candidates)
+
+
+def test_table_candidates_use_page_context_for_unit_and_consolidated_basis():
+    from src.documents.extractor import extract_candidate_evidence_from_tables
+
+    table = [
+        ["Particulars", "Notes", "For the Six months ended September 30,2024", "For the Year ended March 31,2024"],
+        ["Revenue from operations", "23", "1,721.50", "2,865.18"],
+        ["Profit/(loss) for the period / year [A]", "", "239.34", "136.10"],
+    ]
+    page_context = (
+        "ESDS Software Solution Limited Restated Consolidated Statement of Profit and Loss. "
+        "All amounts are in Rupees million, unless otherwise stated."
+    )
+    evidence = extract_candidate_evidence_from_tables(
+        [[table]],
+        source_url="https://www.sebi.gov.in/sebi_data/attachdocs/apr-2025/1743751804884_762.pdf",
+        document_hash="f" * 64,
+        page_contexts=[page_context],
+    )
+    candidates = [
+        candidate
+        for item in evidence
+        for candidate in item.get("financial_candidates", [])
+    ]
+    revenue = next(
+        candidate for candidate in candidates
+        if candidate["field_name"] == "revenue_from_operations"
+        and candidate["raw_value"] == "2,865.18"
+    )
+    assert revenue["unit"] == "million"
+    assert revenue["period"]["label"] == "FY2023-2024"
+    assert revenue["statement_basis"] == "CONSOLIDATED"
+    assert revenue["normalized_value_inr_crore"] == "286.518"
+    assert revenue["verification_status"] == "CANDIDATE_UNVERIFIED"
+
+    pat = next(
+        candidate for candidate in candidates
+        if candidate["field_name"] == "profit_after_tax"
+        and candidate["raw_value"] == "136.10"
+    )
+    assert pat["period"]["label"] == "FY2023-2024"
+    assert pat["normalized_value_inr_crore"] == "13.610"
+    assert pat["verification_status"] == "CANDIDATE_UNVERIFIED"

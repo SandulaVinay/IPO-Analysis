@@ -23,8 +23,8 @@ def synthetic_fixture_data():
     fixture_dir = Path("tests/fixtures")
     pdf_path = fixture_dir / "clean_science_rhp.pdf"
     manifest_path = fixture_dir / "official_prospectus_manifest.json"
-    assert pdf_path.exists(), "Official RHP PDF fixture must exist."
-    assert manifest_path.exists(), "Official prospectus manifest must exist."
+    assert pdf_path.exists(), "Synthetic parser-test PDF fixture must exist."
+    assert manifest_path.exists(), "Synthetic test manifest must exist."
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     pdf_bytes = pdf_path.read_bytes()

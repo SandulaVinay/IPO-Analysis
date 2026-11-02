@@ -78,6 +78,128 @@ def _normalized_lines(text: str) -> List[str]:
     return lines
 
 
+_STATEMENT_PERIOD_RE = re.compile(
+    r"\bFor the\s+(?P<duration>six months|year)\s+ended\s+"
+    r"(?P<month>September\s+30|March\s+31),?\s*(?P<year>20\d{2})\b",
+    re.I,
+)
+_NUMERIC_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:\(\s*[+-]?\d[\d,]*(?:\.\d+)?\s*\)|[+-]?\d[\d,]*(?:\.\d+)?|[—–-])(?![A-Za-z0-9])"
+)
+
+
+def extract_candidate_evidence_from_statement_text(
+    pages: List[str],
+    *,
+    source_url: str,
+    document_hash: str,
+    extracted_at: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Extract aligned numeric candidates from text-layer financial statement rows.
+
+    Some regulator-hosted PDFs expose the financial rows as text but pdfplumber
+    cannot recover usable table cells. This fallback maps row values to explicitly
+    printed date columns, while preserving candidate-only status. It intentionally
+    handles only the unambiguous FY-ending-March columns for normalization.
+    """
+    timestamp = extracted_at or datetime.now(timezone.utc).isoformat()
+    output: List[Dict[str, Any]] = []
+    seen = set()
+    target_fields = {"revenue_from_operations", "profit_after_tax", "operating_cash_flow"}
+    compiled = {
+        field: [re.compile(pattern, re.I) for pattern in patterns]
+        for field, patterns in EVIDENCE_PATTERNS.items()
+        if field in target_fields
+    }
+
+    for page_number, page_text in enumerate(pages, start=1):
+        if not page_text:
+            continue
+        unit = detect_explicit_unit(page_text)
+        basis = identify_statement_basis(page_text)
+        if not unit or not basis:
+            continue
+
+        periods = []
+        period_seen = set()
+        for match in _STATEMENT_PERIOD_RE.finditer(page_text):
+            duration = re.sub(r"\s+", " ", match.group("duration")).casefold()
+            month = re.sub(r"\s+", " ", match.group("month")).casefold()
+            year = int(match.group("year"))
+            key = (duration, month, year)
+            if key in period_seen:
+                continue
+            period_seen.add(key)
+            if duration == "year" and month == "march 31":
+                periods.append({
+                    "column_type": "FINANCIAL_YEAR",
+                    "label": f"FY{year - 1}-{year}",
+                    "start": match.start(),
+                })
+            else:
+                # Interim columns still occupy a numeric position but are not
+                # promoted to FY labels by this conservative fallback.
+                periods.append({
+                    "column_type": "INTERIM_PERIOD",
+                    "label": f"Interim ended {match.group('month')} {year}",
+                    "start": match.start(),
+                })
+        if len(periods) < 2:
+            continue
+
+        for line in _normalized_lines(page_text[:MAX_PAGE_TEXT]):
+            matched = []
+            for field, patterns in compiled.items():
+                match = next((pattern.search(line) for pattern in patterns if pattern.search(line)), None)
+                if match:
+                    matched.append((field, match))
+            if not matched:
+                continue
+
+            # Only use rows with one numeric cell per explicit period. An extra
+            # leading integer is accepted as a Notes-column reference (e.g. note 23).
+            for field, label_match in matched:
+                remainder = line[label_match.end():]
+                tokens = [item.group(0).strip() for item in _NUMERIC_TOKEN_RE.finditer(remainder)]
+                if len(tokens) == len(periods) + 1:
+                    tokens = tokens[1:]
+                if len(tokens) != len(periods):
+                    continue
+
+                for token, period in zip(tokens, periods):
+                    if period["column_type"] != "FINANCIAL_YEAR":
+                        continue
+                    if parse_numeric_value(token) is None:
+                        continue
+                    context = f"{period['label']} in {unit} {basis.lower()}"
+                    candidate = build_financial_candidate(
+                        field_name=field,
+                        raw_value=token,
+                        row_label=line[:label_match.end()].strip(),
+                        header_context=context,
+                        source_url=source_url,
+                        document_hash=document_hash,
+                        page_number=page_number,
+                    )
+                    key = (field, page_number, line.casefold(), period["label"], token)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    output.append({
+                        "field_name": field,
+                        "source_url": source_url,
+                        "document_hash": document_hash,
+                        "page_number": page_number,
+                        "evidence_text": f"STATEMENT TEXT ROW: {line}"[:1000],
+                        "extraction_status": "CANDIDATE_UNVERIFIED",
+                        "extraction_method": "STATEMENT_TEXT_ROW_CANDIDATE",
+                        "financial_candidates": [candidate],
+                        "value": None,
+                        "extracted_at": timestamp,
+                    })
+    return output
+
+
 def extract_candidate_evidence_from_pages(
     pages: List[str],
     *,
@@ -442,6 +564,28 @@ def extract_pdf_candidate_evidence(
                 existing_keys.add(key)
     except Exception:
         # Linear page text remains available if table-layout extraction fails.
+        pass
+
+    # Fallback for regulator PDFs whose text layer preserves row values but
+    # whose table geometry does not produce usable cells. Only explicit date
+    # columns and known row/value alignment are accepted; all output remains unverified.
+    try:
+        statement_text_evidence = extract_candidate_evidence_from_statement_text(
+            page_texts,
+            source_url=source_url,
+            document_hash=document_hash,
+        )
+        existing_statement_keys = {
+            (item["field_name"], item["page_number"], item["evidence_text"].casefold())
+            for item in evidence
+        }
+        for item in statement_text_evidence:
+            key = (item["field_name"], item["page_number"], item["evidence_text"].casefold())
+            if key not in existing_statement_keys:
+                evidence.append(item)
+                existing_statement_keys.add(key)
+    except Exception:
+        # Text-only row parsing is a best-effort fallback; preserve other evidence.
         pass
 
     text_pages_count = sum(bool(text.strip()) for text in page_texts)

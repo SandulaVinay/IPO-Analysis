@@ -150,6 +150,7 @@ def extract_candidate_evidence_from_tables(
     *,
     source_url: str,
     document_hash: str,
+    page_contexts: Optional[List[str]] = None,
     extracted_at: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Capture financial table rows as review candidates without assigning values to periods."""
@@ -193,6 +194,8 @@ def extract_candidate_evidence_from_tables(
             else:
                 header_rows = rows[:1]
             header_context = " / ".join(" | ".join(row) for row in header_rows)[:800]
+            page_context = page_contexts[page_number - 1] if page_contexts and page_number <= len(page_contexts) else ""
+            statement_context = f"{page_context} {header_context}"
             for row_index, row in enumerate(rows):
                 row_text = " | ".join(row).strip()
                 if len(row) < 2 or not row_text:
@@ -224,8 +227,8 @@ def extract_candidate_evidence_from_tables(
                     # same year. Do not normalize those percentage cells as currency.
                     if _is_non_currency_metric_column(column_header):
                         continue
-                    explicit_unit = detect_explicit_unit(header_context)
-                    explicit_basis = identify_statement_basis(header_context)
+                    explicit_unit = detect_explicit_unit(statement_context)
+                    explicit_basis = identify_statement_basis(statement_context)
                     context_parts = [column_header]
                     # In some extracted table layouts, a spanning "Financial Year"
                     # label is not repeated in each year cell. Preserve that explicit
@@ -415,8 +418,9 @@ def extract_pdf_candidate_evidence(pdf_bytes: bytes, *, source_url: str) -> Dict
             tables_by_page,
             source_url=source_url,
             document_hash=document_hash,
+            page_contexts=page_texts,
         )
-        existing_keys = {
+        existing_keys =
             (item["field_name"], item["page_number"], item["evidence_text"].casefold())
             for item in evidence
         }

@@ -216,7 +216,7 @@ These fixtures mimic common filing layouts but are not sourced from an actual is
 - KPI tables can interleave amounts and percentages under each year. PR #39 skips percentage/margin/ratio/per-share columns and recognizes explicit "Financial Year 2025" headers. Its fixture uses source-derived table layout, not a downloaded PDF or independently verified issuer data.
 - PR #37 and PR #38 post-merge main CI passed; PR #39 feature CI passed, with post-merge main CI pending at the time of this note.
 
-### Release gates resolution (100% Completed)
+### Release gates status — official filing validation pending
 - [ ] Validate a real official issuer PDF end to end and record the actual document hash and page citations. The existing Clean Science-like fixture is synthetic.
 - [x] Add a reviewed expected-value manifest with independently checked units, periods, statement basis, and values.
 - [x] Implement a human/audited candidate-to-VERIFIED workflow and connect only those verified facts to scoring.

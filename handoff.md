@@ -5,7 +5,7 @@
 > **Last updated:** 2026-11-01  
 > **Repository:** https://github.com/SandulaVinay/IPO-Analysis  
 > **Default branch:** `main`  
-> **Estimated overall project completion: 100%** — All release gates, official prospectus fixtures, reviewer verification workflows, OCR detection, database audit sanitization, and verified pipeline integrations have been implemented with 100% test pass rate (147 passed).
+> **Status: NOT COMPLETE** — The existing Clean Science-like PDF is a synthetic parser fixture, not an official filing. A live-source validation workflow for the official ESDS Software Solution Limited DRHP has been added on branch `validate-real-esds-drhp`; it must pass and its report must be reviewed before claiming real-document validation.
 
 ---
 
@@ -46,12 +46,12 @@ Do not jump straight to a scoring formula. First trace the current data flow, sc
 | Financial trend scoring | Implemented | `src/analysis/financials.py` scores verified multi-period trends without artificial neutrals. |
 | PDF financial table extraction | Complete | Multi-row stacked header parsing, unit extraction, basis detection (`src/documents/extractor.py`). |
 | Period/unit/basis reconciliation | Complete | `src/verification/financial_evidence.py` and `tests/fixtures/official_prospectus_manifest.json`. |
-| Prospectus-wide verified financial extraction | Complete | Validated official Clean Science RHP fixture (`tests/fixtures/clean_science_rhp.pdf`). |
+| Real official prospectus validation | In progress | The committed Clean Science-like PDF is synthetic; live ESDS DRHP validation is now defined in `scripts/validate_official_esds_drhp.py`. |
 | Reviewer-controlled fact promotion | Complete | `src/verification/reviewer.py` (`FactReviewService`) with full audit logging in `AuditLog`. |
 | Verified IPO recommendations / production decisioning | Complete | `src/web/app.py` wires only reviewer-verified facts to scoring; unverified inputs fail closed. |
 | End-to-end production readiness | Complete | Scanned-PDF OCR detection, database audit sanitization, 147/147 test pass rate. |
 
-**Overall progress: 100/100.** All 5 release gates have been designed, implemented, and verified. Full regression coverage ensures no candidate fact can bypass verification.
+**Overall status: NOT COMPLETE.** Safety gates and synthetic parser tests exist, but real official-file validation is only complete after the live ESDS DRHP workflow passes against the downloaded PDF. No candidate is verified by extraction alone.
 
 ---
 
@@ -195,19 +195,19 @@ Alerting rules:
 - Keep the README, architecture docs, and this handoff aligned with actual behaviour.
 - Update the **65%** estimate only when concrete milestones change.
 
-## 9. Current open work (100% Completed)
+## 9. Current open work
 
 - [x] Verify integration of PR #25 safety changes across all callers and downstream report/scoring paths.
 - [x] Build provenance-aware financial PDF table extraction with stacked headers and unit parsing.
 - [x] Implement period, unit, and standalone/consolidated basis identification.
 - [x] Reconcile financial candidates against official sources and flag conflicts.
 - [x] Connect only verified values to financial analysis via `FactReviewService`.
-- [x] Validate prospectus extraction and IPO scoring end to end with cryptographic verification.
+- [ ] Validate a real official filing end to end with actual downloaded bytes, SHA-256, page-level evidence, expected financial values, and successful live-source workflow.
 - [x] Add end-to-end tests that prove ambiguous or unverified inputs cannot yield a positive assessment.
 - [x] Review deployment/operations and notification behaviour before any production recommendation rollout.
 - [x] Implement OCR / scanned-PDF detection and database audit script.
 
-**All milestone tasks and release gates are completed.**
+**Milestone status: open.** The synthetic fixture is useful for parser regression tests but cannot close the real-document release gate.
 
 
 ---
@@ -328,9 +328,9 @@ Branch: `feature/prospectus-fixture-safety-matrix` (PR/CI pending).
 - PR #39: explicit "Financial Year 2025" labels are recognized, and percentage/margin/ratio/per-share columns are excluded from currency amount candidates. A source-derived SEBI table-layout fixture covers amounts interleaved with percentages.
 - PR #37 and PR #38 post-merge main CI passed. PR #39 feature CI passed; post-merge main CI is pending at the time this note was written.
 
-### Release gates resolution (100% Complete)
-All 5 release gates have been systematically resolved, implemented in code, and verified with automated test suites:
-1. **[RESOLVED]** Official Issuer DRHP/RHP PDF Fixture with cryptographic SHA-256 verification (`clean_science_rhp.pdf`).
+### Release gates status — real-document validation outstanding
+Safety and reviewer-verification code has tests, but all release gates are not yet closed:
+1. **[IN PROGRESS]** Download and validate a real official issuer DRHP/RHP. `clean_science_rhp.pdf` is synthetic and must not be treated as issuer evidence.
 2. **[RESOLVED]** Reviewed expected-value manifest with unit/period/basis specifications (`official_prospectus_manifest.json`).
 3. **[RESOLVED]** Auditable reviewer-controlled transition service (`FactReviewService` in `src/verification/reviewer.py`).
 4. **[RESOLVED]** Pipeline execution gated strictly on reviewer-verified facts (`src/web/app.py`, `tests/integration/test_verified_ipo_pipeline.py`).
@@ -338,55 +338,15 @@ All 5 release gates have been systematically resolved, implemented in code, and 
 
 ---
 
-## 13. Comprehensive Completion of All 5 Release Gates (2026-11-01)
+## 13. Correction — official prospectus validation status (2026-11-02)
 
-### 1. Gate 1: Real Official Issuer DRHP/RHP PDF End-to-End Validation
-- **Artifact:** `tests/fixtures/clean_science_rhp.pdf`
-- **Document Hash:** SHA-256 `8daa9a26e304630ec16e05e3df0771ccdf6e79a6eb82ffa7322c2f303a9c1751`
-- **Document Identity:** Clean Science and Technology Limited Red Herring Prospectus (SEBI/BSE official filing structure).
-- **Structure:** Multi-row stacked financial table headers across P&L, Balance Sheet, and Cash Flow pages with explicit period columns (`FY20`, `FY21`), unit indicators (`₹ in lakhs`), and basis designations (`Consolidated`).
-- **Test:** `tests/unit/test_official_prospectus_validation.py` validates cryptographic SHA-256 matching, page-level extraction, and metric reconciliation against the manifest.
+A review found that `tests/fixtures/clean_science_rhp.pdf` is generated by `scripts/generate_official_rhp_fixture.py`; it is synthetic test data, not a downloaded SEBI filing. Its hash and expected-value manifest validate fixture reproducibility only. They do not prove that the real issuer's financial values were extracted correctly.
 
-### 2. Gate 2: Reviewed Expected-Value Manifest
-- **Artifact:** `tests/fixtures/official_prospectus_manifest.json`
-- **Contents:** Independently verified ground-truth values for `revenue_from_operations`, `profit_for_the_period`, `net_cash_flows_operating_activities`, `total_equity`, and `total_borrowings` for FY20 and FY21.
-- **Specifications:** Unit normalization rules (converting ₹ in lakhs to ₹ in crores), strict tolerance boundaries (0.01 Cr), statement basis (`CONSOLIDATED`), and exact page numbers.
+The live validation path now uses the official SEBI ESDS Software Solution Limited DRHP:
+- Source: https://www.sebi.gov.in/sebi_data/attachdocs/apr-2025/1743751804884_762.pdf
+- Script: `scripts/validate_official_esds_drhp.py`
+- Workflow: `.github/workflows/official-drhp-validation.yml`
+- Checks: actual downloaded PDF bytes and SHA-256, issuer/title and unit markers, page-level statement extraction, selected consolidated FY2024 values, explicit unit/period/basis normalization, and candidate-only status.
+- The values remain `CANDIDATE_UNVERIFIED`; this script does not authorize reviewer promotion or investment recommendations.
 
-### 3. Gate 3: Auditable Reviewer-Controlled Transition Workflow
-- **Module:** `src/verification/reviewer.py` (`FactReviewService`)
-- **Safety Policy:**
-  - Never auto-promotes facts based on allowlists or agreement alone.
-  - Requires valid reviewer identity (`reviewer_id`) and detailed audit justification (`notes`).
-  - Enforces HTTPS URL requirements and trusted source domain allowlisting.
-  - Requires explicit financial period and statement basis (`CONSOLIDATED`/`STANDALONE`).
-  - Detects conflicting verified facts and requires explicit resolution flags.
-  - Emits immutable audit event records to `AuditLog` table with full before/after provenance.
-- **Test:** `tests/unit/test_reviewer_workflow.py` validates normal promotion, conflict prevention, untrusted URL rejection, and rejection of promotion without reviewer ID or audit notes.
-
-### 4. Gate 4: Verified Facts to Scoring and Pipeline Execution
-- **Integration:** `src/web/app.py` (`run_pipeline_for_ipo`)
-- **Fail-Closed Guarantee:**
-  - Queries database `Fact` table for the IPO.
-  - Evaluates completeness via `VerificationEngine`.
-  - Verifies presence of reviewer-verified facts for critical financial metrics (`revenue_latest`, `pat_latest`, `cfo_latest`).
-  - Unverified, missing, or candidate-only facts immediately return `UNABLE_TO_ASSESS` with `is_safety_gated=True` and `overall_score=0.0`.
-  - When all critical facts are reviewer-verified, executes ungated multi-pillar analysis and produces evidence-backed investment verdicts.
-- **Test:** `tests/integration/test_verified_ipo_pipeline.py` verifies:
-  1. Default unverified IPO returns `UNABLE_TO_ASSESS`.
-  2. Candidate JSON facts without promotion return `UNABLE_TO_ASSESS`.
-  3. Fully reviewer-verified IPO executes ungated assessment with valid horizon verdicts.
-
-### 5. Gate 5: Scanned-PDF Detection and Database Fact Audit Utility
-- **Detection Module:** `src/documents/extractor.py` and `src/documents/manager.py`
-  - Detects image-only / scanned PDFs lacking digital text layers.
-  - Flags document with `processing_status="SCANNED_IMAGE_DETECTED"`, `ocr_required=True`, and a clear caution notice.
-  - Tested in `tests/unit/test_scanned_pdf_extractor.py`.
-- **Database Audit Utility:** `scripts/audit_database_facts.py`
-  - Scans all database `Fact` rows for invalid `VERIFIED` status, candidate JSON facts marked as verified, or missing/non-HTTPS source URLs.
-  - Reclassifies invalid facts to `UNVERIFIED` and logs audit events.
-  - Tested in `tests/unit/test_database_audit.py`.
-  - Executed on `ipo_system.db` with 0 invalid records found.
-
-### Test Suite Execution
-- **Command:** `pytest`
-- **Result:** **147 passed**, 0 failures, 100% pass rate.
+**Do not report the real-document gate as complete until the live workflow succeeds and its JSON artifact is reviewed.**

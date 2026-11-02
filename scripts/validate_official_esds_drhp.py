@@ -108,11 +108,16 @@ def run() -> int:
             raise RuntimeError("Consolidated profit-and-loss statement was not found.")
         if "All amounts are in Rupees million" not in full_text:
             raise RuntimeError("Explicit statement unit was not found.")
-        extraction = extract_pdf_candidate_evidence(pdf_bytes, source_url=SOURCE_URL)
+        statement_pages = _find_statement_pages(page_texts)
+        table_pages = {page for page in statement_pages.values() if page is not None}
+        extraction = extract_pdf_candidate_evidence(
+            pdf_bytes,
+            source_url=SOURCE_URL,
+            table_page_numbers=table_pages,
+        )
         if extraction.get("document_hash") != sha256:
             raise RuntimeError("Extractor SHA-256 does not match downloaded source bytes.")
         candidates = _flatten_candidates(extraction)
-        statement_pages = _find_statement_pages(page_texts)
         report.update({"document_sha256":sha256,"document_bytes":len(pdf_bytes),"physical_page_count":len(reader.pages),"text_pages_extracted":sum(bool(page.strip()) for page in page_texts),"candidate_evidence_count":extraction.get("evidence_count",len(extraction.get("evidence",[]))),"candidate_financial_value_count":len(candidates),"statement_physical_pages":statement_pages,"extractor_status":extraction.get("status"),"source_validation":"SEBI HTTPS URL; downloaded bytes passed PDF signature, issuer/title, and statement-unit checks."})
         raw_checks = {
             "revenue_from_operations":_raw_row_check(page_texts,r"Revenue from operations","2,865.18",statement_pages["profit_and_loss"]),

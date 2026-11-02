@@ -1,27 +1,28 @@
 {
   "manifest_version": "1.0",
   "issuer": {
-    "symbol": "CLEAN",
-    "company_name": "Clean Science and Technology Limited",
-    "industry": "Specialty Chemicals",
+    "symbol": "SYNTHETIC_TEST",
+    "company_name": "Synthetic test issuer — not a real filing",
+    "industry": "Test data only",
     "issue_type": "MAINBOARD"
   },
   "document": {
-    "document_type": "RHP",
-    "document_title": "Red Herring Prospectus",
-    "source_url": "https://www.sebi.gov.in/filings/public-issues/clean-science-rhp.pdf",
+    "document_type": "SYNTHETIC_TEST_FIXTURE",
+    "document_title": "Synthetic prospectus-layout fixture (NOT OFFICIAL)",
+    "source_url": "https://example.invalid/synthetic-prospectus-layout-fixture.pdf",
     "document_hash": "8daa9a26e304630ec16e05e3df0771ccdf6e79a6eb82ffa7322c2f303a9c1751",
     "page_count": 5,
     "unit": "lakh",
-    "statement_basis": "CONSOLIDATED"
+    "statement_basis": "CONSOLIDATED",
+    "synthetic_fixture": true
   },
   "reviewed_issue_parameters": {
-    "min_price": 450.0,
-    "max_price": 475.0,
+    "min_price": 450,
+    "max_price": 475,
     "lot_size": 31,
-    "issue_size_cr": 1200.0,
-    "fresh_issue_cr": 800.0,
-    "ofs_cr": 400.0
+    "issue_size_cr": 1200,
+    "fresh_issue_cr": 800,
+    "ofs_cr": 400
   },
   "reviewed_financial_facts": [
     {
@@ -32,7 +33,7 @@
       "statement_basis": "CONSOLIDATED",
       "raw_value": "82,300.00",
       "unit": "lakh",
-      "expected_normalized_inr_crore": 823.0,
+      "expected_normalized_inr_crore": 823,
       "page_number": 3
     },
     {
@@ -43,7 +44,7 @@
       "statement_basis": "CONSOLIDATED",
       "raw_value": "14,800.00",
       "unit": "lakh",
-      "expected_normalized_inr_crore": 148.0,
+      "expected_normalized_inr_crore": 148,
       "page_number": 3
     },
     {
@@ -54,7 +55,7 @@
       "statement_basis": "CONSOLIDATED",
       "raw_value": "11,200.00",
       "unit": "lakh",
-      "expected_normalized_inr_crore": 112.0,
+      "expected_normalized_inr_crore": 112,
       "page_number": 4
     },
     {
@@ -65,7 +66,7 @@
       "statement_basis": "CONSOLIDATED",
       "raw_value": "59,500.00",
       "unit": "lakh",
-      "expected_normalized_inr_crore": 595.0,
+      "expected_normalized_inr_crore": 595,
       "page_number": 5
     },
     {
@@ -76,8 +77,9 @@
       "statement_basis": "CONSOLIDATED",
       "raw_value": "0.00",
       "unit": "lakh",
-      "expected_normalized_inr_crore": 0.0,
+      "expected_normalized_inr_crore": 0,
       "page_number": 5
     }
-  ]
+  ],
+  "synthetic_fixture": true
 }

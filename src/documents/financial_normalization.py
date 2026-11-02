@@ -87,6 +87,18 @@ def detect_explicit_unit(context: str) -> Optional[str]:
         return "million"
     if re.search(r"₹\s*(?:in\s*)?billions?\b|\bin\s+billions?\b", compact):
         return "billion"
+    # Some official statements phrase units as "All amounts are in Rupees million".
+    # Treat the currency word as context, not as a separate unit multiplier.
+    if re.search(r"\brupees?\s+(?:in\s*)?crores?\b", compact):
+        return "crore"
+    if re.search(r"\brupees?\s+(?:in\s*)?lakhs?\b|\brupees?\s+(?:in\s*)?lacs?\b", compact):
+        return "lakh"
+    if re.search(r"\brupees?\s+(?:in\s*)?thousands?\b", compact):
+        return "thousand"
+    if re.search(r"\brupees?\s+(?:in\s*)?millions?\b", compact):
+        return "million"
+    if re.search(r"\brupees?\s+(?:in\s*)?billions?\b", compact):
+        return "billion"
     return None
 
 
@@ -134,6 +146,16 @@ def identify_financial_period(context: str) -> Optional[Dict[str, str]]:
             end = int(end_text)
             if end == start + 1:
                 return {"period_type": "FINANCIAL_YEAR", "label": f"FY{start}-{end}"}
+    # "Year ended 31 March YYYY" is an explicit Indian financial-year end.
+    # Map it to the FY ending in YYYY; do not apply this to interim periods.
+    year_ended = re.search(
+        r"\b(?:for\s+the\s+)?(?:financial\s+)?year\s+ended\s+(?:march\s+31|31\s+march)\s*,?\s*(20\d{2})\b",
+        text,
+        re.I,
+    )
+    if year_ended:
+        end_year = int(year_ended.group(1))
+        return {"period_type": "FINANCIAL_YEAR", "label": f"FY{end_year - 1}-{end_year}"}
     financial_year = re.search(
         r"\b(?:financial|fiscal)\s+year\b[^0-9]{0,50}(20\d{2})\b",
         text,

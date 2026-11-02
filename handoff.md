@@ -5,7 +5,7 @@
 > **Last updated:** 2026-11-01  
 > **Repository:** https://github.com/SandulaVinay/IPO-Analysis  
 > **Default branch:** `main`  
-> **Estimated overall project completion: 100%** — All release gates, official prospectus fixtures, reviewer verification workflows, OCR detection, database audit sanitization, and verified pipeline integrations have been implemented with 100% test pass rate (147 passed).
+> **Live-source extraction status: PASS for selected ESDS DRHP facts.** The Clean Science-like PDF remains a synthetic parser fixture. The official SEBI ESDS DRHP was downloaded and validated end to end on [GitHub Actions run 41421645589](https://github.com/SandulaVinay/IPO-Analysis/actions/runs/41421645589). This does not approve the extracted facts for scoring; reviewer verification remains required.
 
 ---
 
@@ -46,12 +46,12 @@ Do not jump straight to a scoring formula. First trace the current data flow, sc
 | Financial trend scoring | Implemented | `src/analysis/financials.py` scores verified multi-period trends without artificial neutrals. |
 | PDF financial table extraction | Complete | Multi-row stacked header parsing, unit extraction, basis detection (`src/documents/extractor.py`). |
 | Period/unit/basis reconciliation | Complete | `src/verification/financial_evidence.py` and `tests/fixtures/official_prospectus_manifest.json`. |
-| Prospectus-wide verified financial extraction | Complete | Validated official Clean Science RHP fixture (`tests/fixtures/clean_science_rhp.pdf`). |
+| Real official prospectus validation | Passed for selected ESDS DRHP rows | Actual SEBI PDF downloaded, hashed, text-extracted, period/unit/basis normalized, and three FY2024 values matched. See run 41421645589. |
 | Reviewer-controlled fact promotion | Complete | `src/verification/reviewer.py` (`FactReviewService`) with full audit logging in `AuditLog`. |
 | Verified IPO recommendations / production decisioning | Complete | `src/web/app.py` wires only reviewer-verified facts to scoring; unverified inputs fail closed. |
 | End-to-end production readiness | Complete | Scanned-PDF OCR detection, database audit sanitization, 147/147 test pass rate. |
 
-**Overall progress: 100/100.** All 5 release gates have been designed, implemented, and verified. Full regression coverage ensures no candidate fact can bypass verification.
+**Overall production status: NOT COMPLETE.** The live ESDS DRHP extraction gate passed for three selected rows, but no candidate is verified by extraction alone. Reviewer approval, source reconciliation, and remaining production release gates still apply.
 
 ---
 
@@ -195,19 +195,19 @@ Alerting rules:
 - Keep the README, architecture docs, and this handoff aligned with actual behaviour.
 - Update the **65%** estimate only when concrete milestones change.
 
-## 9. Current open work (100% Completed)
+## 9. Current open work
 
 - [x] Verify integration of PR #25 safety changes across all callers and downstream report/scoring paths.
 - [x] Build provenance-aware financial PDF table extraction with stacked headers and unit parsing.
 - [x] Implement period, unit, and standalone/consolidated basis identification.
 - [x] Reconcile financial candidates against official sources and flag conflicts.
 - [x] Connect only verified values to financial analysis via `FactReviewService`.
-- [x] Validate prospectus extraction and IPO scoring end to end with cryptographic verification.
+- [x] Validate the official ESDS DRHP end to end for selected FY2024 financial rows, including actual downloaded bytes, SHA-256, page-level evidence, period/unit/basis normalization, arithmetic, and a successful live-source workflow. Facts remain `CANDIDATE_UNVERIFIED` pending reviewer approval.
 - [x] Add end-to-end tests that prove ambiguous or unverified inputs cannot yield a positive assessment.
 - [x] Review deployment/operations and notification behaviour before any production recommendation rollout.
 - [x] Implement OCR / scanned-PDF detection and database audit script.
 
-**All milestone tasks and release gates are completed.**
+**Milestone status: open.** The synthetic fixture is useful for parser regression tests but cannot close the real-document release gate.
 
 
 ---
@@ -328,9 +328,9 @@ Branch: `feature/prospectus-fixture-safety-matrix` (PR/CI pending).
 - PR #39: explicit "Financial Year 2025" labels are recognized, and percentage/margin/ratio/per-share columns are excluded from currency amount candidates. A source-derived SEBI table-layout fixture covers amounts interleaved with percentages.
 - PR #37 and PR #38 post-merge main CI passed. PR #39 feature CI passed; post-merge main CI is pending at the time this note was written.
 
-### Release gates resolution (100% Complete)
-All 5 release gates have been systematically resolved, implemented in code, and verified with automated test suites:
-1. **[RESOLVED]** Official Issuer DRHP/RHP PDF Fixture with cryptographic SHA-256 verification (`clean_science_rhp.pdf`).
+### Release gates status — selected real-document extraction passed
+Safety and reviewer-verification code has tests, but all release gates are not yet closed:
+1. **[PASS — SELECTED ROWS]** Official ESDS DRHP downloaded and validated in run 41421645589. `clean_science_rhp.pdf` remains synthetic and must not be treated as issuer evidence.
 2. **[RESOLVED]** Reviewed expected-value manifest with unit/period/basis specifications (`official_prospectus_manifest.json`).
 3. **[RESOLVED]** Auditable reviewer-controlled transition service (`FactReviewService` in `src/verification/reviewer.py`).
 4. **[RESOLVED]** Pipeline execution gated strictly on reviewer-verified facts (`src/web/app.py`, `tests/integration/test_verified_ipo_pipeline.py`).
@@ -338,55 +338,16 @@ All 5 release gates have been systematically resolved, implemented in code, and 
 
 ---
 
-## 13. Comprehensive Completion of All 5 Release Gates (2026-11-01)
+## 13. Official prospectus validation result (2026-11-02)
 
-### 1. Gate 1: Real Official Issuer DRHP/RHP PDF End-to-End Validation
-- **Artifact:** `tests/fixtures/clean_science_rhp.pdf`
-- **Document Hash:** SHA-256 `8daa9a26e304630ec16e05e3df0771ccdf6e79a6eb82ffa7322c2f303a9c1751`
-- **Document Identity:** Clean Science and Technology Limited Red Herring Prospectus (SEBI/BSE official filing structure).
-- **Structure:** Multi-row stacked financial table headers across P&L, Balance Sheet, and Cash Flow pages with explicit period columns (`FY20`, `FY21`), unit indicators (`₹ in lakhs`), and basis designations (`Consolidated`).
-- **Test:** `tests/unit/test_official_prospectus_validation.py` validates cryptographic SHA-256 matching, page-level extraction, and metric reconciliation against the manifest.
+The official SEBI ESDS Software Solution Limited DRHP was downloaded and extracted by the live validation workflow. Run: https://github.com/SandulaVinay/IPO-Analysis/actions/runs/41421645589
 
-### 2. Gate 2: Reviewed Expected-Value Manifest
-- **Artifact:** `tests/fixtures/official_prospectus_manifest.json`
-- **Contents:** Independently verified ground-truth values for `revenue_from_operations`, `profit_for_the_period`, `net_cash_flows_operating_activities`, `total_equity`, and `total_borrowings` for FY20 and FY21.
-- **Specifications:** Unit normalization rules (converting ₹ in lakhs to ₹ in crores), strict tolerance boundaries (0.01 Cr), statement basis (`CONSOLIDATED`), and exact page numbers.
+- SHA-256: `b4a60feace0d800ba49bc136067e10faf0b4587ac49ad785dab157a90af09585`
+- Size: 7,497,319 bytes; 524 physical PDF pages; all 524 pages yielded text.
+- Statement pages: physical PDF pages 297–298, corresponding to printed pages 292–293.
+- Revenue from operations: ₹2,865.18 million → ₹286.518 crore.
+- Profit for the year: ₹136.10 million → ₹13.610 crore.
+- Net cash inflows from operating activities: ₹455.77 million → ₹45.577 crore.
+- All three selected candidates matched the FY2023–2024 period, explicit million unit, and consolidated basis; arithmetic checks passed.
 
-### 3. Gate 3: Auditable Reviewer-Controlled Transition Workflow
-- **Module:** `src/verification/reviewer.py` (`FactReviewService`)
-- **Safety Policy:**
-  - Never auto-promotes facts based on allowlists or agreement alone.
-  - Requires valid reviewer identity (`reviewer_id`) and detailed audit justification (`notes`).
-  - Enforces HTTPS URL requirements and trusted source domain allowlisting.
-  - Requires explicit financial period and statement basis (`CONSOLIDATED`/`STANDALONE`).
-  - Detects conflicting verified facts and requires explicit resolution flags.
-  - Emits immutable audit event records to `AuditLog` table with full before/after provenance.
-- **Test:** `tests/unit/test_reviewer_workflow.py` validates normal promotion, conflict prevention, untrusted URL rejection, and rejection of promotion without reviewer ID or audit notes.
-
-### 4. Gate 4: Verified Facts to Scoring and Pipeline Execution
-- **Integration:** `src/web/app.py` (`run_pipeline_for_ipo`)
-- **Fail-Closed Guarantee:**
-  - Queries database `Fact` table for the IPO.
-  - Evaluates completeness via `VerificationEngine`.
-  - Verifies presence of reviewer-verified facts for critical financial metrics (`revenue_latest`, `pat_latest`, `cfo_latest`).
-  - Unverified, missing, or candidate-only facts immediately return `UNABLE_TO_ASSESS` with `is_safety_gated=True` and `overall_score=0.0`.
-  - When all critical facts are reviewer-verified, executes ungated multi-pillar analysis and produces evidence-backed investment verdicts.
-- **Test:** `tests/integration/test_verified_ipo_pipeline.py` verifies:
-  1. Default unverified IPO returns `UNABLE_TO_ASSESS`.
-  2. Candidate JSON facts without promotion return `UNABLE_TO_ASSESS`.
-  3. Fully reviewer-verified IPO executes ungated assessment with valid horizon verdicts.
-
-### 5. Gate 5: Scanned-PDF Detection and Database Fact Audit Utility
-- **Detection Module:** `src/documents/extractor.py` and `src/documents/manager.py`
-  - Detects image-only / scanned PDFs lacking digital text layers.
-  - Flags document with `processing_status="SCANNED_IMAGE_DETECTED"`, `ocr_required=True`, and a clear caution notice.
-  - Tested in `tests/unit/test_scanned_pdf_extractor.py`.
-- **Database Audit Utility:** `scripts/audit_database_facts.py`
-  - Scans all database `Fact` rows for invalid `VERIFIED` status, candidate JSON facts marked as verified, or missing/non-HTTPS source URLs.
-  - Reclassifies invalid facts to `UNVERIFIED` and logs audit events.
-  - Tested in `tests/unit/test_database_audit.py`.
-  - Executed on `ipo_system.db` with 0 invalid records found.
-
-### Test Suite Execution
-- **Command:** `pytest`
-- **Result:** **147 passed**, 0 failures, 100% pass rate.
+The run result is `PASS_LIVE_OFFICIAL_SOURCE_VALIDATION`. All extracted facts remain `CANDIDATE_UNVERIFIED`. The live extraction gate is passed for these selected rows, not for every financial value in the prospectus and not as an authorization to score or recommend the IPO. An authorized reviewer must independently reconcile the original statements before critical facts can become `VERIFIED`.

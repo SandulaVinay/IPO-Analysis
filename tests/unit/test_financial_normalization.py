@@ -71,3 +71,24 @@ def test_candidate_retains_provenance_and_never_marks_verified():
     assert candidate["statement_basis"] == "CONSOLIDATED"
     assert candidate["normalized_value_inr_crore"] == "125.00"
     assert candidate["verification_status"] == "CANDIDATE_UNVERIFIED"
+
+
+def test_official_rupees_million_unit_and_year_end_period_are_explicit():
+    assert detect_explicit_unit("All amounts are in Rupees million, unless otherwise stated") == "million"
+    assert identify_financial_period("For the Year ended March 31,2024") == {
+        "period_type": "FINANCIAL_YEAR", "label": "FY2023-2024"
+    }
+    candidate = build_financial_candidate(
+        field_name="revenue_from_operations",
+        raw_value="2,865.18",
+        row_label="Revenue from operations",
+        header_context="For the Year ended March 31,2024 in million consolidated",
+        source_url="https://www.sebi.gov.in/sebi_data/attachdocs/apr-2025/1743751804884_762.pdf",
+        document_hash="f" * 64,
+        page_number=294,
+    )
+    assert candidate["unit"] == "million"
+    assert candidate["period"]["label"] == "FY2023-2024"
+    assert candidate["statement_basis"] == "CONSOLIDATED"
+    assert candidate["normalized_value_inr_crore"] == "286.518"
+    assert candidate["verification_status"] == "CANDIDATE_UNVERIFIED"

@@ -136,7 +136,9 @@ A live validation script and GitHub Actions workflow target the official ESDS So
 - Output artifact: `ESDS_DRHP_live_validation.json`
 - Checks include downloaded PDF signature and identity, actual SHA-256, page-level statement extraction, selected consolidated FY2024 figures, rupees-million to INR-crore conversion, period and statement-basis metadata, and candidate-only verification status.
 
-**Release status: NOT COMPLETE until the live official-source workflow passes and the report is reviewed.** Extracted values must remain `CANDIDATE_UNVERIFIED` until an authorized reviewer independently confirms the original statements. Production scoring must continue to fail closed with `UNABLE_TO_ASSESS` when critical evidence is missing, conflicting, or unverified.
+**Live-source extraction validation: PASS** on [GitHub Actions run 41421645589](https://github.com/SandulaVinay/IPO-Analysis/actions/runs/41421645589). The downloaded SEBI DRHP SHA-256 is `b4a60feace0d800ba49bc136067e10faf0b4587ac49ad785dab157a90af09585` (7,497,319 bytes; 524 physical pages). The script validated revenue ₹2,865.18 million → ₹286.518 crore, profit for the year ₹136.10 million → ₹13.610 crore, and operating cash inflow ₹455.77 million → ₹45.577 crore for FY2023–2024, consolidated basis. The statement pages are physical PDF pages 297–298 (printed pages 292–293).
+
+This proves extraction and normalization for these selected rows only. Extracted facts remain `CANDIDATE_UNVERIFIED` until an authorized reviewer independently confirms the original statements. Production scoring must continue to fail closed with `UNABLE_TO_ASSESS` when critical evidence is missing, conflicting, or unverified.
 
 ### Candidate reconciliation & persistence safety
 

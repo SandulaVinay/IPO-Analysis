@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: live-official-drhp-validation
+  group: live-official-drhp-validation-targeted-v2
   cancel-in-progress: true
 
 jobs:

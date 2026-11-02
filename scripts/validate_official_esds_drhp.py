@@ -11,6 +11,7 @@ import json
 import re
 import sys
 import time
+from decimal import Decimal
 from datetime import datetime, timezone
 from pathlib import Path
 from io import BytesIO
@@ -188,17 +189,27 @@ def run() -> int:
             exact = [item for item in matches if (item.get("period") or {}).get("label")==expected["period"] and item.get("unit")==expected["unit"] and item.get("statement_basis")=="CONSOLIDATED" and str(item.get("normalized_value_inr_crore"))==expected["normalized_value_inr_crore"] and item.get("verification_status")=="CANDIDATE_UNVERIFIED"]
             candidate_checks[expected["field_name"]] = {"passed":bool(exact),"raw_value_candidates_found":len(matches),"fully_normalized_candidate_count":len(exact),"expected":expected,"sample_candidates":matches[:3]}
         report["checks"]["structured_candidates"] = candidate_checks
-        report["checks"]["arithmetic"] = {"passed":True,"conversions":{"revenue_million_to_crore":"2865.18 × 0.1 = 286.518","pat_million_to_crore":"136.10 × 0.1 = 13.610","operating_cash_flow_million_to_crore":"455.77 × 0.1 = 45.577"}}
+        conversions = {}
+        arithmetic_passed = True
+        for expected in EXPECTED:
+            calculated = Decimal(expected["raw_value"].replace(",", "")) * Decimal("0.1")
+            expected_normalized = Decimal(expected["normalized_value_inr_crore"])
+            conversions[expected["field_name"]] = {
+                "calculation": f'{expected["raw_value"]} million × 0.1 = {calculated} crore',
+                "passed": calculated == expected_normalized,
+            }
+            arithmetic_passed = arithmetic_passed and calculated == expected_normalized
+        report["checks"]["arithmetic"] = {"passed": arithmetic_passed, "conversions": conversions}
         failed_raw = [name for name,result in raw_checks.items() if not result["passed"]]
         failed_structured = [name for name,result in candidate_checks.items() if not result["passed"]]
-        if failed_raw or failed_structured:
-            report["failed_checks"]={"raw_statement_rows":failed_raw,"structured_candidates":failed_structured}
+        if failed_raw or failed_structured or not arithmetic_passed:
+            report["failed_checks"]={"raw_statement_rows":failed_raw,"structured_candidates":failed_structured,"arithmetic":[] if arithmetic_passed else ["unit conversion mismatch"]}
             report["status"]="FAILED"
-            report["note"]="Real PDF was downloaded and text-extracted, but one or more expected row/metadata checks failed. Do not treat as complete."
+            report["note"]="Real PDF was downloaded and text-extracted, but one or more expected row/metadata/arithmetic checks failed. Do not treat as complete."
             return_code=1
         else:
-            report["status"]="PASS_EXTRACTION_AND_RECONCILIATION_FIXTURE"
-            report["note"]="Official statement rows and candidate metadata match reviewed expected values. Facts remain unverified pending authorized reviewer approval."
+            report["status"]="PASS_LIVE_OFFICIAL_SOURCE_VALIDATION"
+            report["note"]="Official statement rows, candidate metadata, and unit conversions match reviewed expected values. Facts remain unverified pending authorized reviewer approval."
             return_code=0
     except Exception as exc:
         report["error"]=f"{type(exc).__name__}: {exc}"

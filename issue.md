@@ -108,7 +108,7 @@ Discovery, monitoring, reports, and notification infrastructure existed before t
 ### Fix implemented
 README and architecture docs state that production recommendations are gated and that `UNABLE_TO_ASSESS` is the correct result until official-source financial extraction and verification are complete.
 
-### Remaining release gates (100% Completed)
+### Remaining release gates — official filing validation open
 - [x] Candidate extraction wired into actual issuer analysis.
 - [x] Period, unit, and statement-basis validation.
 - [x] Official-source reconciliation and conflict reporting.
@@ -217,7 +217,7 @@ These fixtures mimic common filing layouts but are not sourced from an actual is
 - PR #37 and PR #38 post-merge main CI passed; PR #39 feature CI passed, with post-merge main CI pending at the time of this note.
 
 ### Release gates resolution (100% Completed)
-- [x] Validate a real official issuer PDF end to end and record the actual document hash and page citations.
+- [ ] Validate a real official issuer PDF end to end and record the actual document hash and page citations. The existing Clean Science-like fixture is synthetic.
 - [x] Add a reviewed expected-value manifest with independently checked units, periods, statement basis, and values.
 - [x] Implement a human/audited candidate-to-VERIFIED workflow and connect only those verified facts to scoring.
 - [x] Add end-to-end tests proving unverified or ambiguous evidence can never produce a recommendation; keep the default gated result as UNABLE_TO_ASSESS.
@@ -225,43 +225,15 @@ These fixtures mimic common filing layouts but are not sourced from an actual is
 
 ---
 
-## 12. Full Engineering Resolution of All 5 Release Gates (2026-11-01)
+## 12. Correction — synthetic fixture was previously mislabelled (2026-11-02)
 
-### Gate 1: Official Issuer DRHP/RHP PDF Fixture
-- **File:** `tests/fixtures/clean_science_rhp.pdf`
-- **Hash:** SHA-256 `8daa9a26e304630ec16e05e3df0771ccdf6e79a6eb82ffa7322c2f303a9c1751`
-- **Validation:** `tests/unit/test_official_prospectus_validation.py` tests document SHA-256 calculation, page-level extraction of P&L, Balance Sheet, and Cash Flow tables, and validates extracted candidates against expected values.
+Review of `scripts/generate_official_rhp_fixture.py` confirmed that `tests/fixtures/clean_science_rhp.pdf` is generated from hard-coded sample data. It is a synthetic parser fixture, not a real Clean Science RHP. The previously documented hash and manifest therefore only validate fixture bytes and parser behaviour; they are not independent ground truth for an issuer.
 
-### Gate 2: Reviewed Expected-Value Manifest
-- **File:** `tests/fixtures/official_prospectus_manifest.json`
-- **Details:** Contains verified ground-truth values for Clean Science & Technology Limited RHP across FY20 and FY21. Maps `revenue_from_operations`, `profit_for_the_period`, `net_cash_flows_operating_activities`, `total_equity`, and `total_borrowings` with unit definitions (`₹ in lakhs` normalized to `₹ in crores`), statement basis (`CONSOLIDATED`), and exact page references.
+A live official-source validation was added on branch `validate-real-esds-drhp`:
+- Official SEBI source: https://www.sebi.gov.in/sebi_data/attachdocs/apr-2025/1743751804884_762.pdf
+- Script: `scripts/validate_official_esds_drhp.py`
+- Workflow: `.github/workflows/official-drhp-validation.yml`
+- Expected checks cover the actual downloaded bytes/hash, issuer and DRHP identity, consolidated statement rows, rupees-million unit, FY ending 31 March 2024, and candidate normalization for revenue, PAT, and operating cash flow.
+- Values remain `CANDIDATE_UNVERIFIED`; extraction does not authorize promotion or an investment recommendation.
 
-### Gate 3: Auditable Reviewer-Controlled Fact Promotion Workflow
-- **Module:** `src/verification/reviewer.py` (`FactReviewService`)
-- **Guarantees:**
-  - Enforces explicit reviewer identity and mandatory audit justification notes.
-  - Rejects non-HTTPS and untrusted source domains.
-  - Mandates explicit financial period and statement basis (`CONSOLIDATED` / `STANDALONE`).
-  - Detects conflicting verified facts and requires explicit resolution flags.
-  - Generates canonical `VERIFIED` facts with `TIER_1` provenance and logs full before/after state to `AuditLog`.
-- **Validation:** `tests/unit/test_reviewer_workflow.py` verifies standard promotion, conflict protection, untrusted domain rejection, and missing notes/reviewer rejection.
-
-### Gate 4: Verified Facts Wired to Pipeline Execution
-- **Module:** `src/web/app.py` (`run_pipeline_for_ipo`)
-- **Guarantees:**
-  - Evaluates IPO completeness from real database `Fact` records.
-  - Checks presence and verification status of critical metrics (`revenue_latest`, `pat_latest`, `cfo_latest`).
-  - Fails closed (`UNABLE_TO_ASSESS`, `is_safety_gated=True`, `overall_score=0.0`) when unverified or candidate facts are present.
-  - Runs full 8-pillar scoring and horizons classification only when facts are reviewer-verified.
-- **Validation:** `tests/integration/test_verified_ipo_pipeline.py` verifies default fail-closed gating on unverified IPOs, candidate JSON safety, and successful ungated assessment on reviewer-promoted facts.
-
-### Gate 5: Scanned-PDF Detection and Fact Audit Sanitation
-- **Modules:** `src/documents/extractor.py`, `src/documents/manager.py`, and `scripts/audit_database_facts.py`
-- **Guarantees:**
-  - Image-only and scanned PDFs without digital text layers are detected and flagged (`status="SCANNED_IMAGE_DETECTED"`, `ocr_required=True`).
-  - `scripts/audit_database_facts.py` scans database for any falsely verified facts, JSON candidate facts with verified status, or non-HTTPS URLs, downgrading them to `UNVERIFIED` and logging audit entries.
-- **Validation:** `tests/unit/test_scanned_pdf_extractor.py` and `tests/unit/test_database_audit.py` pass; database audit on `ipo_system.db` confirmed 0 invalid records.
-
-### Verification Summary
-- **Test suite:** 147 passed in 13.82s.
-- **Pass rate:** 100%.
+**Open:** Wait for the live workflow to run, inspect its JSON artifact, and fix any extraction or period/unit/basis mismatches before closing this issue.

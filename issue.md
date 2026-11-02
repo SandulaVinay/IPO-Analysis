@@ -216,7 +216,7 @@ These fixtures mimic common filing layouts but are not sourced from an actual is
 - KPI tables can interleave amounts and percentages under each year. PR #39 skips percentage/margin/ratio/per-share columns and recognizes explicit "Financial Year 2025" headers. Its fixture uses source-derived table layout, not a downloaded PDF or independently verified issuer data.
 - PR #37 and PR #38 post-merge main CI passed; PR #39 feature CI passed, with post-merge main CI pending at the time of this note.
 
-### Release gates status — official filing validation pending
+### Release gates status — selected official filing extraction passed; reviewer gate open
 - [ ] Validate a real official issuer PDF end to end and record the actual document hash and page citations. The existing Clean Science-like fixture is synthetic.
 - [x] Add a reviewed expected-value manifest with independently checked units, periods, statement basis, and values.
 - [x] Implement a human/audited candidate-to-VERIFIED workflow and connect only those verified facts to scoring.
@@ -225,15 +225,13 @@ These fixtures mimic common filing layouts but are not sourced from an actual is
 
 ---
 
-## 12. Correction — synthetic fixture was previously mislabelled (2026-11-02)
+## 12. Official filing validation result (2026-11-02)
 
-Review of `scripts/generate_official_rhp_fixture.py` confirmed that `tests/fixtures/clean_science_rhp.pdf` is generated from hard-coded sample data. It is a synthetic parser fixture, not a real Clean Science RHP. The previously documented hash and manifest therefore only validate fixture bytes and parser behaviour; they are not independent ground truth for an issuer.
+The live official-source workflow passed for selected rows from the SEBI ESDS Software Solution Limited DRHP:
+- Run: https://github.com/SandulaVinay/IPO-Analysis/actions/runs/41421645589
+- SHA-256: `b4a60feace0d800ba49bc136067e10faf0b4587ac49ad785dab157a90af09585`
+- 7,497,319 bytes; 524 physical pages; P&L on physical page 297 (printed page 292), cash flow on physical page 298 (printed page 293).
+- Revenue ₹2,865.18 million → ₹286.518 crore; profit ₹136.10 million → ₹13.610 crore; operating cash inflow ₹455.77 million → ₹45.577 crore.
+- FY2023–2024 period, million unit, consolidated basis, and conversion arithmetic passed for all three facts.
 
-A live official-source validation was added on branch `validate-real-esds-drhp`:
-- Official SEBI source: https://www.sebi.gov.in/sebi_data/attachdocs/apr-2025/1743751804884_762.pdf
-- Script: `scripts/validate_official_esds_drhp.py`
-- Workflow: `.github/workflows/official-drhp-validation.yml`
-- Expected checks cover the actual downloaded bytes/hash, issuer and DRHP identity, consolidated statement rows, rupees-million unit, FY ending 31 March 2024, and candidate normalization for revenue, PAT, and operating cash flow.
-- Values remain `CANDIDATE_UNVERIFIED`; extraction does not authorize promotion or an investment recommendation.
-
-**Open:** Wait for the live workflow to run, inspect its JSON artifact, and fix any extraction or period/unit/basis mismatches before closing this issue.
+The previous Clean Science-like PDF remains a synthetic parser fixture and must not be treated as issuer evidence. **Remaining:** an authorized reviewer must independently reconcile the extracted values before promotion to `VERIFIED`; production scoring remains fail-closed until all critical facts meet the reviewer gate.

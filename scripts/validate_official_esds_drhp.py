@@ -10,6 +10,7 @@ import hashlib
 import json
 import re
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from io import BytesIO
@@ -29,21 +30,39 @@ def download_pdf() -> bytes:
     parsed = urlparse(SOURCE_URL)
     if parsed.scheme != "https" or parsed.hostname != "www.sebi.gov.in":
         raise RuntimeError("Source URL must be the explicitly approved SEBI HTTPS host.")
-    chunks, total = [], 0
-    with requests.get(SOURCE_URL, stream=True, timeout=(20, 90), headers={"User-Agent":"IPO-Analysis-official-filing-validation/1.0"}) as response:
-        response.raise_for_status()
-        content_type = (response.headers.get("content-type") or "").lower()
-        for chunk in response.iter_content(chunk_size=1024 * 256):
-            if not chunk:
-                continue
-            total += len(chunk)
-            if total > MAX_PDF_BYTES:
-                raise RuntimeError(f"Official PDF exceeded {MAX_PDF_BYTES // (1024 * 1024)} MB safety limit.")
-            chunks.append(chunk)
-        body = b"".join(chunks)
-        if b"%PDF-" not in body[:1024]:
-            raise RuntimeError(f"SEBI response is not a PDF (content-type={content_type!r}).")
-        return body
+    last_error: Exception | None = None
+    # SEBI occasionally terminates large PDF responses before the declared length.
+    # Retry the complete download and verify Content-Length before parsing.
+    for attempt in range(4):
+        try:
+            chunks, total = [], 0
+            with requests.get(
+                SOURCE_URL,
+                stream=True,
+                timeout=(20, 120),
+                headers={"User-Agent": "IPO-Analysis-official-filing-validation/1.0", "Accept": "application/pdf"},
+            ) as response:
+                response.raise_for_status()
+                content_type = (response.headers.get("content-type") or "").lower()
+                expected_length = int(response.headers.get("content-length") or 0)
+                for chunk in response.iter_content(chunk_size=1024 * 256):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > MAX_PDF_BYTES:
+                        raise RuntimeError(f"Official PDF exceeded {MAX_PDF_BYTES // (1024 * 1024)} MB safety limit.")
+                    chunks.append(chunk)
+                body = b"".join(chunks)
+                if expected_length and len(body) != expected_length:
+                    raise RuntimeError(f"Incomplete SEBI download: received {len(body)} of {expected_length} bytes.")
+                if b"%PDF-" not in body[:1024]:
+                    raise RuntimeError(f"SEBI response is not a PDF (content-type={content_type!r}).")
+                return body
+        except (requests.RequestException, RuntimeError, ValueError) as exc:
+            last_error = exc
+            if attempt < 3:
+                time.sleep(2 ** attempt)
+    raise RuntimeError(f"Could not download a complete official SEBI PDF after 4 attempts: {last_error}")
 
 def _flatten_candidates(extraction: dict) -> list[dict]:
     return [candidate for evidence in extraction.get("evidence", []) for candidate in evidence.get("financial_candidates", []) if isinstance(candidate, dict)]

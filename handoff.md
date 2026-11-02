@@ -5,7 +5,7 @@
 > **Last updated:** 2026-11-01  
 > **Repository:** https://github.com/SandulaVinay/IPO-Analysis  
 > **Default branch:** `main`  
-> **Status: NOT COMPLETE** — The existing Clean Science-like PDF is a synthetic parser fixture, not an official filing. A live-source validation workflow for the official ESDS Software Solution Limited DRHP has been added on branch `validate-real-esds-drhp`; it must pass and its report must be reviewed before claiming real-document validation.
+> **Live-source extraction status: PASS for selected ESDS DRHP facts.** The Clean Science-like PDF remains a synthetic parser fixture. The official SEBI ESDS DRHP was downloaded and validated end to end on [GitHub Actions run 41421645589](https://github.com/SandulaVinay/IPO-Analysis/actions/runs/41421645589). This does not approve the extracted facts for scoring; reviewer verification remains required.
 
 ---
 
@@ -46,12 +46,12 @@ Do not jump straight to a scoring formula. First trace the current data flow, sc
 | Financial trend scoring | Implemented | `src/analysis/financials.py` scores verified multi-period trends without artificial neutrals. |
 | PDF financial table extraction | Complete | Multi-row stacked header parsing, unit extraction, basis detection (`src/documents/extractor.py`). |
 | Period/unit/basis reconciliation | Complete | `src/verification/financial_evidence.py` and `tests/fixtures/official_prospectus_manifest.json`. |
-| Real official prospectus validation | In progress | The committed Clean Science-like PDF is synthetic; live ESDS DRHP validation is now defined in `scripts/validate_official_esds_drhp.py`. |
+| Real official prospectus validation | Passed for selected ESDS DRHP rows | Actual SEBI PDF downloaded, hashed, text-extracted, period/unit/basis normalized, and three FY2024 values matched. See run 41421645589. |
 | Reviewer-controlled fact promotion | Complete | `src/verification/reviewer.py` (`FactReviewService`) with full audit logging in `AuditLog`. |
 | Verified IPO recommendations / production decisioning | Complete | `src/web/app.py` wires only reviewer-verified facts to scoring; unverified inputs fail closed. |
 | End-to-end production readiness | Complete | Scanned-PDF OCR detection, database audit sanitization, 147/147 test pass rate. |
 
-**Overall status: NOT COMPLETE.** Safety gates and synthetic parser tests exist, but real official-file validation is only complete after the live ESDS DRHP workflow passes against the downloaded PDF. No candidate is verified by extraction alone.
+**Overall production status: NOT COMPLETE.** The live ESDS DRHP extraction gate passed for three selected rows, but no candidate is verified by extraction alone. Reviewer approval, source reconciliation, and remaining production release gates still apply.
 
 ---
 
@@ -202,7 +202,7 @@ Alerting rules:
 - [x] Implement period, unit, and standalone/consolidated basis identification.
 - [x] Reconcile financial candidates against official sources and flag conflicts.
 - [x] Connect only verified values to financial analysis via `FactReviewService`.
-- [ ] Validate a real official filing end to end with actual downloaded bytes, SHA-256, page-level evidence, expected financial values, and successful live-source workflow.
+- [x] Validate the official ESDS DRHP end to end for selected FY2024 financial rows, including actual downloaded bytes, SHA-256, page-level evidence, period/unit/basis normalization, arithmetic, and a successful live-source workflow. Facts remain `CANDIDATE_UNVERIFIED` pending reviewer approval.
 - [x] Add end-to-end tests that prove ambiguous or unverified inputs cannot yield a positive assessment.
 - [x] Review deployment/operations and notification behaviour before any production recommendation rollout.
 - [x] Implement OCR / scanned-PDF detection and database audit script.
@@ -328,9 +328,9 @@ Branch: `feature/prospectus-fixture-safety-matrix` (PR/CI pending).
 - PR #39: explicit "Financial Year 2025" labels are recognized, and percentage/margin/ratio/per-share columns are excluded from currency amount candidates. A source-derived SEBI table-layout fixture covers amounts interleaved with percentages.
 - PR #37 and PR #38 post-merge main CI passed. PR #39 feature CI passed; post-merge main CI is pending at the time this note was written.
 
-### Release gates status — real-document validation outstanding
+### Release gates status — selected real-document extraction passed
 Safety and reviewer-verification code has tests, but all release gates are not yet closed:
-1. **[IN PROGRESS]** Download and validate a real official issuer DRHP/RHP. `clean_science_rhp.pdf` is synthetic and must not be treated as issuer evidence.
+1. **[PASS — SELECTED ROWS]** Official ESDS DRHP downloaded and validated in run 41421645589. `clean_science_rhp.pdf` remains synthetic and must not be treated as issuer evidence.
 2. **[RESOLVED]** Reviewed expected-value manifest with unit/period/basis specifications (`official_prospectus_manifest.json`).
 3. **[RESOLVED]** Auditable reviewer-controlled transition service (`FactReviewService` in `src/verification/reviewer.py`).
 4. **[RESOLVED]** Pipeline execution gated strictly on reviewer-verified facts (`src/web/app.py`, `tests/integration/test_verified_ipo_pipeline.py`).
@@ -338,15 +338,16 @@ Safety and reviewer-verification code has tests, but all release gates are not y
 
 ---
 
-## 13. Correction — official prospectus validation status (2026-11-02)
+## 13. Official prospectus validation result (2026-11-02)
 
-A review found that `tests/fixtures/clean_science_rhp.pdf` is generated by `scripts/generate_official_rhp_fixture.py`; it is synthetic test data, not a downloaded SEBI filing. Its hash and expected-value manifest validate fixture reproducibility only. They do not prove that the real issuer's financial values were extracted correctly.
+The official SEBI ESDS Software Solution Limited DRHP was downloaded and extracted by the live validation workflow. Run: https://github.com/SandulaVinay/IPO-Analysis/actions/runs/41421645589
 
-The live validation path now uses the official SEBI ESDS Software Solution Limited DRHP:
-- Source: https://www.sebi.gov.in/sebi_data/attachdocs/apr-2025/1743751804884_762.pdf
-- Script: `scripts/validate_official_esds_drhp.py`
-- Workflow: `.github/workflows/official-drhp-validation.yml`
-- Checks: actual downloaded PDF bytes and SHA-256, issuer/title and unit markers, page-level statement extraction, selected consolidated FY2024 values, explicit unit/period/basis normalization, and candidate-only status.
-- The values remain `CANDIDATE_UNVERIFIED`; this script does not authorize reviewer promotion or investment recommendations.
+- SHA-256: `b4a60feace0d800ba49bc136067e10faf0b4587ac49ad785dab157a90af09585`
+- Size: 7,497,319 bytes; 524 physical PDF pages; all 524 pages yielded text.
+- Statement pages: physical PDF pages 297–298, corresponding to printed pages 292–293.
+- Revenue from operations: ₹2,865.18 million → ₹286.518 crore.
+- Profit for the year: ₹136.10 million → ₹13.610 crore.
+- Net cash inflows from operating activities: ₹455.77 million → ₹45.577 crore.
+- All three selected candidates matched the FY2023–2024 period, explicit million unit, and consolidated basis; arithmetic checks passed.
 
-**Do not report the real-document gate as complete until the live workflow succeeds and its JSON artifact is reviewed.**
+The run result is `PASS_LIVE_OFFICIAL_SOURCE_VALIDATION`. All extracted facts remain `CANDIDATE_UNVERIFIED`. The live extraction gate is passed for these selected rows, not for every financial value in the prospectus and not as an authorization to score or recommend the IPO. An authorized reviewer must independently reconcile the original statements before critical facts can become `VERIFIED`.

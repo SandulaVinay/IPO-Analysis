@@ -420,7 +420,7 @@ def extract_pdf_candidate_evidence(pdf_bytes: bytes, *, source_url: str) -> Dict
             document_hash=document_hash,
             page_contexts=page_texts,
         )
-        existing_keys =
+        existing_keys = {
             (item["field_name"], item["page_number"], item["evidence_text"].casefold())
             for item in evidence
         }

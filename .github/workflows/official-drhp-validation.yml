@@ -1,8 +1,6 @@
 name: Live Official DRHP Extraction Validation
 
 on:
-  push:
-    branches: [validate-real-esds-drhp]
   pull_request:
     branches: [main]
     paths:
@@ -13,6 +11,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: live-official-drhp-validation
+  cancel-in-progress: true
 
 jobs:
   validate-esds-drhp:

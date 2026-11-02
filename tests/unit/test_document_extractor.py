@@ -188,3 +188,32 @@ def test_table_candidates_use_page_context_for_unit_and_consolidated_basis():
     assert pat["period"]["label"] == "FY2023-2024"
     assert pat["normalized_value_inr_crore"] == "13.610"
     assert pat["verification_status"] == "CANDIDATE_UNVERIFIED"
+
+    cashflow_table = [
+        ["Particulars", "For the Year ended March 31,2024"],
+        ["Net cash inflows/ (outflows) from operating activities", "455.77"],
+    ]
+    cashflow_evidence = extract_candidate_evidence_from_tables(
+        [[cashflow_table]],
+        source_url="https://www.sebi.gov.in/sebi_data/attachdocs/apr-2025/1743751804884_762.pdf",
+        document_hash="f" * 64,
+        page_contexts=[
+            "ESDS Software Solution Limited Restated Consolidated Statement of Cashflow. "
+            "All amounts are in Rupees million, unless otherwise stated."
+        ],
+    )
+    cashflow_candidates = [
+        candidate
+        for item in cashflow_evidence
+        for candidate in item.get("financial_candidates", [])
+    ]
+    ocf = next(
+        candidate for candidate in cashflow_candidates
+        if candidate["field_name"] == "operating_cash_flow"
+        and candidate["raw_value"] == "455.77"
+    )
+    assert ocf["unit"] == "million"
+    assert ocf["period"]["label"] == "FY2023-2024"
+    assert ocf["statement_basis"] == "CONSOLIDATED"
+    assert ocf["normalized_value_inr_crore"] == "45.577"
+    assert ocf["verification_status"] == "CANDIDATE_UNVERIFIED"

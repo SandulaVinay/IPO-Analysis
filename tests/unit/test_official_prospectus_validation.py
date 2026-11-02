@@ -36,8 +36,8 @@ def synthetic_fixture_data():
 
 
 def test_synthetic_rhp_layout_extraction_matches_manifest(synthetic_fixture_data):
-    pdf_bytes = official_fixture_data["pdf_bytes"]
-    manifest = official_fixture_data["manifest"]
+    pdf_bytes = synthetic_fixture_data["pdf_bytes"]
+    manifest = synthetic_fixture_data["manifest"]
 
     assert manifest["synthetic_fixture"] is True
     doc_info = manifest["document"]
@@ -82,12 +82,16 @@ def test_synthetic_rhp_layout_extraction_matches_manifest(synthetic_fixture_data
 
 
 @pytest.mark.asyncio
-async def test_synthetic_fixture_ingest_and_audited_review_flow(async_session: AsyncSession, official_fixture_data):
-    pdf_bytes = official_fixture_data["pdf_bytes"]
-    manifest = official_fixture_data["manifest"]
+async def test_synthetic_fixture_ingest_and_audited_review_flow(async_session: AsyncSession, synthetic_fixture_data, monkeypatch):
+    pdf_bytes = synthetic_fixture_data["pdf_bytes"]
+    manifest = synthetic_fixture_data["manifest"]
     issuer_info = manifest["issuer"]
     doc_info = manifest["document"]
 
+    # This reserved .invalid domain is allowed only inside this test so synthetic bytes
+    # cannot be persisted as though they came from an approved production host.
+    monkeypatch.setenv("IPO_ALLOWED_SOURCE_DOMAINS", "example.invalid")
+    assert manifest["synthetic_fixture"] is True
     repo = IPORepository(async_session)
     ipo = await repo.create_or_update_ipo(
         symbol=issuer_info["symbol"],

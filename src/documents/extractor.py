@@ -323,7 +323,12 @@ def _extract_table_rows_from_word_positions(page) -> List[List[str]]:
     return [rows] if rows else []
 
 
-def extract_pdf_candidate_evidence(pdf_bytes: bytes, *, source_url: str) -> Dict[str, Any]:
+def extract_pdf_candidate_evidence(
+    pdf_bytes: bytes,
+    *,
+    source_url: str,
+    table_page_numbers: Optional[set[int]] = None,
+) -> Dict[str, Any]:
     """Extract candidate passages from a validated PDF byte stream with strict limits."""
     if not pdf_bytes:
         raise ValueError("PDF content is empty.")
@@ -362,6 +367,11 @@ def extract_pdf_candidate_evidence(pdf_bytes: bytes, *, source_url: str) -> Dict
         tables_by_page = [[] for _ in page_texts]
         with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
             for page_index, page in enumerate(pdf.pages):
+                # Full-document text evidence is always extracted. Callers validating
+                # known financial-statement pages may restrict expensive layout/table
+                # analysis to those 1-based physical PDF pages.
+                if table_page_numbers is not None and (page_index + 1) not in table_page_numbers:
+                    continue
                 page_text = page_texts[page_index] if page_index < len(page_texts) else ""
                 evidence_patterns = [
                     re.compile(pattern, re.IGNORECASE)

@@ -31,76 +31,24 @@ def download_pdf() -> bytes:
     parsed = urlparse(SOURCE_URL)
     if parsed.scheme != "https" or parsed.hostname != "www.sebi.gov.in":
         raise RuntimeError("Source URL must be the explicitly approved SEBI HTTPS host.")
-    headers = {
-        "User-Agent": "IPO-Analysis-official-filing-validation/1.0",
-        "Accept": "application/pdf",
-    }
     last_error: Exception | None = None
-
-    # Prefer small verified byte ranges when the source advertises a file length.
-    # This avoids restarting a multi-megabyte PDF when SEBI closes a large response early.
-    expected_length = 0
-    try:
-        head = requests.head(SOURCE_URL, headers=headers, timeout=(10, 20), allow_redirects=True)
-        head.raise_for_status()
-        if urlparse(head.url).hostname != "www.sebi.gov.in":
-            raise RuntimeError("SEBI HEAD request redirected outside the approved host.")
-        expected_length = int(head.headers.get("content-length") or 0)
-    except (requests.RequestException, RuntimeError, ValueError) as exc:
-        last_error = exc
-
-    if 0 < expected_length <= MAX_PDF_BYTES:
-        chunk_size = 1024 * 1024
-        chunks: list[bytes] = []
-        for start in range(0, expected_length, chunk_size):
-            end = min(start + chunk_size, expected_length) - 1
-            expected_chunk_size = end - start + 1
-            chunk_ok = False
-            for attempt in range(4):
-                try:
-                    response = requests.get(
-                        SOURCE_URL,
-                        headers={**headers, "Range": f"bytes={start}-{end}"},
-                        timeout=(15, 35),
-                    )
-                    response.raise_for_status()
-                    if urlparse(response.url).hostname != "www.sebi.gov.in":
-                        raise RuntimeError("SEBI range request redirected outside the approved host.")
-                    body = response.content
-                    if response.status_code == 200:
-                        # The server ignored Range but returned the complete PDF.
-                        if len(body) == expected_length and b"%PDF-" in body[:1024]:
-                            return body
-                        raise RuntimeError("SEBI ignored Range and did not return a complete PDF.")
-                    content_range = response.headers.get("content-range", "")
-                    if response.status_code != 206 or len(body) != expected_chunk_size:
-                        raise RuntimeError(f"Incomplete byte range {start}-{end}: got {len(body)} bytes.")
-                    if not content_range.startswith(f"bytes {start}-{end}/"):
-                        raise RuntimeError(f"Unexpected Content-Range for bytes {start}-{end}: {content_range!r}")
-                    chunks.append(body)
-                    chunk_ok = True
-                    break
-                except (requests.RequestException, RuntimeError, ValueError) as exc:
-                    last_error = exc
-                    if attempt < 3:
-                        time.sleep(1 + attempt)
-            if not chunk_ok:
-                break
-        if len(chunks) == (expected_length + chunk_size - 1) // chunk_size:
-            body = b"".join(chunks)
-            if len(body) == expected_length and b"%PDF-" in body[:1024]:
-                return body
-            last_error = RuntimeError("Reassembled SEBI PDF failed size/signature validation.")
-
-    # Fallback for servers that do not support HEAD/Range. Keep the read timeout
-    # bounded and retry the entire transfer rather than hanging indefinitely.
-    for attempt in range(3):
+    # SEBI sometimes closes large PDF responses early. Retry the entire download
+    # and verify Content-Length before parsing any bytes.
+    for attempt in range(4):
         try:
             chunks, total = [], 0
-            with requests.get(SOURCE_URL, stream=True, timeout=(15, 35), headers=headers) as response:
+            with requests.get(
+                SOURCE_URL,
+                stream=True,
+                timeout=(20, 120),
+                headers={
+                    "User-Agent": "IPO-Analysis-official-filing-validation/1.0",
+                    "Accept": "application/pdf",
+                },
+            ) as response:
                 response.raise_for_status()
                 content_type = (response.headers.get("content-type") or "").lower()
-                expected = int(response.headers.get("content-length") or 0)
+                expected_length = int(response.headers.get("content-length") or 0)
                 if urlparse(response.url).hostname != "www.sebi.gov.in":
                     raise RuntimeError("SEBI download redirected outside the approved host.")
                 for chunk in response.iter_content(chunk_size=1024 * 256):
@@ -111,16 +59,16 @@ def download_pdf() -> bytes:
                         raise RuntimeError(f"Official PDF exceeded {MAX_PDF_BYTES // (1024 * 1024)} MB safety limit.")
                     chunks.append(chunk)
                 body = b"".join(chunks)
-                if expected and len(body) != expected:
-                    raise RuntimeError(f"Incomplete SEBI download: received {len(body)} of {expected} bytes.")
+                if expected_length and len(body) != expected_length:
+                    raise RuntimeError(f"Incomplete SEBI download: received {len(body)} of {expected_length} bytes.")
                 if b"%PDF-" not in body[:1024]:
                     raise RuntimeError(f"SEBI response is not a PDF (content-type={content_type!r}).")
                 return body
         except (requests.RequestException, RuntimeError, ValueError) as exc:
             last_error = exc
-            if attempt < 2:
+            if attempt < 3:
                 time.sleep(2 ** attempt)
-    raise RuntimeError(f"Could not download a complete official SEBI PDF: {last_error}")
+    raise RuntimeError(f"Could not download a complete official SEBI PDF after 4 attempts: {last_error}")
 
 def _flatten_candidates(extraction: dict) -> list[dict]:
     return [candidate for evidence in extraction.get("evidence", []) for candidate in evidence.get("financial_candidates", []) if isinstance(candidate, dict)]

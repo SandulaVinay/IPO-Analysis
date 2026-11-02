@@ -1,8 +1,8 @@
-"""Generate the official issuer RHP PDF fixture and reviewed manifest.
+"""Generate a SYNTHETIC prospectus-layout fixture for parser tests.
 
-Generates a representative 5-page official RHP PDF for Clean Science and Technology Limited
-matching SEBI ICDR formats, computes its cryptographic SHA-256 digest, and writes
-an authoritative expected-value manifest for end-to-end extraction and verification testing.
+This is not an official Clean Science filing. All issue parameters and financial
+figures are fabricated test data. The fixture must never be cited as real issuer
+financial evidence or used for investment scoring.
 """
 import hashlib
 import json
@@ -32,8 +32,10 @@ def build_official_rhp_fixture(output_pdf_path: Path, manifest_path: Path) -> st
 
     story = []
 
-    # PAGE 1: Cover Page / Issue Details
-    story.append(Paragraph("<b>CLEAN SCIENCE AND TECHNOLOGY LIMITED</b>", title_style))
+    # PAGE 1: Clearly label synthetic data so the generated fixture cannot be mistaken for a real filing.
+    story.append(Paragraph("<b>SYNTHETIC TEST FIXTURE — NOT A REAL PROSPECTUS</b>", title_style))
+    story.append(Paragraph("<b>Test-only issuer layout; all figures below are fabricated.</b>", body_style))
+    story.append(Paragraph("<b>CLEAN SCIENCE-LIKE SAMPLE ISSUER (NOT THE REAL COMPANY)</b>", title_style))
     story.append(Paragraph("<b>RED HERRING PROSPECTUS</b>", h2_style))
     story.append(Spacer(1, 10))
     story.append(Paragraph(
@@ -162,18 +164,20 @@ def build_official_rhp_fixture(output_pdf_path: Path, manifest_path: Path) -> st
     # Manifest with reviewed expected values
     manifest = {
         "manifest_version": "1.0",
+        "synthetic_fixture": True,
         "issuer": {
-            "symbol": "CLEAN",
-            "company_name": "Clean Science and Technology Limited",
-            "industry": "Specialty Chemicals",
+            "symbol": "SYNTHETIC_TEST",
+            "company_name": "Synthetic test issuer — not a real filing",
+            "industry": "Test data only",
             "issue_type": "MAINBOARD",
         },
         "document": {
-            "document_type": "RHP",
-            "document_title": "Red Herring Prospectus",
-            "source_url": "https://www.sebi.gov.in/filings/public-issues/clean-science-rhp.pdf",
+            "document_type": "SYNTHETIC_TEST_FIXTURE",
+            "document_title": "Synthetic prospectus-layout fixture (NOT OFFICIAL)",
+            "source_url": "https://example.invalid/synthetic-prospectus-layout-fixture.pdf",
             "document_hash": doc_hash,
             "page_count": 5,
+            "synthetic_fixture": True,
             "unit": "lakh",
             "statement_basis": "CONSOLIDATED",
         },

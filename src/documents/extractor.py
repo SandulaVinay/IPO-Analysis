@@ -39,6 +39,7 @@ EVIDENCE_PATTERNS = {
     ),
     "operating_cash_flow": (
         r"net\s+cash\s+(?:generated\s+from|from)\s+operating\s+activities",
+        r"net\s+cash\s+inflows?\s*/?\s*\(?outflows?\)?\s+from\s+operating\s+activities",
         r"cash\s+flow[s]?\s+from\s+operating\s+activities",
     ),
     "earnings_per_share": (

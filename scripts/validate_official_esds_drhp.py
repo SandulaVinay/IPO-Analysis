@@ -12,6 +12,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from io import BytesIO
 from urllib.parse import urlparse
 import requests
 from pypdf import PdfReader
@@ -77,7 +78,7 @@ def run() -> int:
     try:
         pdf_bytes = download_pdf()
         sha256 = hashlib.sha256(pdf_bytes).hexdigest()
-        reader = PdfReader(pdf_bytes, strict=True)
+        reader = PdfReader(BytesIO(pdf_bytes), strict=True)
         page_texts = [(page.extract_text() or "")[:200_000] for page in reader.pages]
         full_text = "\n".join(page_texts)
         if "ESDS SOFTWARE SOLUTION LIMITED" not in full_text.upper():

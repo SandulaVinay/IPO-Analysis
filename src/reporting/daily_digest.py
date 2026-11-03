@@ -110,6 +110,26 @@ def _company_source_links(ipo: Any) -> list[tuple[str, str]]:
     return links
 
 
+
+def _latest_gmp(ipo: Any, now: datetime) -> str:
+    """Display a captured GMP only when its timestamp is recent enough to be useful."""
+    snapshots = list(getattr(ipo, "gmp_snapshots", None) or [])
+    snapshots.sort(key=lambda item: getattr(item, "captured_at", None) or datetime.min, reverse=True)
+    if not snapshots:
+        return "Not available from a captured snapshot"
+    snapshot = snapshots[0]
+    captured = getattr(snapshot, "captured_at", None)
+    if not isinstance(captured, datetime):
+        return "Not verified — snapshot timestamp missing"
+    if captured.tzinfo is None:
+        captured = captured.replace(tzinfo=IST)
+    age_hours = (now - captured.astimezone(IST)).total_seconds() / 3600
+    if age_hours < 0 or age_hours > 48:
+        return f"Stale snapshot ({captured.astimezone(IST).strftime('%d %b %Y, %I:%M %p IST')}); not used as current GMP"
+    source = str(getattr(snapshot, "source", "") or "source not recorded")
+    return f"₹{float(snapshot.gmp_value):,.2f} ({source}; captured {captured.astimezone(IST).strftime('%d %b %Y, %I:%M %p IST')})"
+
+
 def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional[Dict[str, Any]]) -> tuple[str, str]:
     today = now.date()
     discovery_status = discovery_run.get("status", "UNKNOWN") if discovery_run else "NOT_RUN"
@@ -173,6 +193,7 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
             f"- Open date: {_format_ipo_date(ipo, 'open')}",
             f"- Close date: {_format_ipo_date(ipo, 'close')}",
             f"- Price band: {price_band}",
+            f"- GMP (grey-market premium): {_latest_gmp(ipo, now)}",
             f"- Issue size: ₹{getattr(ipo, 'issue_size_cr', None):,.2f} Cr" if getattr(ipo, "issue_size_cr", None) is not None else "- Issue size: Not available",
             *rating_lines,
             f"- Status: {_ipo_status(ipo)}",

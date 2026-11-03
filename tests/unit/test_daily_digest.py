@@ -29,8 +29,11 @@ def test_daily_digest_fails_closed_and_links_official_sources():
     )
     assert "UNABLE_TO_ASSESS" in report
     assert "not an investment recommendation" in report.lower()
-    assert "https://www.nseindia.com/market-data/all-upcoming-issues-ipo" in report
-    assert "https://www.bseindia.com/markets/PublicIssues/Issuesummary.aspx" in report
+    assert "### Test Issuer Limited (TEST)" in report
+    assert "Company-specific prospectus/source link: Not captured yet" in report
+    assert "## Official source pages" not in report
+    assert "Overall rating: Unavailable / 10" in report
+    assert "GMP (grey-market premium): Not available from a captured snapshot" in report
     assert "No APPLY/AVOID" in report
     assert "Latest discovery status: SUCCESS" in message
 
@@ -121,3 +124,51 @@ def test_daily_digest_labels_announced_dates_when_verified_dates_are_missing():
     )
     assert "announced; not verified" in report
     assert "WAIT" in report
+
+
+
+def test_daily_digest_includes_verified_weighted_rating_and_company_specific_links():
+    ipo = SimpleNamespace(
+        symbol="TEST",
+        company_name="Test Issuer Limited",
+        status="IPO_DISCOVERED",
+        verified_open_date=date(2026, 11, 10),
+        verified_close_date=date(2026, 11, 15),
+        announced_open_date=None,
+        announced_close_date=None,
+        min_price=100,
+        max_price=110,
+        issue_size_cr=250,
+        listing_potential_score=8.0,
+        long_term_quality_score=7.0,
+        rating_verified=True,
+        source_url="https://www.nseindia.com/company/test-issuer-rhp",
+        document_links=[{"document_title": "Red Herring Prospectus", "source_url": "https://www.nseindia.com/company/test-issuer-rhp"}],
+        gmp_snapshots=[],
+    )
+    report, message = _build_report(
+        [ipo],
+        now=datetime(2026, 10, 29, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata")),
+        discovery_run={"status": "SUCCESS"},
+    )
+    assert "Overall rating: 7.4/10" in report
+    assert "Listing potential: 8.0/10" in report
+    assert "Long-term quality: 7.0/10" in report
+    assert "[Red Herring Prospectus](https://www.nseindia.com/company/test-issuer-rhp)" in report
+    assert "Official NSE:" not in message
+    assert "Official BSE:" not in message
+
+
+def test_daily_digest_does_not_use_old_gmp_as_current():
+    from src.reporting.daily_digest import _latest_gmp
+
+    ipo = SimpleNamespace(gmp_snapshots=[
+        SimpleNamespace(
+            gmp_value=35.0,
+            source="test source",
+            captured_at=datetime(2026, 10, 25, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata")),
+        )
+    ])
+    now = datetime(2026, 10, 29, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
+    assert "Stale snapshot" in _latest_gmp(ipo, now)
+    assert "not used as current GMP" in _latest_gmp(ipo, now)

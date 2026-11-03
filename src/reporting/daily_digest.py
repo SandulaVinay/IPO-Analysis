@@ -68,6 +68,48 @@ def _ipo_status(ipo: Any) -> str:
     )
 
 
+
+def _verified_rating(ipo: Any) -> Dict[str, Any]:
+    """Return a transparent overall rating only when both component scores are explicitly verified."""
+    listing = getattr(ipo, "listing_potential_score", None)
+    long_term = getattr(ipo, "long_term_quality_score", None)
+    verified = bool(getattr(ipo, "rating_verified", False))
+    try:
+        listing = float(listing)
+        long_term = float(long_term)
+    except (TypeError, ValueError):
+        return {"available": False}
+    if not verified or not (0 <= listing <= 10 and 0 <= long_term <= 10):
+        return {"available": False}
+    return {
+        "available": True,
+        "listing": listing,
+        "long_term": long_term,
+        "overall": round((0.4 * listing) + (0.6 * long_term), 1),
+    }
+
+
+def _company_source_links(ipo: Any) -> list[tuple[str, str]]:
+    """Collect source URLs attached to this issuer; never imply a generic exchange page is issuer-specific."""
+    links: list[tuple[str, str]] = []
+    seen = set()
+
+    def add(label: str, url: Any) -> None:
+        value = str(url or "").strip()
+        if value.startswith("https://") and value not in seen:
+            seen.add(value)
+            links.append((label, value))
+
+    for item in (getattr(ipo, "document_links", None) or []):
+        if isinstance(item, dict):
+            add(str(item.get("document_title") or item.get("document_type") or "Issuer document"), item.get("source_url") or item.get("url"))
+    add("Issuer source", getattr(ipo, "source_url", None))
+    for document in (getattr(ipo, "documents", None) or []):
+        for version in (getattr(document, "versions", None) or []):
+            add(str(getattr(document, "document_title", None) or getattr(document, "document_type", None) or "Issuer document"), getattr(version, "source_url", None))
+    return links
+
+
 def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional[Dict[str, Any]]) -> tuple[str, str]:
     today = now.date()
     discovery_status = discovery_run.get("status", "UNKNOWN") if discovery_run else "NOT_RUN"
@@ -96,7 +138,7 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
     if not selected:
         lines.extend([
             "No future-dated IPO records or date-conflict records are currently present in persisted state.",
-            "This is not proof that no IPOs are upcoming; verify the official exchange pages below and check the latest discovery run status.",
+            "This is not proof that no IPOs are upcoming; the latest discovery run and issuer-specific source records must be checked."
             "",
         ])
     for ipo in selected[:20]:
@@ -109,6 +151,22 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
             if price_min is not None and price_max is not None
             else "Not available from current source adapter"
         )
+        rating = _verified_rating(ipo)
+        if rating["available"]:
+            rating_lines = [
+                f"- **Overall rating: {rating['overall']:.1f}/10** (40% listing potential + 60% long-term quality)",
+                f"- Listing potential: {rating['listing']:.1f}/10",
+                f"- Long-term quality: {rating['long_term']:.1f}/10",
+                f"- Assessment: {'Consider further' if rating['overall'] >= 6.5 else 'High caution'}; this is a score, not a guarantee of listing gains.",
+            ]
+        else:
+            rating_lines = [
+                "- **Overall rating: Unavailable / 10** — insufficient verified inputs; no numeric rating or Apply/Avoid recommendation is issued."
+            ]
+        source_links = _company_source_links(ipo)
+        source_lines = [f"- Company-specific source: [{label}]({url})" for label, url in source_links]
+        if not source_lines:
+            source_lines = ["- Company-specific prospectus/source link: Not captured yet; verify this issuer on the official exchange before acting."]
         lines.extend([
             f"### {name} ({symbol})",
             "",
@@ -116,17 +174,14 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
             f"- Close date: {_format_ipo_date(ipo, 'close')}",
             f"- Price band: {price_band}",
             f"- Issue size: ₹{getattr(ipo, 'issue_size_cr', None):,.2f} Cr" if getattr(ipo, "issue_size_cr", None) is not None else "- Issue size: Not available",
+            *rating_lines,
             f"- Status: {_ipo_status(ipo)}",
+            *source_lines,
             "",
         ])
     if len(selected) > 20:
         lines.extend([f"_Showing 20 of {len(selected)} records._", ""])
     lines.extend([
-        "## Official source pages",
-        "",
-        f"- [NSE upcoming IPO issues]({NSE_IPO_URL})",
-        f"- [BSE public issues]({BSE_IPO_URL})",
-        "",
         "## Important limitation",
         "",
         "This discovery/status digest is not an investment recommendation or personalized financial advice. Prospectus candidate passages remain UNVERIFIED until financial periods, units, consolidated/standalone basis, and source evidence are reconciled. Do not apply based on this digest alone.",
@@ -145,7 +200,7 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
             f"close {_format_ipo_date(ipo, 'close')}."
             for ipo in selected[:8]
         )
-        + f"\n\nOfficial NSE: {NSE_IPO_URL}\nOfficial BSE: {BSE_IPO_URL}"
+        + ("\n\nIssuer-specific source links are included under each company when available." if selected else "\n\nNo issuer-specific IPO records or source links were available in persisted state.")
     )
     run_id = os.getenv("GITHUB_RUN_ID")
     repository = os.getenv("GITHUB_REPOSITORY", "SandulaVinay/IPO-Analysis")

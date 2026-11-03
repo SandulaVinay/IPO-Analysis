@@ -647,6 +647,18 @@
       "detail": "records=0; channel=EMAIL",
       "status": "ACCEPTED",
       "timestamp": "2026-11-03T05:45:59.212270+00:00"
+    },
+    {
+      "command": "discover",
+      "detail": "restored=1; discovered=0; registry_total=1; source_coverage=PARTIAL",
+      "status": "PARTIAL",
+      "timestamp": "2026-11-03T06:22:26.819016+00:00"
+    },
+    {
+      "command": "results",
+      "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; errors=0",
+      "status": "SUCCESS",
+      "timestamp": "2026-11-03T06:22:32.824454+00:00"
     }
   ],
   "schema_version": 1

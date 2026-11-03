@@ -184,3 +184,15 @@ def test_empty_digest_explains_incomplete_discovery_without_claiming_no_ipos():
     assert "IPO discovery is incomplete" in report
     assert "Do not interpret this empty section as confirmation" in report
     assert "No future-dated IPO records or date-conflict records are currently present" not in report
+
+
+
+def test_empty_digest_explains_incomplete_discovery_without_claiming_no_ipos():
+    report, _ = _build_report(
+        [],
+        now=datetime(2026, 11, 3, 11, 0, tzinfo=ZoneInfo("Asia/Kolkata")),
+        discovery_run={"status": "PARTIAL"},
+    )
+    assert "IPO discovery is incomplete" in report
+    assert "Do not interpret this empty section as confirmation" in report
+    assert "No future-dated IPO records or date-conflict records are currently present" not in report

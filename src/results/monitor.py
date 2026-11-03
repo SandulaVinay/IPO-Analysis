@@ -1040,6 +1040,14 @@ async def monitor_financial_results() -> Dict[str, Any]:
                     if len(pdf_response.content) > 15_000_000:
                         raise ValueError("PDF attachment exceeds the 15 MB download safety limit.")
                     document_text = extract_pdf_text(pdf_response.content)
+                    if item.get("period_ended"):
+                        pdf_metrics = extract_pdf_financial_metrics(
+                            document_text,
+                            item["period_ended"],
+                            item.get("relating_to") or item.get("headline") or "",
+                        )
+                        if pdf_metrics.get("status") == "EXTRACTED":
+                            metrics = pdf_metrics
                 except Exception as exc:
                     document_text = {
                         "status": "UNAVAILABLE",

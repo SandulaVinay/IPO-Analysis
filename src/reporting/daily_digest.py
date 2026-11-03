@@ -111,6 +111,28 @@ def _verified_rating(ipo: Any) -> Dict[str, Any]:
         "overall": round((0.4 * listing) + (0.6 * long_term), 1),
     }
 
+
+def _company_source_links(ipo: Any) -> list[tuple[str, str]]:
+    """Collect source URLs attached to this issuer; never imply a generic exchange page is issuer-specific."""
+    links: list[tuple[str, str]] = []
+    seen = set()
+
+    def add(label: str, url: Any) -> None:
+        value = str(url or "").strip()
+        if value.startswith("https://") and value not in seen:
+            seen.add(value)
+            links.append((label, value))
+
+    for item in (getattr(ipo, "document_links", None) or []):
+        if isinstance(item, dict):
+            add(str(item.get("document_title") or item.get("document_type") or "Issuer document"), item.get("source_url") or item.get("url"))
+    add("Issuer source", getattr(ipo, "source_url", None))
+    for document in (getattr(ipo, "documents", None) or []):
+        for version in (getattr(document, "versions", None) or []):
+            add(str(getattr(document, "document_title", None) or getattr(document, "document_type", None) or "Issuer document"), getattr(version, "source_url", None))
+    return links
+
+
 def _latest_gmp(ipo: Any, now: datetime) -> str:
     """Display a captured GMP only when its timestamp is recent enough to be useful."""
     snapshots = list(getattr(ipo, "gmp_snapshots", None) or [])

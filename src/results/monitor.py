@@ -704,6 +704,94 @@ def extract_pdf_text(pdf_content: bytes, *, max_pages: int = 12, max_chars: int 
         }
 
 
+
+def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: str, relating_to: str = "") -> Dict[str, Any]:
+    """Extract only explicitly labelled consolidated/standalone PDF table values.
+
+    PDF fallback currently supports the common Indian filing table where figures
+    are in Rs. Lakhs and columns are quarter-ended (current quarter, prior
+    quarter, corresponding prior-year quarter) plus half-year columns. It
+    refuses ambiguous units, missing row labels, or incomplete numeric cells.
+    """
+    if document_text.get("status") != "EXTRACTED":
+        return {"status": "UNAVAILABLE", "reason": "Readable PDF text is unavailable."}
+    text = str(document_text.get("text") or "")
+    if "rs. in lakhs" not in text.lower() and "₹ in lakhs" not in text.lower() and "rupees in lakhs" not in text.lower():
+        return {"status": "UNAVAILABLE", "reason": "PDF table unit is not explicitly identified as INR lakhs."}
+    parsed_target = Normalizer.parse_date(period_ended)
+    if not parsed_target:
+        return {"status": "UNAVAILABLE", "reason": "PDF reporting period could not be parsed."}
+
+    # Normalize whitespace but keep page boundaries and row labels.
+    flat = re.sub(r"[ \t]+", " ", text)
+    # The BSE PDF layout may split table headers over lines; only accept if the
+    # relevant period end date occurs in the financial-results table content.
+    if parsed_target.strftime("%d.%m.%Y") not in flat and parsed_target.strftime("%d-%m-%Y") not in flat and parsed_target.strftime("%d-%b-%Y").lower() not in flat.lower():
+        if parsed_target.strftime("%d %B %Y").lower() not in flat.lower() and parsed_target.strftime("%d %b %Y").lower() not in flat.lower():
+            return {"status": "UNAVAILABLE", "reason": "Target reporting date not confirmed inside the PDF."}
+
+    # Prefer table rows on page 4 (financial statement) marked in an INR lakh unit.
+    # Values map quarter columns [current, previous quarter, prior-year quarter]
+    # and the sixth column to the half-year cumulative period. Do not mix them.
+    def row_values(label_pattern: str) -> Optional[List[float]]:
+        match = re.search(label_pattern + r"\s+((?:\(?-?\d[\d,]*(?:\.\d+)?\)?|-)\s+){3,6}", flat, re.IGNORECASE)
+        if not match:
+            return None
+        tokens = re.findall(r"\(?-?\d[\d,]*(?:\.\d+)?\)?|-", match.group(1))
+        values = []
+        for token in tokens:
+            if token == "-":
+                values.append(0.0)
+            else:
+                try:
+                    values.append(float(token.replace(",", "").replace("(", "-").replace(")", "")))
+                except ValueError:
+                    return None
+        return values if len(values) >= 3 else None
+
+    revenue = row_values(r"Revenue from operations")
+    pat = row_values(r"Net Profit\s*/\s*\(loss\)\s+for the period")
+    eps = row_values(r"-\s*Basic\s*\(Amount in Rs\.\)")
+    cfo = row_values(r"NET CASH FLOW FROM OPERATING ACTIVITIES")
+    if not revenue or not pat:
+        return {"status": "UNAVAILABLE", "reason": "Required labelled revenue/PAT rows could not be mapped unambiguously."}
+
+    # PDF quarterly table columns: current Q, preceding Q, previous-year Q,
+    # current half-year, previous half-year, prior FY. Financial period end is
+    # Sep 30 in this filing family; quarter is therefore current column 1.
+    quarter_index = 0
+    if len(revenue) >= 3 and len(pat) >= 3:
+        revenue_current = revenue[quarter_index]
+        pat_current = pat[quarter_index]
+        revenue_prior_y = revenue[2]
+        pat_prior_y = pat[2]
+        revenue_prior_q = revenue[1]
+        pat_prior_q = pat[1]
+    else:
+        return {"status": "UNAVAILABLE", "reason": "Quarterly comparison columns are incomplete."}
+    result = {
+        "status": "EXTRACTED",
+        "extraction_method": "PDF_LABELLED_TABLE",
+        "unit": "INR_LAKHS",
+        "period_ended": parsed_target.isoformat(),
+        "period_type": "QUARTER_AND_HALF_YEAR",
+        "revenue_lakh": revenue_current,
+        "revenue_cr": round(revenue_current / 100, 4),
+        "pat_lakh": pat_current,
+        "pat_cr": round(pat_current / 100, 4),
+        "revenue_yoy_pct": round((revenue_current-revenue_prior_y)/abs(revenue_prior_y)*100, 2) if revenue_prior_y else None,
+        "pat_yoy_pct": round((pat_current-pat_prior_y)/abs(pat_prior_y)*100, 2) if pat_prior_y else None,
+        "revenue_qoq_pct": round((revenue_current-revenue_prior_q)/abs(revenue_prior_q)*100, 2) if revenue_prior_q else None,
+        "pat_qoq_pct": round((pat_current-pat_prior_q)/abs(pat_prior_q)*100, 2) if pat_prior_q else None,
+    }
+    if eps:
+        result["eps"] = eps[0]
+    if cfo:
+        result["cfo_half_year_lakh"] = cfo[0]
+        result["cfo_half_year_cr"] = round(cfo[0] / 100, 4)
+    result["reason"] = "PDF table values are machine-extracted from labelled rows; verify the attached filing before relying on them."
+    return result
+
 def _report_text(item: Dict[str, Any], metrics: Dict[str, Any], document_text: Optional[Dict[str, Any]] = None) -> str:
     attachment = item.get("attachment_url") or item["source_url"]
     if metrics.get("status") == "EXTRACTED":

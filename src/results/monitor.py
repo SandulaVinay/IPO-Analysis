@@ -738,10 +738,10 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
     # Values map quarter columns [current, previous quarter, prior-year quarter]
     # and the sixth column to the half-year cumulative period. Do not mix them.
     def row_values(label_pattern: str, required: int = 3) -> Optional[List[float]]:
-        match = re.search(label_pattern + r"\\s+((?:\\(?-?\\d[\\d,]*(?:\\.\\d+)?\\)?|-)(?:\\s+|$)){" + str(required) + r",6}", flat, re.IGNORECASE)
+        match = re.search(label_pattern + r"\s+((?:\(?-?\d[\d,]*(?:\.\d+)?\)?|-)(?:\s+|$)){" + str(required) + r",6}", flat, re.IGNORECASE)
         if not match:
             return None
-        tokens = re.findall(r"\\(?-?\\d[\\d,]*(?:\\.\\d+)?\\)?|-", match.group(1))
+        tokens = re.findall(r"\(?-?\d[\d,]*(?:\.\d+)?\)?|-", match.group(1))
         values = []
         for token in tokens:
             if token == "-":

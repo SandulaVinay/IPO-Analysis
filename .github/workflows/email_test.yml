@@ -2,6 +2,12 @@ name: IPO Email Delivery Test
 
 on:
   workflow_dispatch:
+    inputs:
+      recipient_emails:
+        description: "Comma-separated test recipients; defaults to the two alternate addresses requested"
+        required: false
+        type: string
+        default: "sandulavinay@gmail.com,stu.vinay.sandula@gmail.com"
 
 jobs:
   test-email:
@@ -31,6 +37,6 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_TO: ${{ inputs.recipient_emails != '' && inputs.recipient_emails || secrets.EMAIL_TO }}
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/test_email.py

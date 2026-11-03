@@ -706,57 +706,51 @@ def extract_pdf_text(pdf_content: bytes, *, max_pages: int = 12, max_chars: int 
 
 
 def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: str, relating_to: str = "") -> Dict[str, Any]:
-    """Conservative PDF table parser for a validated Indian quarterly + half-year layout.
-
-    Requires an explicit INR-lakh unit, target date, and six-column table for the
-    named metric rows. It refuses partial or ambiguous rows rather than guessing.
-    """
+    """Extract conservative financial metrics from a supported six-column PDF results table."""
     if document_text.get("status") != "EXTRACTED":
         return {"status": "UNAVAILABLE", "reason": "Readable PDF text is unavailable."}
     text = str(document_text.get("text") or "")
-    if not re.search(r"\(\s*(?:rs\.?|inr|₹)\s*in\s*lakhs\s*\)", text, re.IGNORECASE):
+    if not re.search(r"(?:rs\.?|inr|₹)\s*in\s*lakhs", text, re.IGNORECASE):
         return {"status": "UNAVAILABLE", "reason": "PDF table unit is not explicitly identified as INR lakhs."}
     target = Normalizer.parse_date(period_ended)
     if target is None:
         return {"status": "UNAVAILABLE", "reason": "PDF reporting period could not be parsed."}
-    date_text = text.lower()
-    normalized_date = target.strftime("%d-%m-%Y")
-    textual_dates = [
-        target.strftime("%d %B %Y").lower(),
-        target.strftime("%d %b %Y").lower(),
-    ]
-    has_target_date = (
-        target.strftime("%d.%m.%Y") in date_text
-        or normalized_date in date_text
-        or target.strftime("%d-%b-%Y").lower() in date_text
-        or target.strftime("%d-%b-%y").lower() in date_text
-        or any(value in date_text for value in textual_dates)
+    # Period text can be formatted as 30th September 2026 in title and 30.09.2026 in columns.
+    date_verified = (
+        target.strftime("%d.%m.%Y") in text
+        or target.strftime("%d-%m-%Y") in text
+        or target.strftime("%d-%b-%Y").lower() in text.lower()
+        or target.strftime("%d-%b-%y").lower() in text.lower()
+        or target.strftime("%d %b %Y").lower() in text.lower()
+        or target.strftime("%d %B %Y").lower() in text.lower()
         or (
-            target.strftime("%d") in date_text
-            and target.strftime("%Y") in date_text
-            and target.strftime("%B").lower() in date_text
+            target.strftime("%Y") in text
+            and target.strftime("%B").lower() in text.lower()
+            and target.strftime("%d") in text
         )
     )
-    if not has_target_date:
+    if not date_verified:
         return {"status": "UNAVAILABLE", "reason": "Target reporting date not confirmed inside the PDF."}
 
-    flat = re.sub(r"\\s+", " ", text)
+    flat = re.sub(r"\s+", " ", text)
 
     def row_values(label_pattern: str, min_values: int = 6) -> Optional[List[float]]:
-        match = re.search(
-            label_pattern + r"\\s+((?:\\(?-?\\d[\\d,]*(?:\\.\\d+)?\\)?|-)(?:\\s+|$)){" + str(min_values) + r",6}",
-            flat,
-            re.IGNORECASE,
-        )
+        match = re.search(label_pattern + r"\s+(.{1,180}?)", flat, re.IGNORECASE)
         if not match:
             return None
-        tokens = re.findall(r"\\(?-?\\d[\\d,]*(?:\\.\\d+)?\\)?|-", match.group(1))
+        # A financial row has a bounded six-cell data run immediately after its label.
+        tail = match.group(1)
+        tokens = re.findall(r"\(?-?\d[\d,]*(?:\.\d+)?\)?|-", tail)
         if len(tokens) < min_values:
+            return None
+        # Reject if another named row/header appears before all required numeric cells.
+        prefix_before_first = re.split(r"\(?-?\d[\d,]*(?:\.\d+)?\)?|-", tail, maxsplit=1)[0]
+        if re.search(r"[A-Za-z]{3,}", prefix_before_first):
             return None
         try:
             return [
                 0.0 if token == "-" else float(token.replace(",", "").replace("(", "-").replace(")", ""))
-                for token in tokens
+                for token in tokens[:6]
             ]
         except ValueError:
             return None
@@ -767,8 +761,8 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
     if not revenue or not pat:
         return {"status": "UNAVAILABLE", "reason": "Required labelled revenue/PAT rows could not be mapped unambiguously."}
 
-    # Column order: current quarter, immediately preceding quarter,
-    # corresponding prior-year quarter, current half-year, prior half-year, prior FY.
+    # The supported six-column layout is Q-current, Q-prior, Q-prior-year,
+    # H1-current, H1-prior-year, FY-prior. Do not mix H1 and quarter columns.
     revenue_current, revenue_prior_q, revenue_prior_y = revenue[:3]
     pat_current, pat_prior_q, pat_prior_y = pat[:3]
     result: Dict[str, Any] = {
@@ -785,11 +779,12 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
         "pat_yoy_pct": round((pat_current - pat_prior_y) / abs(pat_prior_y) * 100, 2) if pat_prior_y else None,
         "revenue_qoq_pct": round((revenue_current - revenue_prior_q) / abs(revenue_prior_q) * 100, 2) if revenue_prior_q else None,
         "pat_qoq_pct": round((pat_current - pat_prior_q) / abs(pat_prior_q) * 100, 2) if pat_prior_q else None,
-        "reason": "Quarterly values were mapped from labelled PDF rows; half-year figures are not mixed into quarter comparisons. Verify against the original filing.",
+        "reason": "Quarterly values mapped from labelled rows; confirm all figures against the original filing.",
     }
     if eps:
         result["eps"] = eps[0]
     return result
+
 
 def _report_text(item: Dict[str, Any], metrics: Dict[str, Any], document_text: Optional[Dict[str, Any]] = None) -> str:
     attachment = item.get("attachment_url") or item["source_url"]

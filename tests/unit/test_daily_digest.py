@@ -172,3 +172,15 @@ def test_daily_digest_does_not_use_old_gmp_as_current():
     now = datetime(2026, 10, 29, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
     assert "Stale snapshot" in _latest_gmp(ipo, now)
     assert "not used as current GMP" in _latest_gmp(ipo, now)
+
+
+
+def test_empty_digest_explains_incomplete_discovery_without_claiming_no_ipos():
+    report, _ = _build_report(
+        [],
+        now=datetime(2026, 11, 3, 11, 0, tzinfo=ZoneInfo("Asia/Kolkata")),
+        discovery_run={"status": "PARTIAL"},
+    )
+    assert "IPO discovery is incomplete" in report
+    assert "Do not interpret this empty section as confirmation" in report
+    assert "No future-dated IPO records or date-conflict records are currently present" not in report

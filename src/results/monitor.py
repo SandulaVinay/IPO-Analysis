@@ -719,15 +719,28 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
     target = Normalizer.parse_date(period_ended)
     if target is None:
         return {"status": "UNAVAILABLE", "reason": "PDF reporting period could not be parsed."}
-    date_forms = {
-        target.strftime("%d.%m.%Y"), target.strftime("%d-%m-%Y"),
-        target.strftime("%d-%b-%Y"), target.strftime("%d-%b-%y"),
-        target.strftime("%d %B %Y"), target.strftime("%d %b %Y"),
-    }
-    if not any(value.lower() in text.lower() for value in date_forms):
+    date_text = text.lower()
+    normalized_date = target.strftime("%d-%m-%Y")
+    textual_dates = [
+        target.strftime("%d %B %Y").lower(),
+        target.strftime("%d %b %Y").lower(),
+    ]
+    has_target_date = (
+        target.strftime("%d.%m.%Y") in date_text
+        or normalized_date in date_text
+        or target.strftime("%d-%b-%Y").lower() in date_text
+        or target.strftime("%d-%b-%y").lower() in date_text
+        or any(value in date_text for value in textual_dates)
+        or (
+            target.strftime("%d") in date_text
+            and target.strftime("%Y") in date_text
+            and target.strftime("%B").lower() in date_text
+        )
+    )
+    if not has_target_date:
         return {"status": "UNAVAILABLE", "reason": "Target reporting date not confirmed inside the PDF."}
 
-    flat = re.sub(r"\s+", " ", text)
+    flat = re.sub(r"\\s+", " ", text)
 
     def row_values(label_pattern: str, min_values: int = 6) -> Optional[List[float]]:
         match = re.search(

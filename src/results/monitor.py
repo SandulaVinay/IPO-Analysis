@@ -737,11 +737,11 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
     # Prefer table rows on page 4 (financial statement) marked in an INR lakh unit.
     # Values map quarter columns [current, previous quarter, prior-year quarter]
     # and the sixth column to the half-year cumulative period. Do not mix them.
-    def row_values(label_pattern: str) -> Optional[List[float]]:
-        match = re.search(label_pattern + r"\s+((?:\(?-?\d[\d,]*(?:\.\d+)?\)?|-)\s+){3,6}", flat, re.IGNORECASE)
+    def row_values(label_pattern: str, required: int = 3) -> Optional[List[float]]:
+        match = re.search(label_pattern + r"\\s+((?:\\(?-?\\d[\\d,]*(?:\\.\\d+)?\\)?|-)(?:\\s+|$)){" + str(required) + r",6}", flat, re.IGNORECASE)
         if not match:
             return None
-        tokens = re.findall(r"\(?-?\d[\d,]*(?:\.\d+)?\)?|-", match.group(1))
+        tokens = re.findall(r"\\(?-?\\d[\\d,]*(?:\\.\\d+)?\\)?|-", match.group(1))
         values = []
         for token in tokens:
             if token == "-":
@@ -751,12 +751,12 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
                     values.append(float(token.replace(",", "").replace("(", "-").replace(")", "")))
                 except ValueError:
                     return None
-        return values if len(values) >= 3 else None
+        return values if len(values) >= required else None
 
     revenue = row_values(r"Revenue from operations")
     pat = row_values(r"Net Profit\s*/\s*\(loss\)\s+for the period")
-    eps = row_values(r"Basic\s*\(Amount in Rs\.\)")
-    cfo = row_values(r"NET CASH FLOW FROM OPERATING ACTIVITIES")
+    eps = row_values(r"Basic\s*\(Amount in Rs\.\)", required=1)
+    cfo = row_values(r"NET CASH FLOW FROM OPERATING ACTIVITIES", required=2)
     if not revenue or not pat:
         return {"status": "UNAVAILABLE", "reason": "Required labelled revenue/PAT rows could not be mapped unambiguously."}
 

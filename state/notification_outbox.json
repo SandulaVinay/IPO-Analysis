@@ -91,24 +91,24 @@
       "updated_at": "2026-11-01T14:47:54.246839+00:00"
     },
     {
-      "channel": "EMAIL",
+      "channel": null,
       "event_date": "2026-10-29T17:20:11.97",
       "event_key": "RESULT_e4645ba94977c259932bf0df13da9587",
       "event_type": "FINANCIAL_RESULTS_FILING",
-      "status": "ACCEPTED",
+      "status": "FAILED",
       "symbol": "RNITAI",
-      "updated_at": "2026-11-03T04:48:21.023419+00:00"
+      "updated_at": "2026-11-03T05:30:59.180009+00:00"
     },
     {
-      "channel": "EMAIL",
+      "channel": null,
       "event_date": "2026-11-03",
       "event_key": "IPO_DAILY_DIGEST_2026-11-03",
       "event_type": "DAILY_IPO_DIGEST",
-      "status": "ACCEPTED",
+      "status": "FAILED",
       "symbol": "ALL",
-      "updated_at": "2026-11-03T04:48:24.692412+00:00"
+      "updated_at": "2026-11-03T05:31:02.181874+00:00"
     }
   ],
   "schema_version": 1,
-  "updated_at": "2026-11-03T04:48:24.692420+00:00"
+  "updated_at": "2026-11-03T05:31:02.181883+00:00"
 }

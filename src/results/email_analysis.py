@@ -26,7 +26,9 @@ def build_results_email(item: Dict[str, Any], metrics: Dict[str, Any], report_ur
     exchange = str(item.get("exchange") or "exchange").upper()
     period = str(item.get("period_ended") or "period not specified")
     category = str(item.get("relating_to") or item.get("period_type") or "period not specified")
-    subject = f"Financial Results Alert | {company} ({symbol}) | {category} ended {period}"
+    period_type = str(metrics.get("period_type") or item.get("period_type") or "")
+    period_label = category if category.lower() not in {"financial results", "period not specified"} else period_type or category
+    subject = f"Financial Results Alert | {company} ({symbol}) | {period_label} ended {period}"
 
     lines = [
         "Dear Investor,",
@@ -105,7 +107,7 @@ def build_results_email(item: Dict[str, Any], metrics: Dict[str, Any], report_ur
         f"Company: {company} ({symbol})",
         f"Exchange: {exchange}",
         f"Reporting period: {period}",
-        f"Period/category: {category}",
+        f"Period/category: {period_label}",
         f"Announcement time: {item.get('broadcast_time') or 'Not specified'}",
         f"Audit status: {item.get('audit_status') or 'Not specified'}",
         f"Statement basis: {item.get('consolidation') or 'Not specified'}",

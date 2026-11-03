@@ -704,6 +704,77 @@ def extract_pdf_text(pdf_content: bytes, *, max_pages: int = 12, max_chars: int 
         }
 
 
+
+def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: str, relating_to: str = "") -> Dict[str, Any]:
+    """Extract explicitly labelled rows from a supported INR-lakh PDF statement."""
+    if document_text.get("status") != "EXTRACTED":
+        return {"status": "UNAVAILABLE", "reason": "Readable PDF text is unavailable."}
+    source = str(document_text.get("text") or "")
+    if not re.search(r"(?:rs\.?|inr|₹)\s*in\s*lakhs", source, re.IGNORECASE):
+        return {"status": "UNAVAILABLE", "reason": "PDF table unit is not explicitly identified as INR lakhs."}
+    target = Normalizer.parse_date(period_ended)
+    if target is None:
+        return {"status": "UNAVAILABLE", "reason": "PDF reporting period could not be parsed."}
+    date_ok = (
+        target.strftime("%d.%m.%Y") in source
+        or target.strftime("%d-%m-%Y") in source
+        or target.strftime("%d-%b-%Y").lower() in source.lower()
+        or target.strftime("%d %B %Y").lower() in source.lower()
+        or target.strftime("%d %b %Y").lower() in source.lower()
+        or (target.strftime("%d") in source and target.strftime("%B").lower() in source.lower() and target.strftime("%Y") in source)
+    )
+    if not date_ok:
+        return {"status": "UNAVAILABLE", "reason": "Target reporting date not confirmed inside the PDF."}
+
+    flat = re.sub(r"\s+", " ", source)
+    # Require exactly six labelled cells, permitting whitespace/newline differences between cells.
+    number = r"\(?-?\d[\d,]*(?:\.\d+)?\)?|-"
+
+    def row_values(label_pattern: str) -> Optional[List[float]]:
+        label_match = re.search(label_pattern, flat, re.IGNORECASE)
+        if not label_match:
+            return None
+        tail = flat[label_match.end():label_match.end() + 180]
+        tokens = re.findall(number, tail)
+        if len(tokens) < 6:
+            return None
+        # Do not take cells after another textual label; capture only the first six tokens
+        # if there is no alphabetic content between them (the header labels may be before row).
+        first_six = tokens[:6]
+        try:
+            return [0.0 if token == "-" else float(token.replace(",", "").replace("(", "-").replace(")", "")) for token in first_six]
+        except ValueError:
+            return None
+
+    revenue = row_values(r"Revenue from operations")
+    pat = row_values(r"Net Profit\s*/\s*\(loss\)\s+for the period")
+    eps = row_values(r"Basic\s*\(Amount in Rs\.\)")
+    if revenue is None or pat is None:
+        return {"status": "UNAVAILABLE", "reason": "Required labelled revenue/PAT rows could not be mapped to six numeric cells."}
+
+    rev_now, rev_q_prev, rev_y_prev = revenue[:3]
+    pat_now, pat_q_prev, pat_y_prev = pat[:3]
+    result: Dict[str, Any] = {
+        "status": "EXTRACTED",
+        "extraction_method": "PDF_LABELLED_TABLE",
+        "unit": "INR_LAKHS",
+        "period_ended": target.isoformat(),
+        "period_type": "QUARTER_AND_HALF_YEAR",
+        "revenue_lakh": rev_now,
+        "revenue_cr": round(rev_now / 100, 4),
+        "pat_lakh": pat_now,
+        "pat_cr": round(pat_now / 100, 4),
+        "revenue_yoy_pct": round((rev_now - rev_y_prev) / abs(rev_y_prev) * 100, 2) if rev_y_prev else None,
+        "pat_yoy_pct": round((pat_now - pat_y_prev) / abs(pat_y_prev) * 100, 2) if pat_y_prev else None,
+        "revenue_qoq_pct": round((rev_now - rev_q_prev) / abs(rev_q_prev) * 100, 2) if rev_q_prev else None,
+        "pat_qoq_pct": round((pat_now - pat_q_prev) / abs(pat_q_prev) * 100, 2) if pat_q_prev else None,
+        "reason": "Quarterly figures transcribed from labelled PDF rows; verify against the original filing.",
+    }
+    if eps:
+        result["eps"] = eps[0]
+    return result
+
+
 def _report_text(item: Dict[str, Any], metrics: Dict[str, Any], document_text: Optional[Dict[str, Any]] = None) -> str:
     attachment = item.get("attachment_url") or item["source_url"]
     if metrics.get("status") == "EXTRACTED":
@@ -715,7 +786,11 @@ def _report_text(item: Dict[str, Any], metrics: Dict[str, Any], document_text: O
             f"- **Revenue YoY change:** {_format_metric(metrics.get('revenue_yoy_pct'), '%')}\n"
             f"- **PAT YoY change:** {_format_metric(metrics.get('pat_yoy_pct'), '%')}\n"
         )
-        analysis_note = "Metrics above were extracted from the linked XBRL instance. Validate the original filing before making an investment decision."
+        analysis_note = (
+            "Metrics were extracted from the labelled PDF table. Validate the original filing before making an investment decision."
+            if metrics.get("extraction_method") == "PDF_LABELLED_TABLE"
+            else "Metrics above were extracted from the linked XBRL instance. Validate the original filing before making an investment decision."
+        )
     else:
         analysis = "- **Automated metrics:** Not available from the detected attachment format.\n"
         analysis_note = "No financial-performance conclusion or investment recommendation is generated from filing metadata alone."
@@ -723,7 +798,9 @@ def _report_text(item: Dict[str, Any], metrics: Dict[str, Any], document_text: O
         f"# Official financial-results filing: {item['company_name']} ({item['symbol']})\n\n"
         f"- **Exchange:** {item.get('exchange') or 'NSE'}\n"
         f"- **Period ended:** {item.get('period_ended') or 'Not specified in the filing notice'}\n"
-        f"- **Period / quarter:** {item.get('relating_to') or 'Not specified in the table'}\n"
+        f"- **Period / quarter:** {item.get('relating_to') or item.get('period_type') or 'Not specified in the table'}\n"
+        f"- **Submission period type:** {metrics.get('period_type') or item.get('period_type') or 'Not specified'}\n"
+        f"- **Metric extraction method:** {metrics.get('extraction_method') or ('XBRL' if metrics.get('status') == 'EXTRACTED' else 'Not available')}\n"
         f"- **Broadcast time:** {item['broadcast_time']}\n"
         f"- **Audited status:** {item.get('audit_status') or 'Not specified'}\n"
         f"- **Statement basis:** {item.get('consolidation') or 'Not specified'}\n"
@@ -952,6 +1029,14 @@ async def monitor_financial_results() -> Dict[str, Any]:
                     if len(pdf_response.content) > 15_000_000:
                         raise ValueError("PDF attachment exceeds the 15 MB download safety limit.")
                     document_text = extract_pdf_text(pdf_response.content)
+                    if item.get("period_ended"):
+                        pdf_metrics = extract_pdf_financial_metrics(
+                            document_text,
+                            item["period_ended"],
+                            item.get("relating_to") or item.get("headline") or "",
+                        )
+                        if pdf_metrics.get("status") == "EXTRACTED":
+                            metrics = pdf_metrics
                 except Exception as exc:
                     document_text = {
                         "status": "UNAVAILABLE",

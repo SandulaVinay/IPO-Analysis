@@ -203,11 +203,18 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
             "",
         ])
     if not selected:
-        lines.extend([
-            "No future-dated IPO records or date-conflict records are currently present in persisted state.",
-            "This is not proof that no IPOs are upcoming; the latest discovery run and issuer-specific source records must be checked."
-            "",
-        ])
+        if discovery_status == "SUCCESS":
+            lines.extend([
+                "No future-dated IPO records or date-conflict records were found in the validated registry.",
+                "This is not proof that no IPOs are upcoming; independently verify official exchange announcements.",
+                "",
+            ])
+        else:
+            lines.extend([
+                "IPO discovery is incomplete. No verified upcoming IPO list can be produced from the current registry.",
+                "Do not interpret this empty section as confirmation that no IPOs are open or upcoming. The source adapter must recover before the next digest.",
+                "",
+            ])
     for ipo in selected[:20]:
         symbol = str(getattr(ipo, "symbol", "UNKNOWN"))
         name = str(getattr(ipo, "company_name", symbol))

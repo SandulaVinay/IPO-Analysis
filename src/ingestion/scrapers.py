@@ -131,7 +131,19 @@ def _parse_official_issue_tables(html: str, *, source_name: str, source_url: str
             if not cells or company_idx >= len(cells):
                 continue
             company_name = re.sub(r"\s+", " ", cells[company_idx].get_text(" ", strip=True)).strip()
-            if not company_name or _norm(company_name) in {"company name", "name of company", "company"}:
+            normalized_company = _norm(company_name)
+            # Some live exchange layouts accidentally expose a table label as a body row.
+            invalid_company_labels = {
+                "company name", "name of company", "company", "issuer", "issuer name",
+                "offered reserved", "offered / reserved", "offered/ reserved",
+                "offered", "reserved", "total", "grand total", "no records found",
+                "no data available", "no records available", "no upcoming issues",
+            }
+            if (
+                not company_name
+                or normalized_company in invalid_company_labels
+                or len(re.sub(r"[^a-z]", "", normalized_company)) < 4
+            ):
                 continue
             key = _norm(company_name)
             if key in seen:

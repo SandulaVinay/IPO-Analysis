@@ -803,7 +803,11 @@ def _report_text(item: Dict[str, Any], metrics: Dict[str, Any], document_text: O
             f"- **Revenue YoY change:** {_format_metric(metrics.get('revenue_yoy_pct'), '%')}\n"
             f"- **PAT YoY change:** {_format_metric(metrics.get('pat_yoy_pct'), '%')}\n"
         )
-        analysis_note = "Metrics above were extracted from the linked XBRL instance. Validate the original filing before making an investment decision."
+        analysis_note = (
+            "Metrics were extracted from the labelled PDF table. Validate the original filing before making an investment decision."
+            if metrics.get("extraction_method") == "PDF_LABELLED_TABLE"
+            else "Metrics above were extracted from the linked XBRL instance. Validate the original filing before making an investment decision."
+        )
     else:
         analysis = "- **Automated metrics:** Not available from the detected attachment format.\n"
         analysis_note = "No financial-performance conclusion or investment recommendation is generated from filing metadata alone."
@@ -811,7 +815,9 @@ def _report_text(item: Dict[str, Any], metrics: Dict[str, Any], document_text: O
         f"# Official financial-results filing: {item['company_name']} ({item['symbol']})\n\n"
         f"- **Exchange:** {item.get('exchange') or 'NSE'}\n"
         f"- **Period ended:** {item.get('period_ended') or 'Not specified in the filing notice'}\n"
-        f"- **Period / quarter:** {item.get('relating_to') or 'Not specified in the table'}\n"
+        f"- **Period / quarter:** {item.get('relating_to') or item.get('period_type') or 'Not specified in the table'}\n"
+        f"- **Submission period type:** {metrics.get('period_type') or item.get('period_type') or 'Not specified'}\n"
+        f"- **Metric extraction method:** {metrics.get('extraction_method') or ('XBRL' if metrics.get('status') == 'EXTRACTED' else 'Not available')}\n"
         f"- **Broadcast time:** {item['broadcast_time']}\n"
         f"- **Audited status:** {item.get('audit_status') or 'Not specified'}\n"
         f"- **Statement basis:** {item.get('consolidation') or 'Not specified'}\n"

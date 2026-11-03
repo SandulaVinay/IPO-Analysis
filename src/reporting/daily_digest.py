@@ -70,10 +70,33 @@ def _ipo_status(ipo: Any) -> str:
 
 
 def _verified_rating(ipo: Any) -> Dict[str, Any]:
-    """Return a transparent overall rating only when both component scores are explicitly verified."""
-    listing = getattr(ipo, "listing_potential_score", None)
-    long_term = getattr(ipo, "long_term_quality_score", None)
-    verified = bool(getattr(ipo, "rating_verified", False))
+    """Use the latest ungated analysis run; otherwise fail closed and show no numeric score."""
+    runs = list(getattr(ipo, "analysis_runs", None) or [])
+    runs.sort(key=lambda item: getattr(item, "run_timestamp", None) or datetime.min, reverse=True)
+    listing = long_term = None
+    verified = False
+    if runs:
+        run = runs[0]
+        try:
+            listing = float(getattr(run, "listing_opportunity_score"))
+            long_term = float(getattr(run, "long_term_opportunity_score"))
+            completeness = float(getattr(run, "data_completeness_pct", 0) or 0)
+            verified_sources = int(getattr(run, "verified_sources_count", 0) or 0)
+            conflicts = int(getattr(run, "conflicts_count", 0) or 0)
+            verified = (
+                not bool(getattr(run, "is_safety_gated", True))
+                and str(getattr(run, "verdict", "UNABLE_TO_ASSESS")) != "UNABLE_TO_ASSESS"
+                and completeness >= 80
+                and verified_sources > 0
+                and conflicts == 0
+            )
+        except (TypeError, ValueError, AttributeError):
+            verified = False
+    else:
+        # Supports explicitly verified precomputed ratings without requiring an ORM analysis run.
+        listing = getattr(ipo, "listing_potential_score", None)
+        long_term = getattr(ipo, "long_term_quality_score", None)
+        verified = bool(getattr(ipo, "rating_verified", False))
     try:
         listing = float(listing)
         long_term = float(long_term)
@@ -87,29 +110,6 @@ def _verified_rating(ipo: Any) -> Dict[str, Any]:
         "long_term": long_term,
         "overall": round((0.4 * listing) + (0.6 * long_term), 1),
     }
-
-
-def _company_source_links(ipo: Any) -> list[tuple[str, str]]:
-    """Collect source URLs attached to this issuer; never imply a generic exchange page is issuer-specific."""
-    links: list[tuple[str, str]] = []
-    seen = set()
-
-    def add(label: str, url: Any) -> None:
-        value = str(url or "").strip()
-        if value.startswith("https://") and value not in seen:
-            seen.add(value)
-            links.append((label, value))
-
-    for item in (getattr(ipo, "document_links", None) or []):
-        if isinstance(item, dict):
-            add(str(item.get("document_title") or item.get("document_type") or "Issuer document"), item.get("source_url") or item.get("url"))
-    add("Issuer source", getattr(ipo, "source_url", None))
-    for document in (getattr(ipo, "documents", None) or []):
-        for version in (getattr(document, "versions", None) or []):
-            add(str(getattr(document, "document_title", None) or getattr(document, "document_type", None) or "Issuer document"), getattr(version, "source_url", None))
-    return links
-
-
 
 def _latest_gmp(ipo: Any, now: datetime) -> str:
     """Display a captured GMP only when its timestamp is recent enough to be useful."""
@@ -128,6 +128,31 @@ def _latest_gmp(ipo: Any, now: datetime) -> str:
         return f"Stale snapshot ({captured.astimezone(IST).strftime('%d %b %Y, %I:%M %p IST')}); not used as current GMP"
     source = str(getattr(snapshot, "source", "") or "source not recorded")
     return f"₹{float(snapshot.gmp_value):,.2f} ({source}; captured {captured.astimezone(IST).strftime('%d %b %Y, %I:%M %p IST')})"
+
+
+
+
+def _plain_company_summary(ipo: Any, now: datetime) -> str:
+    name = str(getattr(ipo, "company_name", getattr(ipo, "symbol", "UNKNOWN")))
+    symbol = str(getattr(ipo, "symbol", "UNKNOWN"))
+    rating = _verified_rating(ipo)
+    rating_text = (
+        f"Overall {rating['overall']:.1f}/10 (listing {rating['listing']:.1f}/10; long-term {rating['long_term']:.1f}/10)"
+        if rating["available"]
+        else "Overall rating unavailable — insufficient verified inputs"
+    )
+    source_links = _company_source_links(ipo)
+    sources_text = "\n".join(f"  {label}: {url}" for label, url in source_links)
+    if not sources_text:
+        sources_text = "  Company-specific prospectus/source link: not captured"
+    return (
+        f"{name} ({symbol})\n"
+        f"  {rating_text}\n"
+        f"  GMP: {_latest_gmp(ipo, now)}\n"
+        f"  Open: {_format_ipo_date(ipo, 'open')}; close: {_format_ipo_date(ipo, 'close')}\n"
+        f"  Status: {_ipo_status(ipo)}\n"
+        f"{sources_text}"
+    )
 
 
 def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional[Dict[str, Any]]) -> tuple[str, str]:
@@ -214,13 +239,7 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
         f"Latest discovery status: {discovery_status}\n"
         + ("WARNING: discovery data may be stale. " if discovery_status != "SUCCESS" else "")
         + "\n"
-        + "\n\n".join(
-            f"{getattr(ipo, 'company_name', getattr(ipo, 'symbol', 'UNKNOWN'))} "
-            f"({getattr(ipo, 'symbol', 'UNKNOWN')}): {_ipo_status(ipo)} "
-            f"Open {_format_ipo_date(ipo, 'open')}; "
-            f"close {_format_ipo_date(ipo, 'close')}."
-            for ipo in selected[:8]
-        )
+        + "\n\n".join(_plain_company_summary(ipo, now) for ipo in selected[:8])
         + ("\n\nIssuer-specific source links are included under each company when available." if selected else "\n\nNo issuer-specific IPO records or source links were available in persisted state.")
     )
     run_id = os.getenv("GITHUB_RUN_ID")

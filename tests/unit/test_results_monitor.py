@@ -412,3 +412,41 @@ def test_pdf_text_extraction_returns_page_labelled_excerpt_and_handles_scanned_p
 
     no_text = extract_pdf_text(b"not a pdf")
     assert no_text["status"] == "UNAVAILABLE"
+
+
+
+def test_pdf_financial_metrics_extracts_quarter_columns_from_inr_lakh_filing():
+    from src.results.monitor import extract_pdf_financial_metrics
+
+    document = {
+        "status": "EXTRACTED",
+        "text": """[Page 4]
+        (Rs. in Lakhs)
+        Unaudited Financial Results for the Quarter and Half year Ended 30th September, 2026
+        Revenue from operations 1,640.55 785.30 1,371.95 2,425.85 1,996.83 5,149.88
+        Net Profit/(loss) for the period 424.30 126.62 325.16 550.92 407.60 1,201.73
+        EPS Basic (Amount in Rs.) 0.50 0.15 0.43 0.65 0.54 1.57
+        [Page 7]
+        NET CASH FLOW FROM OPERATING ACTIVITIES (710.32) 1,123.16
+        """
+    }
+    result = extract_pdf_financial_metrics(document, "30-Sep-2026", "Quarter and Half Year")
+    assert result["status"] == "EXTRACTED"
+    assert result["extraction_method"] == "PDF_LABELLED_TABLE"
+    assert result["unit"] == "INR_LAKHS"
+    assert result["revenue_cr"] == 16.4055
+    assert result["pat_cr"] == 4.243
+    assert result["eps"] == 0.50
+    assert result["revenue_yoy_pct"] == 19.57
+    assert result["pat_yoy_pct"] == 30.49
+    assert result["revenue_qoq_pct"] == 108.93
+
+
+def test_pdf_financial_metrics_fails_closed_when_unit_missing():
+    from src.results.monitor import extract_pdf_financial_metrics
+
+    result = extract_pdf_financial_metrics(
+        {"status": "EXTRACTED", "text": "Revenue from operations 100 90 80"},
+        "30-Sep-2026",
+    )
+    assert result["status"] == "UNAVAILABLE"

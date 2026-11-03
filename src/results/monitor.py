@@ -706,7 +706,7 @@ def extract_pdf_text(pdf_content: bytes, *, max_pages: int = 12, max_chars: int 
 
 
 def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: str, relating_to: str = "") -> Dict[str, Any]:
-    """Extract only exact labelled numeric rows from a supported INR-lakh PDF table."""
+    """Extract the current-quarter figures from the supported labelled INR-lakh PDF layout."""
     if document_text.get("status") != "EXTRACTED":
         return {"status": "UNAVAILABLE", "reason": "Readable PDF text is unavailable."}
     text = str(document_text.get("text") or "")
@@ -715,35 +715,38 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
     target = Normalizer.parse_date(period_ended)
     if target is None:
         return {"status": "UNAVAILABLE", "reason": "PDF reporting period could not be parsed."}
-    if not (
+    target_date_found = (
         target.strftime("%d.%m.%Y") in text
         or target.strftime("%d-%m-%Y") in text
         or target.strftime("%d %B %Y").lower() in text.lower()
         or target.strftime("%d %b %Y").lower() in text.lower()
         or (target.strftime("%d") in text and target.strftime("%B").lower() in text.lower() and target.strftime("%Y") in text)
-    ):
+    )
+    if not target_date_found:
         return {"status": "UNAVAILABLE", "reason": "Target reporting date not confirmed inside the PDF."}
 
     flat = re.sub(r"\s+", " ", text)
     number = r"\(?-?\d[\d,]*(?:\.\d+)?\)?|-"
 
     def row_values(label_pattern: str) -> Optional[List[float]]:
-        # Limit each row to the next 170 characters and require six consecutive cells.
-        match = re.search(label_pattern + r"\s+(" + number + r"(?:\s+" + number + r"){5})", flat, re.IGNORECASE)
+        match = re.search(label_pattern + r"\s+((?:" + number + r"\s+){5}" + number + r")", flat, re.IGNORECASE)
         if not match:
             return None
-        values = []
-        for token in re.findall(number, match.group(1)):
-            values.append(0.0 if token == "-" else float(token.replace(",", "").replace("(", "-").replace(")", "")))
-        return values if len(values) == 6 else None
+        tokens = re.findall(number, match.group(1))
+        if len(tokens) != 6:
+            return None
+        try:
+            return [0.0 if token == "-" else float(token.replace(",", "").replace("(", "-").replace(")", "")) for token in tokens]
+        except ValueError:
+            return None
 
     revenue = row_values(r"Revenue from operations")
     pat = row_values(r"Net Profit\s*/\s*\(loss\)\s+for the period")
     eps = row_values(r"Basic\s*\(Amount in Rs\.\)")
-    if not revenue or not pat:
+    if revenue is None or pat is None:
         return {"status": "UNAVAILABLE", "reason": "Required labelled revenue/PAT rows could not be mapped to six numeric cells."}
 
-    # Quarter columns: current Q, previous Q, previous-year Q; half-year and FY columns follow.
+    # Current quarter, previous quarter, same quarter last year, then H1/H1/prior FY.
     rev_now, rev_q_prev, rev_y_prev = revenue[:3]
     pat_now, pat_q_prev, pat_y_prev = pat[:3]
     result: Dict[str, Any] = {

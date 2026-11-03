@@ -744,25 +744,22 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
 
     def row_values(label_pattern: str, min_values: int = 6) -> Optional[List[float]]:
         match = re.search(
-            label_pattern + r"\s+((?:\(?-?\d[\d,]*(?:\.\d+)?\)?|-)(?:\s+|$)){" + str(min_values) + r",6}",
+            label_pattern + r"\\s+((?:\\(?-?\\d[\\d,]*(?:\\.\\d+)?\\)?|-)(?:\\s+|$)){" + str(min_values) + r",6}",
             flat,
             re.IGNORECASE,
         )
         if not match:
             return None
-        tokens = re.findall(r"\(?-?\d[\d,]*(?:\.\d+)?\)?|-", match.group(1))
+        tokens = re.findall(r"\\(?-?\\d[\\d,]*(?:\\.\\d+)?\\)?|-", match.group(1))
         if len(tokens) < min_values:
             return None
-        values: List[float] = []
-        for token in tokens:
-            if token == "-":
-                values.append(0.0)
-            else:
-                try:
-                    values.append(float(token.replace(",", "").replace("(", "-").replace(")", "")))
-                except ValueError:
-                    return None
-        return values
+        try:
+            return [
+                0.0 if token == "-" else float(token.replace(",", "").replace("(", "-").replace(")", ""))
+                for token in tokens
+            ]
+        except ValueError:
+            return None
 
     revenue = row_values(r"Revenue from operations")
     pat = row_values(r"Net Profit\s*/\s*\(loss\)\s+for the period")

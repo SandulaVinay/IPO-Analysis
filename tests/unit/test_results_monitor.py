@@ -423,6 +423,7 @@ def test_pdf_financial_metrics_extracts_quarter_columns_from_inr_lakh_filing():
         "text": """[Page 4]
         (Rs. in Lakhs)
         Unaudited Financial Results for the Quarter and Half year Ended 30th September, 2026
+        30-Sep-2026 30-Jun-2026 30-Sep-2025 30-Sep-2026 30-Sep-2025 31-Mar-2026
         Revenue from operations 1,640.55 785.30 1,371.95 2,425.85 1,996.83 5,149.88
         Net Profit/(loss) for the period 424.30 126.62 325.16 550.92 407.60 1,201.73
         Basic (Amount in Rs.) 0.50 0.15 0.43 0.65 0.54 1.57

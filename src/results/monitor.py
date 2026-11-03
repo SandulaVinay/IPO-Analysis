@@ -706,30 +706,39 @@ def extract_pdf_text(pdf_content: bytes, *, max_pages: int = 12, max_chars: int 
 
 
 def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: str, relating_to: str = "") -> Dict[str, Any]:
-    """Extract the current-quarter figures from the supported labelled INR-lakh PDF layout."""
+    """Extract explicitly labelled results table metrics from a machine-readable INR-lakh PDF."""
     if document_text.get("status") != "EXTRACTED":
         return {"status": "UNAVAILABLE", "reason": "Readable PDF text is unavailable."}
-    text = str(document_text.get("text") or "")
-    if not re.search(r"(?:rs\.?|inr|₹)\s*in\s*lakhs", text, re.IGNORECASE):
+    raw_text = str(document_text.get("text") or "")
+    if not re.search(r"(?:rs\.?|inr|₹)\s*in\s*lakhs", raw_text, re.IGNORECASE):
         return {"status": "UNAVAILABLE", "reason": "PDF table unit is not explicitly identified as INR lakhs."}
     target = Normalizer.parse_date(period_ended)
     if target is None:
         return {"status": "UNAVAILABLE", "reason": "PDF reporting period could not be parsed."}
-    target_date_found = (
-        target.strftime("%d.%m.%Y") in text
-        or target.strftime("%d-%m-%Y") in text
-        or target.strftime("%d %B %Y").lower() in text.lower()
-        or target.strftime("%d %b %Y").lower() in text.lower()
-        or (target.strftime("%d") in text and target.strftime("%B").lower() in text.lower() and target.strftime("%Y") in text)
+    # Accept common exchange-document date spellings, including ordinal days.
+    date_verified = (
+        target.strftime("%d.%m.%Y") in raw_text
+        or target.strftime("%d-%m-%Y") in raw_text
+        or target.strftime("%d-%b-%Y").lower() in raw_text.lower()
+        or target.strftime("%d-%b-%y").lower() in raw_text.lower()
+        or target.strftime("%d %b %Y").lower() in raw_text.lower()
+        or target.strftime("%d %B %Y").lower() in raw_text.lower()
+        or (
+            target.strftime("%d") in raw_text
+            and target.strftime("%B").lower() in raw_text.lower()
+            and target.strftime("%Y") in raw_text
+        )
     )
-    if not target_date_found:
+    if not date_verified:
         return {"status": "UNAVAILABLE", "reason": "Target reporting date not confirmed inside the PDF."}
 
-    flat = re.sub(r"\s+", " ", text)
+    flat = re.sub(r"\s+", " ", raw_text)
     number = r"\(?-?\d[\d,]*(?:\.\d+)?\)?|-"
 
     def row_values(label_pattern: str) -> Optional[List[float]]:
-        match = re.search(label_pattern + r"\s+((?:" + number + r"\s+){5}" + number + r")", flat, re.IGNORECASE)
+        # Row labels are matched as emitted by PyPDF text extraction; the
+        # numeric row ends at the sixth cell before the next non-cell text.
+        match = re.search(label_pattern + r"\s*(" + number + r"(?:\s+" + number + r"){5})", flat, re.IGNORECASE)
         if not match:
             return None
         tokens = re.findall(number, match.group(1))
@@ -741,12 +750,12 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
             return None
 
     revenue = row_values(r"Revenue from operations")
-    pat = row_values(r"Net Profit\s*/\s*\(loss\)\s+for the period")
+    # PyPDF may concatenate "Profit" and "(loss)" or normalize the slash/spaces.
+    pat = row_values(r"Net Profit\s*/\s*\(?loss\)?\s+for the period")
     eps = row_values(r"Basic\s*\(Amount in Rs\.\)")
     if revenue is None or pat is None:
         return {"status": "UNAVAILABLE", "reason": "Required labelled revenue/PAT rows could not be mapped to six numeric cells."}
 
-    # Current quarter, previous quarter, same quarter last year, then H1/H1/prior FY.
     rev_now, rev_q_prev, rev_y_prev = revenue[:3]
     pat_now, pat_q_prev, pat_y_prev = pat[:3]
     result: Dict[str, Any] = {

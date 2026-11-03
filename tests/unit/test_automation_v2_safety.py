@@ -475,3 +475,19 @@ def test_notification_orchestrator_prefers_email_before_deferred_whatsapp():
 
     orchestrator = NotificationOrchestrator(session=None)
     assert [provider.channel_name for provider in orchestrator.providers] == ["EMAIL", "WHATSAPP"]
+
+
+
+def test_official_issue_parser_rejects_exchange_table_header_as_company():
+    html = """
+    <table>
+      <tr><th>Company Name</th><th>Issue Start Date</th><th>Issue End Date</th></tr>
+      <tr><td>offered/ reserved</td><td></td><td></td></tr>
+      <tr><td>Example Renewables Limited</td><td>10-Nov-2026</td><td>14-Nov-2026</td></tr>
+    </table>
+    """
+    rows = _parse_official_issue_tables(
+        html, source_name="NSE India",
+        source_url="https://www.nseindia.com/market-data/all-upcoming-issues-ipo",
+    )
+    assert [row["company_name"] for row in rows] == ["Example Renewables Limited"]

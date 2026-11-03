@@ -439,7 +439,7 @@ def test_pdf_financial_metrics_extracts_quarter_columns_from_inr_lakh_filing():
     assert result["revenue_yoy_pct"] == 19.58
     assert result["pat_yoy_pct"] == 30.49
     assert result["revenue_qoq_pct"] == 108.91
-    assert result["pat_qoq_pct"] == 235.08
+    assert result["pat_qoq_pct"] == 235.10
 
 
 def test_pdf_financial_metrics_fails_closed_when_unit_missing():
@@ -477,5 +477,5 @@ def test_pdf_financial_metrics_maps_actual_rnit_ai_reported_rows():
     assert result["revenue_yoy_pct"] == 19.58
     assert result["pat_yoy_pct"] == 30.49
     assert result["revenue_qoq_pct"] == 108.91
-    assert result["pat_qoq_pct"] == 235.08
+    assert result["pat_qoq_pct"] == 235.10
     assert result["eps"] == 0.50

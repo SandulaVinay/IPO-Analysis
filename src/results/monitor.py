@@ -706,7 +706,7 @@ def extract_pdf_text(pdf_content: bytes, *, max_pages: int = 12, max_chars: int 
 
 
 def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: str, relating_to: str = "") -> Dict[str, Any]:
-    """Extract conservative financial metrics from a supported six-column PDF results table."""
+    """Extract only exact labelled numeric rows from a supported INR-lakh PDF table."""
     if document_text.get("status") != "EXTRACTED":
         return {"status": "UNAVAILABLE", "reason": "Readable PDF text is unavailable."}
     text = str(document_text.get("text") or "")
@@ -715,71 +715,52 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
     target = Normalizer.parse_date(period_ended)
     if target is None:
         return {"status": "UNAVAILABLE", "reason": "PDF reporting period could not be parsed."}
-    # Period text can be formatted as 30th September 2026 in title and 30.09.2026 in columns.
-    date_verified = (
+    if not (
         target.strftime("%d.%m.%Y") in text
         or target.strftime("%d-%m-%Y") in text
-        or target.strftime("%d-%b-%Y").lower() in text.lower()
-        or target.strftime("%d-%b-%y").lower() in text.lower()
-        or target.strftime("%d %b %Y").lower() in text.lower()
         or target.strftime("%d %B %Y").lower() in text.lower()
-        or (
-            target.strftime("%Y") in text
-            and target.strftime("%B").lower() in text.lower()
-            and target.strftime("%d") in text
-        )
-    )
-    if not date_verified:
+        or target.strftime("%d %b %Y").lower() in text.lower()
+        or (target.strftime("%d") in text and target.strftime("%B").lower() in text.lower() and target.strftime("%Y") in text)
+    ):
         return {"status": "UNAVAILABLE", "reason": "Target reporting date not confirmed inside the PDF."}
 
     flat = re.sub(r"\s+", " ", text)
+    number = r"\(?-?\d[\d,]*(?:\.\d+)?\)?|-"
 
-    def row_values(label_pattern: str, min_values: int = 6) -> Optional[List[float]]:
-        match = re.search(label_pattern + r"\s+(.{1,180}?)", flat, re.IGNORECASE)
+    def row_values(label_pattern: str) -> Optional[List[float]]:
+        # Limit each row to the next 170 characters and require six consecutive cells.
+        match = re.search(label_pattern + r"\s+(" + number + r"(?:\s+" + number + r"){5})", flat, re.IGNORECASE)
         if not match:
             return None
-        # A financial row has a bounded six-cell data run immediately after its label.
-        tail = match.group(1)
-        tokens = re.findall(r"\(?-?\d[\d,]*(?:\.\d+)?\)?|-", tail)
-        if len(tokens) < min_values:
-            return None
-        # Reject if another named row/header appears before all required numeric cells.
-        prefix_before_first = re.split(r"\(?-?\d[\d,]*(?:\.\d+)?\)?|-", tail, maxsplit=1)[0]
-        if re.search(r"[A-Za-z]{3,}", prefix_before_first):
-            return None
-        try:
-            return [
-                0.0 if token == "-" else float(token.replace(",", "").replace("(", "-").replace(")", ""))
-                for token in tokens[:6]
-            ]
-        except ValueError:
-            return None
+        values = []
+        for token in re.findall(number, match.group(1)):
+            values.append(0.0 if token == "-" else float(token.replace(",", "").replace("(", "-").replace(")", "")))
+        return values if len(values) == 6 else None
 
     revenue = row_values(r"Revenue from operations")
     pat = row_values(r"Net Profit\s*/\s*\(loss\)\s+for the period")
     eps = row_values(r"Basic\s*\(Amount in Rs\.\)")
     if not revenue or not pat:
-        return {"status": "UNAVAILABLE", "reason": "Required labelled revenue/PAT rows could not be mapped unambiguously."}
+        return {"status": "UNAVAILABLE", "reason": "Required labelled revenue/PAT rows could not be mapped to six numeric cells."}
 
-    # The supported six-column layout is Q-current, Q-prior, Q-prior-year,
-    # H1-current, H1-prior-year, FY-prior. Do not mix H1 and quarter columns.
-    revenue_current, revenue_prior_q, revenue_prior_y = revenue[:3]
-    pat_current, pat_prior_q, pat_prior_y = pat[:3]
+    # Quarter columns: current Q, previous Q, previous-year Q; half-year and FY columns follow.
+    rev_now, rev_q_prev, rev_y_prev = revenue[:3]
+    pat_now, pat_q_prev, pat_y_prev = pat[:3]
     result: Dict[str, Any] = {
         "status": "EXTRACTED",
         "extraction_method": "PDF_LABELLED_TABLE",
         "unit": "INR_LAKHS",
         "period_ended": target.isoformat(),
         "period_type": "QUARTER_AND_HALF_YEAR",
-        "revenue_lakh": revenue_current,
-        "revenue_cr": round(revenue_current / 100, 4),
-        "pat_lakh": pat_current,
-        "pat_cr": round(pat_current / 100, 4),
-        "revenue_yoy_pct": round((revenue_current - revenue_prior_y) / abs(revenue_prior_y) * 100, 2) if revenue_prior_y else None,
-        "pat_yoy_pct": round((pat_current - pat_prior_y) / abs(pat_prior_y) * 100, 2) if pat_prior_y else None,
-        "revenue_qoq_pct": round((revenue_current - revenue_prior_q) / abs(revenue_prior_q) * 100, 2) if revenue_prior_q else None,
-        "pat_qoq_pct": round((pat_current - pat_prior_q) / abs(pat_prior_q) * 100, 2) if pat_prior_q else None,
-        "reason": "Quarterly values mapped from labelled rows; confirm all figures against the original filing.",
+        "revenue_lakh": rev_now,
+        "revenue_cr": round(rev_now / 100, 4),
+        "pat_lakh": pat_now,
+        "pat_cr": round(pat_now / 100, 4),
+        "revenue_yoy_pct": round((rev_now - rev_y_prev) / abs(rev_y_prev) * 100, 2) if rev_y_prev else None,
+        "pat_yoy_pct": round((pat_now - pat_y_prev) / abs(pat_y_prev) * 100, 2) if pat_y_prev else None,
+        "revenue_qoq_pct": round((rev_now - rev_q_prev) / abs(rev_q_prev) * 100, 2) if rev_q_prev else None,
+        "pat_qoq_pct": round((pat_now - pat_q_prev) / abs(pat_q_prev) * 100, 2) if pat_q_prev else None,
+        "reason": "Quarterly values mapped from labelled PDF rows; verify against the original filing.",
     }
     if eps:
         result["eps"] = eps[0]

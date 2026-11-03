@@ -716,7 +716,7 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
     if document_text.get("status") != "EXTRACTED":
         return {"status": "UNAVAILABLE", "reason": "Readable PDF text is unavailable."}
     text = str(document_text.get("text") or "")
-    if "rs. in lakhs" not in text.lower() and "₹ in lakhs" not in text.lower() and "rupees in lakhs" not in text.lower():
+    if not re.search(r"(?:rs\.?|inr|₹)\s*(?:in\s+)?lakhs|\(\s*rs\.?\s*in\s*lakhs\s*\)", text, re.IGNORECASE):
         return {"status": "UNAVAILABLE", "reason": "PDF table unit is not explicitly identified as INR lakhs."}
     parsed_target = Normalizer.parse_date(period_ended)
     if not parsed_target:
@@ -726,8 +726,12 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
     flat = re.sub(r"[ \t]+", " ", text)
     # The BSE PDF layout may split table headers over lines; only accept if the
     # relevant period end date occurs in the financial-results table content.
-    if parsed_target.strftime("%d.%m.%Y") not in flat and parsed_target.strftime("%d-%m-%Y") not in flat and parsed_target.strftime("%d-%b-%Y").lower() not in flat.lower():
-        if parsed_target.strftime("%d %B %Y").lower() not in flat.lower() and parsed_target.strftime("%d %b %Y").lower() not in flat.lower():
+    date_forms = {
+        parsed_target.strftime("%d.%m.%Y"), parsed_target.strftime("%d-%m-%Y"),
+        parsed_target.strftime("%d-%b-%Y"), parsed_target.strftime("%d-%b-%y"),
+        parsed_target.strftime("%d %B %Y"), parsed_target.strftime("%d %b %Y"),
+    }
+    if not any(value.lower() in flat.lower() for value in date_forms):
             return {"status": "UNAVAILABLE", "reason": "Target reporting date not confirmed inside the PDF."}
 
     # Prefer table rows on page 4 (financial statement) marked in an INR lakh unit.
@@ -751,7 +755,7 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
 
     revenue = row_values(r"Revenue from operations")
     pat = row_values(r"Net Profit\s*/\s*\(loss\)\s+for the period")
-    eps = row_values(r"-\s*Basic\s*\(Amount in Rs\.\)")
+    eps = row_values(r"Basic\s*\(Amount in Rs\.\)")
     cfo = row_values(r"NET CASH FLOW FROM OPERATING ACTIVITIES")
     if not revenue or not pat:
         return {"status": "UNAVAILABLE", "reason": "Required labelled revenue/PAT rows could not be mapped unambiguously."}

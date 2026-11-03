@@ -706,11 +706,7 @@ def extract_pdf_text(pdf_content: bytes, *, max_pages: int = 12, max_chars: int 
 
 
 def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: str, relating_to: str = "") -> Dict[str, Any]:
-    """Conservative structured-text parser for explicitly labelled INR-lakh statements.
-
-    It supports a six-column table where quarter values occupy the first three
-    columns. Any missing unit/date/label or fewer than six numeric cells fails closed.
-    """
+    """Extract explicitly labelled rows from a supported INR-lakh PDF statement."""
     if document_text.get("status") != "EXTRACTED":
         return {"status": "UNAVAILABLE", "reason": "Readable PDF text is unavailable."}
     source = str(document_text.get("text") or "")
@@ -719,46 +715,40 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
     target = Normalizer.parse_date(period_ended)
     if target is None:
         return {"status": "UNAVAILABLE", "reason": "PDF reporting period could not be parsed."}
-    if not (
+    date_ok = (
         target.strftime("%d.%m.%Y") in source
         or target.strftime("%d-%m-%Y") in source
+        or target.strftime("%d-%b-%Y").lower() in source.lower()
         or target.strftime("%d %B %Y").lower() in source.lower()
         or target.strftime("%d %b %Y").lower() in source.lower()
         or (target.strftime("%d") in source and target.strftime("%B").lower() in source.lower() and target.strftime("%Y") in source)
-    ):
+    )
+    if not date_ok:
         return {"status": "UNAVAILABLE", "reason": "Target reporting date not confirmed inside the PDF."}
 
-    lines = [re.sub(r"\s+", " ", line).strip() for line in source.splitlines() if line.strip()]
-    number = re.compile(r"^\(?-?\d[\d,]*(?:\.\d+)?\)?$|^-?$")
+    flat = re.sub(r"\s+", " ", source)
+    # Require exactly six labelled cells, permitting whitespace/newline differences between cells.
+    number = r"\(?-?\d[\d,]*(?:\.\d+)?\)?|-"
 
-    def find_row(label_pattern: str) -> Optional[List[float]]:
-        label = re.compile(label_pattern, re.IGNORECASE)
-        for line in lines:
-            match = label.search(line)
-            if not match:
-                continue
-            tail = line[match.end():].strip()
-            cells = [part for part in tail.split(" ") if part]
-            # Some PDF extractors insert visual separators; ignore only common separators.
-            cells = [cell.strip("|,;") for cell in cells]
-            values: List[float] = []
-            for cell in cells:
-                if not number.fullmatch(cell):
-                    break
-                if cell in {"-", ""}:
-                    values.append(0.0)
-                else:
-                    try:
-                        values.append(float(cell.replace(",", "").replace("(", "-").replace(")", "")))
-                    except ValueError:
-                        break
-            if len(values) == 6:
-                return values
-        return None
+    def row_values(label_pattern: str) -> Optional[List[float]]:
+        label_match = re.search(label_pattern, flat, re.IGNORECASE)
+        if not label_match:
+            return None
+        tail = flat[label_match.end():label_match.end() + 180]
+        tokens = re.findall(number, tail)
+        if len(tokens) < 6:
+            return None
+        # Do not take cells after another textual label; capture only the first six tokens
+        # if there is no alphabetic content between them (the header labels may be before row).
+        first_six = tokens[:6]
+        try:
+            return [0.0 if token == "-" else float(token.replace(",", "").replace("(", "-").replace(")", "")) for token in first_six]
+        except ValueError:
+            return None
 
-    revenue = find_row(r"Revenue from operations")
-    pat = find_row(r"Net Profit\s*/\s*\(loss\)\s+for the period")
-    eps = find_row(r"Basic\s*\(Amount in Rs\.\)")
+    revenue = row_values(r"Revenue from operations")
+    pat = row_values(r"Net Profit\s*/\s*\(loss\)\s+for the period")
+    eps = row_values(r"Basic\s*\(Amount in Rs\.\)")
     if revenue is None or pat is None:
         return {"status": "UNAVAILABLE", "reason": "Required labelled revenue/PAT rows could not be mapped to six numeric cells."}
 
@@ -778,9 +768,9 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
         "pat_yoy_pct": round((pat_now - pat_y_prev) / abs(pat_y_prev) * 100, 2) if pat_y_prev else None,
         "revenue_qoq_pct": round((rev_now - rev_q_prev) / abs(rev_q_prev) * 100, 2) if rev_q_prev else None,
         "pat_qoq_pct": round((pat_now - pat_q_prev) / abs(pat_q_prev) * 100, 2) if pat_q_prev else None,
-        "reason": "Quarterly values mapped from labelled PDF rows; verify against the original filing.",
+        "reason": "Quarterly figures transcribed from labelled PDF rows; verify against the original filing.",
     }
-    if eps is not None:
+    if eps:
         result["eps"] = eps[0]
     return result
 

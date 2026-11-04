@@ -116,8 +116,18 @@
       "status": "ACCEPTED",
       "symbol": "ALL",
       "updated_at": "2026-11-03T19:10:57.399953+00:00"
+    },
+    {
+      "channel": "EMAIL",
+      "event_date": "2026-11-05",
+      "event_key": "IPO_DAILY_DIGEST_2026-11-05",
+      "event_type": "DAILY_IPO_DIGEST",
+      "processing_status": null,
+      "status": "ACCEPTED",
+      "symbol": "ALL",
+      "updated_at": "2026-11-04T19:27:31.369956+00:00"
     }
   ],
   "schema_version": 1,
-  "updated_at": "2026-11-03T19:10:57.399963+00:00"
+  "updated_at": "2026-11-04T19:27:31.369964+00:00"
 }

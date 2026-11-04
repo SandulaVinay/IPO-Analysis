@@ -247,7 +247,8 @@ class IPORepository:
         gmp_value: float,
         upper_price: float,
         source: str = "GMP Aggregator",
-        trend: str = "STABLE",
+        trend: str = "UNKNOWN",
+        captured_at: Optional[datetime] = None,
     ) -> GMPSnapshot:
         """Add Grey Market Premium snapshot."""
         est_price = upper_price + gmp_value
@@ -260,10 +261,20 @@ class IPORepository:
             potential_listing_gain_pct=gain_pct,
             source=source,
             trend=trend,
+            captured_at=captured_at or datetime.utcnow(),
         )
         self.session.add(gmp)
         await self.session.flush()
         return gmp
+
+    async def latest_gmp_snapshot(self, ipo_id: int, source: Optional[str] = None) -> Optional[GMPSnapshot]:
+        """Get the newest stored quote, optionally restricted to one source label."""
+        stmt = select(GMPSnapshot).where(GMPSnapshot.ipo_id == ipo_id)
+        if source:
+            stmt = stmt.where(GMPSnapshot.source == source)
+        stmt = stmt.order_by(GMPSnapshot.captured_at.desc(), GMPSnapshot.id.desc()).limit(1)
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
 
     async def add_subscription(
         self,

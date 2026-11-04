@@ -23,7 +23,7 @@ class NotificationOrchestrator:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.repo = IPORepository(session)
-        # Current rollout policy: SMTP email is preferred; WhatsApp remains deferred.
+        # Email is primary; WhatsApp is an optional fallback controlled by settings.
         # Provider acceptance is not proof of final delivery, and mock/console modes
         # must never be treated as a delivered alert.
         self.providers = [EmailProvider(), WhatsAppProvider()]

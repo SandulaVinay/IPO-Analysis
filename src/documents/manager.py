@@ -5,6 +5,7 @@ A failed download is never replaced by a fabricated placeholder. The caller must
 real PDF from a verified source; otherwise ingestion fails and the analysis remains gated.
 """
 import hashlib
+from html import escape
 import ipaddress
 import json
 import os
@@ -25,6 +26,8 @@ from src.documents.extractor import extract_pdf_candidate_evidence
 from src.verification.financial_evidence import reconcile_financial_candidates
 from src.reporting.pdf import markdown_to_pdf
 from src.ingestion.client import http_client
+from src.notifications.email import EmailProvider
+from src.notifications.whatsapp import WhatsAppProvider
 
 MAX_DOCUMENT_BYTES = 50 * 1024 * 1024
 
@@ -173,7 +176,10 @@ def _write_candidate_report(
         ])
     report_content = "\n".join(lines) + "\n"
     report_path.write_text(report_content, encoding="utf-8")
-    markdown_to_pdf(report_content, report_path.with_suffix(".pdf"), title="Prospectus Evidence Candidates")
+    try:
+        markdown_to_pdf(report_content, report_path.with_suffix(".pdf"), title="Prospectus Evidence Candidates")
+    except Exception as exc:
+        logger.warning("Prospectus candidate PDF rendering failed (%s); Markdown report remains available.", type(exc).__name__)
     return report_path
 
 
@@ -191,9 +197,7 @@ async def _notify_new_document(
     evidence_count: int,
     report_pdf: Path,
 ) -> None:
-    """Send one WhatsApp-first alert per document hash, with email fallback."""
-    from src.notifications.email import EmailProvider
-    from src.notifications.whatsapp import WhatsAppProvider
+    """Send one email-first alert per document hash, with optional WhatsApp fallback."""
 
     event_key = "PROSPECTUS_" + hashlib.sha256(
         f"{symbol}|{source_url}|{document_hash}".encode("utf-8")
@@ -214,22 +218,28 @@ async def _notify_new_document(
         + artifact_link
     )
     try:
-        result = await WhatsAppProvider().send_notification(
-            recipient=settings.whatsapp_recipient_phone,
+        attachments = [str(report_pdf)] if report_pdf.is_file() else []
+        html_body = (
+            '<!doctype html><html><body><pre style="font:14px/1.5 sans-serif;white-space:pre-wrap">'
+            + escape(message)
+            + "</pre></body></html>"
+        )
+        result = await EmailProvider().send_notification(
+            recipient=settings.email_to,
             subject=f"New IPO document: {company_name} ({symbol})",
             content=message,
-            metadata={"attachment_path": str(report_pdf)},
+            metadata={"attachments": attachments, "html_body": html_body},
         )
-        channel = "WHATSAPP"
+        channel = "EMAIL"
         accepted = bool(result.get("success") and (result.get("accepted") or result.get("delivered")))
-        if not accepted:
-            result = await EmailProvider().send_notification(
-                recipient=settings.email_to,
+        if not accepted and settings.enable_whatsapp:
+            result = await WhatsAppProvider().send_notification(
+                recipient=settings.whatsapp_recipient_phone,
                 subject=f"New IPO document: {company_name} ({symbol})",
                 content=message,
-                metadata={"attachments": [str(report_pdf)]},
+                metadata={"attachment_path": attachments[0] if attachments else None},
             )
-            channel = "EMAIL"
+            channel = "WHATSAPP"
             accepted = bool(result.get("success") and (result.get("accepted") or result.get("delivered")))
         if accepted:
             store.record_event(

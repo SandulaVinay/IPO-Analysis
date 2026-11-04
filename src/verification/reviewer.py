@@ -8,7 +8,8 @@ checks, and writes an immutable entry into the system audit log.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+import math
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
@@ -88,6 +89,8 @@ class FactReviewService:
         decision: str,
         target_field_name: Optional[str] = None,
         verified_numeric_value: Optional[float] = None,
+        verified_value_text: Optional[str] = None,
+        verified_value_type: Optional[str] = None,
         notes: str = "",
         override_conflict: bool = False,
     ) -> Dict[str, Any]:
@@ -170,24 +173,75 @@ class FactReviewService:
                 except Exception as exc:
                     raise ValueError("Normalized candidate value cannot be converted to float.") from exc
 
-        # Determine canonical field name
+        # Determine canonical field name and the reviewed value type.
         canonical = target_field_name
         if not canonical:
             canonical = cls.CRITICAL_TARGET_FIELDS.get(candidate.field_name, candidate.field_name)
 
-        if verified_numeric_value is None and candidate.value_numeric is not None:
-            verified_numeric_value = float(candidate.value_numeric)
+        if verified_value_type:
+            value_type = str(verified_value_type).strip().upper()
+        elif candidate_meta or candidate.value_numeric is not None or verified_numeric_value is not None:
+            value_type = "NUMBER"
+        else:
+            value_type = str(candidate.value_type or "STRING").strip().upper()
 
-        if verified_numeric_value is None:
-            raise ValueError("A verified numeric value is required to promote a financial fact.")
+        value_numeric: Optional[float] = None
+        if value_type in {"NUMBER", "NUMERIC", "FLOAT"}:
+            raw_numeric: Any = verified_numeric_value
+            if raw_numeric is None and candidate_meta:
+                raw_numeric = candidate_meta.get("normalized_value_inr_crore")
+            if raw_numeric is None:
+                raw_numeric = candidate.value_numeric
+            if raw_numeric is None:
+                raw_numeric = verified_value_text if verified_value_text is not None else candidate.value_text
+            try:
+                value_numeric = float(Decimal(str(raw_numeric)))
+            except Exception as exc:
+                raise ValueError("A verified finite numeric value is required to promote this fact.") from exc
+            if not math.isfinite(value_numeric):
+                raise ValueError("A verified finite numeric value is required to promote this fact.")
+            value_type = "NUMBER"
+            value_text = str(value_numeric)
+        elif value_type in {"BOOLEAN", "BOOL"}:
+            raw_boolean: Any = verified_value_text if verified_value_text is not None else candidate.value_text
+            if verified_numeric_value is not None:
+                raw_boolean = verified_numeric_value
+            elif candidate.value_numeric is not None:
+                raw_boolean = candidate.value_numeric
+            if isinstance(raw_boolean, bool):
+                parsed_boolean = raw_boolean
+            else:
+                normalized_boolean = str(raw_boolean or "").strip().lower()
+                if normalized_boolean in {"true", "1", "yes", "present"}:
+                    parsed_boolean = True
+                elif normalized_boolean in {"false", "0", "no", "absent"}:
+                    parsed_boolean = False
+                else:
+                    raise ValueError("Boolean facts must be explicitly reviewed as true/false or 1/0.")
+            value_type = "BOOLEAN"
+            value_numeric = 1.0 if parsed_boolean else 0.0
+            value_text = "true" if parsed_boolean else "false"
+        elif value_type == "DATE":
+            raw_date = str(verified_value_text if verified_value_text is not None else candidate.value_text or "").strip()
+            try:
+                value_text = date.fromisoformat(raw_date[:10]).isoformat()
+            except ValueError as exc:
+                raise ValueError("Date facts must be reviewed in ISO YYYY-MM-DD format.") from exc
+        elif value_type in {"STRING", "TEXT"}:
+            value_text = str(verified_value_text if verified_value_text is not None else candidate.value_text or "").strip()
+            if not value_text:
+                raise ValueError("A non-empty reviewed text value is required to promote this fact.")
+            value_type = "STRING"
+        else:
+            raise ValueError("Verified fact type must be NUMBER, BOOLEAN, DATE, or STRING.")
 
         # Create the canonical VERIFIED fact
         verified_fact = Fact(
             ipo_id=candidate.ipo_id,
             field_name=canonical,
-            value_text=str(verified_numeric_value),
-            value_numeric=verified_numeric_value,
-            value_type="NUMBER",
+            value_text=value_text,
+            value_numeric=value_numeric,
+            value_type=value_type,
             source_name=f"AUDITED_REVIEWER:{cleaned_reviewer}",
             source_url=candidate.source_url,
             source_tier="TIER_1",
@@ -211,14 +265,16 @@ class FactReviewService:
             entity_id=str(candidate.id),
             description=(
                 f"Candidate fact #{candidate.id} promoted to VERIFIED field '{canonical}' "
-                f"with value {verified_numeric_value} Cr by {cleaned_reviewer}"
+                f"with reviewed value '{value_text}' by {cleaned_reviewer}"
             ),
             metadata_json={
                 "reviewer_id": cleaned_reviewer,
                 "candidate_fact_id": candidate.id,
                 "original_field": candidate.field_name,
                 "canonical_field": canonical,
-                "verified_value_cr": verified_numeric_value,
+                "verified_numeric_value": value_numeric,
+                "verified_value_text": value_text,
+                "verified_value_type": value_type,
                 "source_url": candidate.source_url,
                 "page_number": candidate.page_number,
                 "notes": cleaned_notes,
@@ -234,7 +290,9 @@ class FactReviewService:
             "decision": "VERIFIED",
             "reviewer_id": cleaned_reviewer,
             "canonical_field_name": canonical,
-            "verified_numeric_value": verified_numeric_value,
+            "verified_numeric_value": value_numeric,
+            "verified_value_text": value_text,
+            "verified_value_type": value_type,
             "source_url": candidate.source_url,
             "audit_logged": True,
         }

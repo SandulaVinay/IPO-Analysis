@@ -1,11 +1,38 @@
 import pytest
+from datetime import date
 from types import SimpleNamespace
 
-from src.ingestion.scrapers import _parse_official_issue_tables, _has_recognized_issue_table, PortalScraper
+from src.ingestion.scrapers import (
+    _parse_official_issue_tables,
+    _has_recognized_issue_table,
+    _parse_currency_cell,
+    parse_ipowatch_gmp_rows,
+    PortalScraper,
+)
+from src.discovery.engine import DiscoveryEngine
 from src.notifications.whatsapp import WhatsAppProvider
 from src.ingestion import client as client_module
 from src.common.config import settings
 from src.web.app import run_pipeline_for_ipo
+
+
+def test_gmp_currency_parser_accepts_live_unicode_rupee_values():
+    assert _parse_currency_cell("₹11") == 11.0
+    assert _parse_currency_cell("−₹5") == -5.0
+    assert _parse_currency_cell("(₹2.5)") == -2.5
+    assert _parse_currency_cell("â‚¹12") == 12.0
+
+
+def test_ipowatch_table_parses_live_unicode_rupee_band_and_gmp():
+    html = """<table>
+      <tr><th>IPO</th><th>Type</th><th>Status</th><th>Band</th><th>GMP</th></tr>
+      <tr><td>Example Limited</td><td>Mainline</td><td>Open</td><td>₹89–₹94</td><td>₹11</td></tr>
+    </table>"""
+    rows = parse_ipowatch_gmp_rows(html)
+    assert len(rows) == 1
+    assert rows[0]["min_price"] == 89.0
+    assert rows[0]["max_price"] == 94.0
+    assert rows[0]["gmp_value"] == 11.0
 
 
 def test_official_issue_parser_only_emits_source_values():
@@ -85,6 +112,63 @@ async def test_production_analysis_fails_closed_without_verified_sources(monkeyp
     assert result["score_data"]["overall_score"] == 0.0
     assert result["assessment_status"] == "UNABLE_TO_ASSESS"
     assert "No investment recommendation" in result["executive_summary"]
+
+
+@pytest.mark.asyncio
+async def test_production_analysis_still_fails_closed_when_only_critical_fields_are_verified(monkeypatch):
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "enable_demo_analysis", False)
+    fields = {
+        "min_price": 100.0,
+        "max_price": 110.0,
+        "lot_size": 10.0,
+        "issue_size_cr": 250.0,
+        "fresh_issue_cr": 200.0,
+        "ofs_cr": 50.0,
+        "revenue_latest": 125.0,
+        "pat_latest": 12.0,
+        "cfo_latest": 15.0,
+    }
+    facts = [
+        SimpleNamespace(
+            field_name=name,
+            value_numeric=value,
+            value_text=None,
+            verification_status="VERIFIED",
+            source_name="RHP reviewer",
+            source_url="https://www.nseindia.com/example-rhp.pdf",
+        )
+        for name, value in fields.items()
+    ]
+
+    class Result:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return facts
+
+    class Session:
+        async def execute(self, _statement):
+            return Result()
+
+    ipo = SimpleNamespace(
+        id=1,
+        symbol="TEST_IPO",
+        company_name="Test Issuer",
+        verified_open_date=date(2026, 11, 10),
+        verified_close_date=date(2026, 11, 15),
+        min_price=None,
+        max_price=None,
+        lot_size=None,
+        issue_size_cr=None,
+        fresh_issue_cr=None,
+        ofs_cr=None,
+    )
+    result = await run_pipeline_for_ipo(ipo, Session())
+    assert result["score_data"]["verdict"] == "UNABLE_TO_ASSESS"
+    assert "sample assumptions" in result["executive_summary"]
+    assert result["assessment_status"] == "UNABLE_TO_ASSESS"
 
 
 def test_document_ingestion_rejects_html_or_empty_content():
@@ -311,6 +395,109 @@ async def test_portal_scraper_reports_partial_when_one_official_layout_is_unreco
     assert rows == []
     assert scraper.last_source_status == "PARTIAL"
     assert any("UNRECOGNIZED_LAYOUT" in error for error in scraper.last_source_errors)
+
+
+@pytest.mark.asyncio
+async def test_ipowatch_gmp_is_cached_matched_by_exact_name_and_zero_is_unavailable(monkeypatch):
+    from src.ingestion import scrapers as scraper_module
+
+    page = """
+    <table>
+      <tr><th>IPO</th><th>Type</th><th>Status</th><th>Band</th><th>GMP</th><th>Gain %</th></tr>
+      <tr><td>Example Industries</td><td>Mainline</td><td>Open</td><td>₹100–₹110</td><td>+₹15</td><td>13.6%</td></tr>
+      <tr><td>Zero Premium SME</td><td>SME</td><td>Upcoming</td><td>₹50–₹55</td><td>₹0</td><td>0.0%</td></tr>
+      <tr><td>Closed Example</td><td>Mainline</td><td>Allotment Out</td><td>₹70–₹75</td><td>₹12</td><td>16.0%</td></tr>
+    </table>
+    """
+    calls = []
+
+    async def fake_get(url, headers=None, timeout=None):
+        calls.append(url)
+        return SimpleNamespace(text=page)
+
+    monkeypatch.setattr(scraper_module.http_client, "get", fake_get)
+    parsed = parse_ipowatch_gmp_rows(page)
+    assert len(parsed) == 3
+    assert parsed[0]["gmp_value"] == 15.0
+    assert parsed[0]["max_price"] == 110.0
+
+    scraper = PortalScraper()
+    quote = await scraper.fetch_live_gmp_for_company("Example Industries Limited")
+    assert quote["gmp_value"] == 15.0
+    assert quote["source_url"] == "https://ipowatch.cc/gmp"
+    assert await scraper.fetch_live_gmp_for_company("Zero Premium SME") is None
+    assert await scraper.fetch_live_gmp_for_company("Closed Example") is None
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_discovery_persists_gmp_only_when_tracker_band_matches_official_price():
+    class Session:
+        async def commit(self):
+            return None
+
+    class Repository:
+        def __init__(self, ipo):
+            self.ipo = ipo
+            self.added = []
+
+        async def create_or_update_ipo(self, **_kwargs):
+            return self.ipo
+
+        async def latest_gmp_snapshot(self, _ipo_id, source=None):
+            return None
+
+        async def add_gmp(self, **kwargs):
+            self.added.append(kwargs)
+
+    class Scraper:
+        last_source_status = "SUCCESS"
+
+        async def fetch_upcoming_ipos(self):
+            return [{
+                "company_name": "Example Industries Limited",
+                "symbol": "EXAMPLE",
+                "issue_type": "MAINBOARD",
+                "max_price": 110.0,
+                "min_price": 100.0,
+                "document_links": [],
+            }]
+
+        async def fetch_live_gmp_for_company(self, _company_name):
+            return {
+                "gmp_value": 15.0,
+                "max_price": 110.0,
+                "issue_type": "MAINBOARD",
+                "captured_at": "2026-11-04T10:00:00+00:00",
+            }
+
+    for quote_upper, expected_count in ((110.0, 1), (111.0, 0)):
+        ipo = SimpleNamespace(
+            id=1,
+            status="IPO_DISCOVERED",
+            issue_type="MAINBOARD",
+            max_price=110.0,
+            verified_open_date=None,
+            verified_close_date=None,
+        )
+        repo = Repository(ipo)
+        scraper = Scraper()
+
+        async def quote_for_company(_name):
+            quote = await Scraper.fetch_live_gmp_for_company(scraper, _name)
+            quote["max_price"] = quote_upper
+            return quote
+
+        scraper.fetch_live_gmp_for_company = quote_for_company
+        engine = DiscoveryEngine(Session())
+        engine.repo = repo
+        engine.scraper = scraper
+        await engine.run_discovery()
+        assert len(repo.added) == expected_count
+        if repo.added:
+            assert repo.added[0]["source"] == "IPOWATCH"
+            assert repo.added[0]["trend"] == "UNKNOWN"
+            assert repo.added[0]["captured_at"].tzinfo is None
 
 
 

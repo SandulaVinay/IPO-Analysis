@@ -5,6 +5,7 @@ recipient details, credentials, or notification message bodies to this store.
 """
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models import IPO
 from src.database.repository import IPORepository
+from sqlalchemy.orm import selectinload
 
 
 def _public_source_url(source_url: str) -> str:
@@ -30,6 +32,11 @@ def _public_source_url(source_url: str) -> str:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Normalize SQLite-style naive UTC and timezone-aware timestamps for comparison."""
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
 class StateStore:
@@ -106,15 +113,60 @@ class StateStore:
             )
             if item.get("status"):
                 ipo.status = str(item["status"])
+            for snapshot in item.get("gmp_snapshots", []) if isinstance(item.get("gmp_snapshots", []), list) else []:
+                if not isinstance(snapshot, dict) or snapshot.get("source") != "IPOWATCH":
+                    continue
+                try:
+                    gmp_value = float(snapshot["gmp_value"])
+                    upper_price = float(snapshot["upper_price"])
+                    captured_at = datetime.fromisoformat(str(snapshot["captured_at"]).replace("Z", "+00:00"))
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if not math.isfinite(gmp_value) or not math.isfinite(upper_price) or upper_price <= 0 or gmp_value == 0:
+                    continue
+                if ipo.max_price is None or abs(float(ipo.max_price) - upper_price) > 0.01:
+                    continue
+                if captured_at.tzinfo is None:
+                    captured_at = captured_at.replace(tzinfo=timezone.utc)
+                captured_at = _as_utc(captured_at).replace(tzinfo=None)
+                existing = await repository.latest_gmp_snapshot(ipo.id, source="IPOWATCH")
+                if existing and existing.captured_at and _as_utc(existing.captured_at) >= _as_utc(captured_at):
+                    continue
+                await repository.add_gmp(
+                    ipo_id=ipo.id,
+                    gmp_value=gmp_value,
+                    upper_price=upper_price,
+                    source="IPOWATCH",
+                    trend=str(snapshot.get("trend") or "UNKNOWN")[:20],
+                    captured_at=captured_at,
+                )
             restored += 1
         await session.commit()
         return restored
 
     async def save_ipo_registry(self, session: AsyncSession) -> int:
-        result = await session.execute(select(IPO).order_by(IPO.symbol))
+        result = await session.execute(
+            select(IPO).options(selectinload(IPO.gmp_snapshots)).order_by(IPO.symbol)
+        )
         ipos = list(result.scalars().all())
         records = []
         for ipo in ipos:
+            source_snapshots = [snapshot for snapshot in ipo.gmp_snapshots if snapshot.source == "IPOWATCH"]
+            source_snapshots.sort(
+                key=lambda snapshot: _as_utc(snapshot.captured_at or datetime.min.replace(tzinfo=timezone.utc)),
+                reverse=True,
+            )
+            gmp_snapshots = []
+            if source_snapshots:
+                snapshot = source_snapshots[0]
+                captured_at = snapshot.captured_at or datetime.now(timezone.utc).replace(tzinfo=None)
+                gmp_snapshots.append({
+                    "gmp_value": snapshot.gmp_value,
+                    "upper_price": snapshot.upper_price,
+                    "captured_at": _as_utc(captured_at).isoformat(),
+                    "source": "IPOWATCH",
+                    "trend": snapshot.trend or "UNKNOWN",
+                })
             records.append({
                 "symbol": ipo.symbol,
                 "company_name": ipo.company_name,
@@ -131,6 +183,7 @@ class StateStore:
                 "issue_size_cr": ipo.issue_size_cr,
                 "fresh_issue_cr": ipo.fresh_issue_cr,
                 "ofs_cr": ipo.ofs_cr,
+                "gmp_snapshots": gmp_snapshots,
             })
         self._write("ipo_registry.json", {"schema_version": 1, "updated_at": _utc_now(), "ipos": records})
         return len(records)
@@ -281,12 +334,30 @@ class StateStore:
         events = payload.get("events", [])
         return any(isinstance(event, dict) and event.get("event_key") == event_key for event in events)
 
+    def event_record(self, event_key: str) -> Optional[Dict[str, Any]]:
+        """Return the latest delivery and extraction state for one filing."""
+        payload = self._read("notification_outbox.json", {"schema_version": 1, "events": []})
+        events = payload.get("events", [])
+        if not isinstance(events, list):
+            raise RuntimeError("Notification outbox is malformed.")
+        return next((event for event in reversed(events) if isinstance(event, dict) and event.get("event_key") == event_key), None)
+
     def has_processed_event(self, event_key: str) -> bool:
         payload = self._read("processed_events.json", {"schema_version": 1, "processed_event_keys": []})
         keys = payload.get("processed_event_keys", [])
         return event_key in keys if isinstance(keys, list) else False
 
-    def record_event(self, event_key: str, *, event_type: str, symbol: str, event_date: Optional[str], status: str, channel: Optional[str] = None) -> None:
+    def record_event(
+        self,
+        event_key: str,
+        *,
+        event_type: str,
+        symbol: str,
+        event_date: Optional[str],
+        status: str,
+        channel: Optional[str] = None,
+        processing_status: Optional[str] = None,
+    ) -> None:
         """Record sanitized event metadata; never include recipients or message text."""
         processed = self._read("processed_events.json", {"schema_version": 1, "processed_event_keys": []})
         keys = processed.get("processed_event_keys", [])
@@ -310,6 +381,7 @@ class StateStore:
             "event_date": event_date,
             "status": status,
             "channel": channel,
+            "processing_status": processing_status,
             "updated_at": _utc_now(),
         })
         outbox["events"] = events[-1000:]

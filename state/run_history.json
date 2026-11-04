@@ -767,6 +767,18 @@
       "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; errors=0",
       "status": "SUCCESS",
       "timestamp": "2026-11-04T16:43:07.582195+00:00"
+    },
+    {
+      "command": "discover",
+      "detail": "restored=1; discovered=0; registry_total=1; source_coverage=PARTIAL",
+      "status": "PARTIAL",
+      "timestamp": "2026-11-04T18:27:51.427244+00:00"
+    },
+    {
+      "command": "results",
+      "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; notification_failures=0; notification_skipped=0; documents_unavailable=0; errors=0",
+      "status": "SUCCESS",
+      "timestamp": "2026-11-04T18:27:58.863850+00:00"
     }
   ],
   "schema_version": 1

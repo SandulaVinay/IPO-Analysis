@@ -5,6 +5,7 @@
       "announced_open_date": null,
       "company_name": "offered/ reserved",
       "fresh_issue_cr": null,
+      "gmp_snapshots": [],
       "industry": null,
       "issue_size_cr": null,
       "issue_type": "MAINBOARD",
@@ -19,5 +20,5 @@
     }
   ],
   "schema_version": 1,
-  "updated_at": "2026-11-04T16:43:01.458487+00:00"
+  "updated_at": "2026-11-04T18:27:51.425859+00:00"
 }

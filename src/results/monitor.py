@@ -31,6 +31,13 @@ from src.state.store import StateStore
 from src.reporting.pdf import markdown_to_pdf
 from src.results.email_analysis import build_results_email
 from src.results.email_html import results_email_html
+from src.results.document_extractors import (
+    MAX_DOCUMENT_BYTES,
+    detect_document_format,
+    extract_document,
+    extract_financial_metrics_from_tables,
+    infer_xbrl_reporting_period,
+)
 
 NSE_ROOT_URL = "https://www.nseindia.com/"
 NSE_RESULTS_URL = "https://www.nseindia.com/companies-listing/corporate-filings-financial-results"
@@ -90,7 +97,16 @@ def _matches_watchlist_company(filing: Dict[str, Any], company: Dict[str, Any]) 
     return bool(expected_keys and _key(str(filing.get("company_name", ""))) in expected_keys)
 
 
-RESULT_LOOKBACK_HOURS = max(1, int(os.getenv("RESULT_LOOKBACK_HOURS", "72")))
+def parse_result_lookback_hours(value: Any, default: int = 72) -> int:
+    """Parse a bounded workflow lookback value without crashing module import."""
+    try:
+        hours = int(str(value).strip())
+    except (TypeError, ValueError):
+        hours = default
+    return min(720, max(1, hours))
+
+
+RESULT_LOOKBACK_HOURS = parse_result_lookback_hours(os.getenv("RESULT_LOOKBACK_HOURS", "72"))
 IST = ZoneInfo("Asia/Kolkata")
 
 
@@ -195,6 +211,10 @@ def parse_nse_financial_results_payload(
         xbrl_url = urljoin(NSE_RESULTS_URL, xbrl_value) if xbrl_value else None
         details_url = urljoin(NSE_RESULTS_URL, details_value) if details_value else None
         attachment = xbrl_url or details_url
+        attachments = []
+        for candidate in (xbrl_url, details_url):
+            if candidate and all(entry["url"] != candidate for entry in attachments):
+                attachments.append({"url": candidate, "label": "XBRL" if candidate == xbrl_url else "Details"})
         event_material = "|".join([
             row_symbol, period_ended, relating, broadcast,
             str(row.get("consolidated") or ""), str(row.get("format") or ""),
@@ -219,6 +239,7 @@ def parse_nse_financial_results_payload(
             "consolidation": _clean(str(row.get("consolidated") or "")),
             "source_url": NSE_RESULTS_URL,
             "attachment_url": attachment,
+            "attachments": attachments,
             "xbrl_url": xbrl_url,
             "details_url": details_url,
         })
@@ -272,7 +293,8 @@ def _fetch_bse_results_sync(
     """
     rows_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
     errors = 0
-    from_date = today_ist - timedelta(days=7)
+    lookback_days = max(7, (RESULT_LOOKBACK_HOURS + 23) // 24 + 1)
+    from_date = today_ist - timedelta(days=lookback_days)
 
     with requests.Session() as session:
         session.headers.update(bse_api_headers())
@@ -426,15 +448,20 @@ def parse_financial_results_page(html: str, symbol: str, page_url: str) -> List[
                 or any(ext in item["url"].lower() for ext in (".xml", ".xbrl"))
                 or "/xbrl/" in item["url"].lower()
             ), None)
-            details_attachment = next((
-                item["url"] for item in links
-                if "details" in item["label"].lower()
-                or item["url"].lower().split("?")[0].endswith(".pdf")
-            ), None)
-            attachment = xbrl_attachment or details_attachment or next(
-                (item["url"] for item in links if item["url"].lower().split("?")[0].endswith(".xlsx")),
-                None,
+            supported_extensions = (".xml", ".xbrl", ".html", ".htm", ".pdf", ".csv", ".tsv", ".xlsx", ".xlsm", ".xls")
+            document_links = [
+                link for link in links
+                if link["url"].lower().split("?")[0].endswith(supported_extensions)
+                or "details" in link["label"].lower()
+            ]
+            rank = lambda link: (
+                0 if link["url"] == xbrl_attachment else
+                1 if link["url"].lower().split("?")[0].endswith((".html", ".htm", ".csv", ".tsv", ".xlsx", ".xlsm", ".xls")) else
+                2 if link["url"].lower().split("?")[0].endswith(".pdf") else 3
             )
+            document_links.sort(key=rank)
+            details_attachment = next((link["url"] for link in document_links if link["url"] != xbrl_attachment), None)
+            attachment = xbrl_attachment or (document_links[0]["url"] if document_links else None)
             event_material = "|".join([symbol.upper(), period_end, relating, broadcast, consolidation, attachment or page_url])
             event_key = "RESULT_" + hashlib.sha256(event_material.encode("utf-8")).hexdigest()[:32]
             if event_key in seen:
@@ -454,6 +481,7 @@ def parse_financial_results_page(html: str, symbol: str, page_url: str) -> List[
                 "consolidation": consolidation,
                 "source_url": page_url,
                 "attachment_url": attachment,
+                "attachments": document_links,
                 "xbrl_url": xbrl_attachment,
                 "details_url": details_attachment,
             })
@@ -646,6 +674,7 @@ def parse_bse_financial_results_payload(
             "consolidation": None,
             "source_url": source_url,
             "attachment_url": attachment_url,
+            "attachments": ([{"url": attachment_url, "label": "BSE results attachment"}] if attachment_url else []),
             "xbrl_url": None,
             "details_url": None,
             "headline": headline,
@@ -775,8 +804,143 @@ def extract_pdf_financial_metrics(document_text: Dict[str, Any], period_ended: s
     return result
 
 
+async def _extract_official_attachment(
+    item: Dict[str, Any],
+    attachment_urls: List[str],
+) -> tuple[Dict[str, Any], Optional[Dict[str, Any]], List[str]]:
+    """Try every official attachment in preference order; keep extracted values unverified."""
+    exchange = str(item.get("exchange") or "NSE").upper()
+    metrics: Dict[str, Any] = {
+        "status": "UNAVAILABLE",
+        "reason": "No supported official financial-results attachment was detected.",
+    }
+    document_info: Optional[Dict[str, Any]] = None
+    failures: List[str] = []
+    seen = set()
+    for attachment_url in attachment_urls:
+        attachment_url = str(attachment_url or "").strip()
+        if not attachment_url or attachment_url in seen:
+            continue
+        seen.add(attachment_url)
+        try:
+            if not is_official_attachment_url(attachment_url, exchange):
+                raise ValueError("Attachment URL is not an approved official exchange HTTPS URL.")
+            response = await http_client.get(
+                attachment_url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/156.0.0.0 Safari/537.36",
+                    "Accept": "application/pdf,application/xml,text/xml,text/html,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Referer": BSE_RESULTS_PAGE_URL if exchange == "BSE" else NSE_RESULTS_URL,
+                },
+                timeout=45.0,
+            )
+            response.raise_for_status()
+            final_url = str(getattr(response, "url", attachment_url) or attachment_url)
+            if not is_official_attachment_url(final_url, exchange):
+                raise ValueError("Attachment redirected outside the approved exchange domain.")
+            content = bytes(response.content or b"")
+            if len(content) > MAX_DOCUMENT_BYTES:
+                raise ValueError("Attachment exceeds the 15 MB safety limit.")
+            headers = getattr(response, "headers", {}) or {}
+            content_type = str(headers.get("content-type", ""))
+            document = extract_document(content, content_type, final_url)
+            document["source_url"] = final_url
+            document_info = document
+            document_format = document.get("format") or detect_document_format(content, content_type, final_url)
+            if document.get("status") != "EXTRACTED":
+                metrics = {"status": "UNAVAILABLE", "reason": document.get("reason", "Attachment could not be parsed."), "format": document_format}
+                failures.append(f"{document_format}:unavailable")
+                continue
+
+            if document_format in {"xbrl_xml", "ixbrl"}:
+                xbrl_xml = document.get("xbrl_xml") or content
+                parse_item = dict(item)
+                period_provenance = "EXCHANGE_ANNOUNCEMENT"
+                if not parse_item.get("period_ended"):
+                    inferred_period = infer_xbrl_reporting_period(xbrl_xml, item)
+                    if inferred_period is None:
+                        parsed_metrics = {
+                            "status": "UNAVAILABLE",
+                            "reason": "Filing period end is missing and XBRL contexts do not identify one unambiguous quarterly or annual period.",
+                        }
+                    else:
+                        period_date, period_kind = inferred_period
+                        parse_item["period_ended"] = period_date.isoformat()
+                        parse_item["period_type"] = "Annual" if period_kind == "annual" else "Quarterly"
+                        period_provenance = "XBRL_CONTEXT"
+                        parsed_metrics = extract_xbrl_metrics(
+                            xbrl_xml,
+                            parse_item["period_ended"],
+                            parse_item.get("relating_to") or parse_item.get("period_type") or "",
+                        )
+                else:
+                    parsed_metrics = extract_xbrl_metrics(
+                        xbrl_xml,
+                        parse_item["period_ended"],
+                        parse_item.get("relating_to") or parse_item.get("period_type") or "",
+                    )
+                if parsed_metrics.get("status") == "EXTRACTED":
+                    parsed_metrics.update({
+                        "source_status": "CANDIDATE_UNVERIFIED",
+                        "assessment_eligible": False,
+                        "extraction_method": "IXBRL" if document_format == "ixbrl" else "XBRL",
+                        "statement_basis": item.get("consolidation") or "UNRESOLVED",
+                        "unit": "INR (XBRL instance unit)",
+                        "period_type": parse_item.get("period_type") or item.get("period_type"),
+                        "period_provenance": period_provenance,
+                    })
+                metrics = parsed_metrics
+            else:
+                document_text = str(document.get("text") or "")
+                parsed_metrics = extract_financial_metrics_from_tables(
+                    document.get("tables") or [],
+                    document_text=document_text,
+                    item=item,
+                    document_format=document_format,
+                )
+                if document_format == "pdf" and parsed_metrics.get("status") != "EXTRACTED":
+                    excerpt = extract_pdf_text(content)
+                    legacy_metrics = extract_pdf_financial_metrics(
+                        excerpt,
+                        str(item.get("period_ended") or ""),
+                        str(item.get("relating_to") or item.get("headline") or ""),
+                    ) if item.get("period_ended") else {"status": "UNAVAILABLE"}
+                    if legacy_metrics.get("status") == "EXTRACTED":
+                        legacy_metrics.update({
+                            "source_status": "CANDIDATE_UNVERIFIED",
+                            "assessment_eligible": False,
+                            "statement_basis": item.get("consolidation") or "UNRESOLVED",
+                        })
+                        parsed_metrics = legacy_metrics
+                    document["text"] = excerpt.get("text", document_text)
+                    document["truncated"] = excerpt.get("truncated", False)
+                    document["status"] = excerpt.get("status", document.get("status"))
+                    if excerpt.get("status") != "EXTRACTED":
+                        document["reason"] = excerpt.get("reason")
+                metrics = parsed_metrics
+            if metrics.get("status") == "EXTRACTED":
+                metrics.setdefault("source_status", "CANDIDATE_UNVERIFIED")
+                metrics["assessment_eligible"] = False
+                metrics["source_url"] = final_url
+                metrics["format"] = document_format
+                return metrics, document, failures
+            reason = metrics.get("reason") or "Attachment parsed, but the target financial values could not be mapped safely."
+            failures.append(f"{document_format}:{reason}")
+        except Exception as exc:
+            failures.append(type(exc).__name__)
+            attachment_host = urlparse(attachment_url).hostname or "unknown-host"
+            logger.warning(
+                "Financial-results attachment could not be parsed for %s from %s (%s).",
+                item.get("symbol", "UNKNOWN"), attachment_host, type(exc).__name__,
+            )
+    if failures and metrics.get("status") != "EXTRACTED":
+        metrics["reason"] = "No attachment yielded safely mapped metrics. " + "; ".join(failures[:3])
+    return metrics, document_info, failures
+
+
 def _report_text(item: Dict[str, Any], metrics: Dict[str, Any], document_text: Optional[Dict[str, Any]] = None) -> str:
-    attachment = item.get("attachment_url") or item["source_url"]
+    attachment = metrics.get("source_url") or item.get("attachment_url") or item["source_url"]
     if metrics.get("status") == "EXTRACTED":
         analysis = (
             f"- **Revenue from operations:** ₹{_format_metric(metrics.get('revenue_cr'))} Cr\n"
@@ -786,10 +950,11 @@ def _report_text(item: Dict[str, Any], metrics: Dict[str, Any], document_text: O
             f"- **Revenue YoY change:** {_format_metric(metrics.get('revenue_yoy_pct'), '%')}\n"
             f"- **PAT YoY change:** {_format_metric(metrics.get('pat_yoy_pct'), '%')}\n"
         )
+        if metrics.get("missing_metrics"):
+            analysis += f"- **Other required metrics not mapped:** {', '.join(metrics['missing_metrics'])}\n"
         analysis_note = (
-            "Metrics were extracted from the labelled PDF table. Validate the original filing before making an investment decision."
-            if metrics.get("extraction_method") == "PDF_LABELLED_TABLE"
-            else "Metrics above were extracted from the linked XBRL instance. Validate the original filing before making an investment decision."
+            f"These are {metrics.get('source_status', 'CANDIDATE_UNVERIFIED')} values parsed from {metrics.get('extraction_method') or metrics.get('format') or 'the attachment'}. "
+            "They have not been independently reconciled and are not eligible for scoring or an Apply/Avoid recommendation."
         )
     else:
         analysis = "- **Automated metrics:** Not available from the detected attachment format.\n"
@@ -797,13 +962,17 @@ def _report_text(item: Dict[str, Any], metrics: Dict[str, Any], document_text: O
     return (
         f"# Official financial-results filing: {item['company_name']} ({item['symbol']})\n\n"
         f"- **Exchange:** {item.get('exchange') or 'NSE'}\n"
-        f"- **Period ended:** {item.get('period_ended') or 'Not specified in the filing notice'}\n"
+        f"- **Period ended:** {item.get('period_ended') or metrics.get('period_ended') or 'Not specified in the filing notice or attachment header'}\n"
         f"- **Period / quarter:** {item.get('relating_to') or item.get('period_type') or 'Not specified in the table'}\n"
         f"- **Submission period type:** {metrics.get('period_type') or item.get('period_type') or 'Not specified'}\n"
+        f"- **Period evidence:** {metrics.get('period_provenance') or 'Exchange announcement'}\n"
         f"- **Metric extraction method:** {metrics.get('extraction_method') or ('XBRL' if metrics.get('status') == 'EXTRACTED' else 'Not available')}\n"
         f"- **Broadcast time:** {item['broadcast_time']}\n"
         f"- **Audited status:** {item.get('audit_status') or 'Not specified'}\n"
         f"- **Statement basis:** {item.get('consolidation') or 'Not specified'}\n"
+        f"- **Extracted statement basis:** {metrics.get('statement_basis') or 'Not established'}\n"
+        f"- **Verification status:** {metrics.get('source_status') or 'UNAVAILABLE'}\n"
+        f"- **Reported unit:** {metrics.get('unit') or 'Not established'}\n"
         f"- **Official source:** {item['source_url']}\n"
         f"- **Filing attachment:** {attachment}\n"
         f"- **Details / PDF attachment:** {item.get('details_url') or 'Not available'}\n"
@@ -818,17 +987,31 @@ def _pdf_text_section(document_text: Optional[Dict[str, Any]]) -> str:
         return ""
     if document_text.get("status") != "EXTRACTED":
         return (
-            "\n## Source document text\n\n"
+            "\n## Source attachment review\n\n"
             f"Text extraction unavailable: {document_text.get('reason', 'No readable PDF text was found.')}\n"
             "The official filing link above remains the authoritative source.\n"
         )
+    document_format = str(
+        document_text.get("format") or ("pdf" if document_text.get("pages_extracted") else "document")
+    ).upper()
+    content = str(document_text.get("text") or "")
+    if not content and document_text.get("tables"):
+        preview_rows = []
+        for table in document_text["tables"][:3]:
+            preview_rows.append(str(table.get("name") or "Table"))
+            preview_rows.extend(" | ".join(str(cell) for cell in row[:12]) for row in (table.get("rows") or [])[:12])
+        content = "\n".join(preview_rows)[:6_000]
+    if not content:
+        return "\n## Source attachment review\n\nThe attachment format was recognized, but no readable text excerpt is available.\n"
     suffix = "\n\n*Excerpt only; verify figures, units, statement basis, and reporting period against the original filing.*"
     if document_text.get("truncated"):
         suffix += " The excerpt was truncated to keep the report readable."
-    return (
-        "\n## Source document text (page-labelled excerpt)\n\n"
-        f"{document_text.get('text', '')}{suffix}\n"
+    title = (
+        "Source document text (page-labelled excerpt)"
+        if document_format == "PDF"
+        else f"Source attachment review ({document_format}; excerpt)"
     )
+    return f"\n## {title}\n\n````text\n{content[:6_000]}\n````{suffix}\n"
 
 
 async def monitor_financial_results() -> Dict[str, Any]:
@@ -845,6 +1028,9 @@ async def monitor_financial_results() -> Dict[str, Any]:
     checked = 0
     new_filings = 0
     accepted_count = 0
+    notification_failures = 0
+    notification_skipped = 0
+    documents_unavailable = 0
     errors = 0
 
     nse_companies = [company for company in watchlist if str(company.get("exchange", "NSE")).upper() == "NSE"]
@@ -1004,81 +1190,38 @@ async def monitor_financial_results() -> Dict[str, Any]:
 
         force_resend_results = os.getenv("FORCE_RESEND_RESULTS", "").strip().lower() in {"1", "true", "yes"}
         for item in recent_filings:
-            if store.has_processed_event(item["event_key"]) and not force_resend_results:
+            was_processed = store.has_processed_event(item["event_key"])
+            get_event_record = getattr(store, "event_record", None)
+            prior_record = get_event_record(item["event_key"]) if callable(get_event_record) else None
+            attachment_entries = item.get("attachments") or []
+            attachment_urls = [
+                str(entry.get("url") if isinstance(entry, dict) else entry)
+                for entry in attachment_entries
+            ]
+            attachment_urls.extend(
+                str(item.get(key)) for key in ("xbrl_url", "attachment_url", "details_url") if item.get(key)
+            )
+            retry_incomplete = bool(
+                was_processed
+                and prior_record
+                and prior_record.get("processing_status") == "UNAVAILABLE"
+                and attachment_urls
+            )
+            if was_processed and not force_resend_results and not retry_incomplete:
                 continue
-            if force_resend_results and store.has_processed_event(item["event_key"]):
+            if force_resend_results and was_processed:
                 logger.warning("Manual results resend override enabled for already-processed filing %s.", item.get("event_key"))
             new_filings += 1
-            metrics: Dict[str, Any] = {"status": "UNAVAILABLE", "reason": "No supported XBRL attachment was detected."}
-            document_text: Optional[Dict[str, Any]] = None
-            attachment = item.get("xbrl_url") or item.get("attachment_url") or ""
-            if attachment.lower().split("?", 1)[0].endswith(".pdf"):
-                try:
-                    if not is_official_attachment_url(attachment, exchange):
-                        raise ValueError("PDF attachment URL is not an approved official exchange HTTPS URL.")
-                    pdf_response = await http_client.get(
-                        attachment,
-                        headers={
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/156.0.0.0 Safari/537.36",
-                            "Accept": "application/pdf,*/*;q=0.8",
-                            "Referer": BSE_RESULTS_PAGE_URL if exchange == "BSE" else NSE_RESULTS_URL,
-                        },
-                        timeout=45.0,
-                    )
-                    pdf_response.raise_for_status()
-                    if len(pdf_response.content) > 15_000_000:
-                        raise ValueError("PDF attachment exceeds the 15 MB download safety limit.")
-                    document_text = extract_pdf_text(pdf_response.content)
-                    if item.get("period_ended"):
-                        pdf_metrics = extract_pdf_financial_metrics(
-                            document_text,
-                            item["period_ended"],
-                            item.get("relating_to") or item.get("headline") or "",
-                        )
-                        if pdf_metrics.get("status") == "EXTRACTED":
-                            metrics = pdf_metrics
-                except Exception as exc:
-                    document_text = {
-                        "status": "UNAVAILABLE",
-                        "reason": f"PDF download or extraction failed ({type(exc).__name__}).",
-                    }
-                    logger.warning(
-                        "PDF text extraction failed for %s (%s).",
-                        symbol,
-                        type(exc).__name__,
-                    )
-            if attachment.lower().endswith((".xml", ".xbrl")) or "/xbrl/" in attachment.lower():
-                try:
-                    if not is_official_attachment_url(attachment, "NSE"):
-                        raise ValueError("XBRL attachment URL is not an approved official NSE HTTPS URL.")
-                    xbrl_response = await http_client.get(
-                        attachment,
-                        headers={
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
-                            "Accept": "application/xml,text/xml,application/xhtml+xml,*/*;q=0.8",
-                            "Accept-Language": "en-US,en;q=0.9",
-                            "Referer": NSE_RESULTS_URL,
-                            "Origin": "https://www.nseindia.com",
-                        },
-                        timeout=45.0,
-                    )
-                    xbrl_response.raise_for_status()
-                    if len(xbrl_response.content) > 10_000_000:
-                        raise ValueError("XBRL attachment exceeds the 10 MB download safety limit.")
-                    if item.get("period_ended"):
-                        metrics = extract_xbrl_metrics(
-                            xbrl_response.content, item["period_ended"], item.get("relating_to") or ""
-                        )
-                except Exception as exc:
-                    errors += 1
-                    metrics = {"status": "UNAVAILABLE", "reason": f"XBRL extraction failed ({type(exc).__name__})."}
-                    attachment_host = urlparse(attachment).hostname or "unknown-host"
-                    logger.warning(
-                        "XBRL extraction failed for %s from %s (%s).",
-                        symbol,
-                        attachment_host,
-                        type(exc).__name__,
-                    )
+            metrics, document_text, attachment_failures = await _extract_official_attachment(item, attachment_urls)
+            if metrics.get("status") != "EXTRACTED":
+                documents_unavailable += 1
+            processing_status = (
+                "EXTRACTED" if metrics.get("status") == "EXTRACTED"
+                else "UNAVAILABLE" if attachment_urls
+                else "NO_ATTACHMENT"
+            )
+            if attachment_failures and metrics.get("status") == "EXTRACTED":
+                logger.info("A fallback attachment yielded usable candidate metrics for %s.", symbol)
 
             safe_period_value = item.get("period_ended") or item.get("broadcast_time") or "filing"
             safe_period = re.sub(r"[^0-9A-Za-z_-]+", "_", str(safe_period_value))
@@ -1086,34 +1229,59 @@ async def monitor_financial_results() -> Dict[str, Any]:
             report_path = report_dir / f"{safe_symbol}_{safe_period}_{item['event_key'][-8:]}.md"
             report_content = _report_text(item, metrics, document_text)
             report_path.write_text(report_content, encoding="utf-8")
-            markdown_to_pdf(report_content, report_path.with_suffix(".pdf"), title=f"Financial Results - {symbol}")
+            pdf_path = report_path.with_suffix(".pdf")
+            pdf_attachments = []
+            try:
+                markdown_to_pdf(report_content, pdf_path, title=f"Financial Results - {symbol}")
+                if pdf_path.is_file():
+                    pdf_attachments = [str(pdf_path)]
+            except Exception as exc:
+                logger.warning("Results PDF rendering failed for %s (%s); sending the email body without an attachment.", symbol, type(exc).__name__)
             run_id = os.getenv("GITHUB_RUN_ID")
             repository = os.getenv("GITHUB_REPOSITORY", "SandulaVinay/IPO-Analysis")
             report_url = f"https://github.com/{repository}/actions/runs/{run_id}" if run_id else None
             subject, content = build_results_email(item, metrics, report_url=report_url)
 
-            # Email is the primary channel for this project; WhatsApp is only a
-            # fallback so a WhatsApp API acceptance cannot suppress the email alert.
-            result = await EmailProvider().send_notification(
-                recipient=settings.email_to,
-                subject=subject,
-                content=content,
-                metadata={
-                    "attachments": [str(report_path.with_suffix(".pdf"))],
-                    "html_body": results_email_html(content),
-                },
+            # Don't duplicate a filing email while retrying a previously
+            # unavailable attachment. Send one update if extraction later works.
+            prior_notified = bool(
+                prior_record and prior_record.get("status") in {"ACCEPTED", "DELIVERED"}
+            )
+            should_notify = (
+                force_resend_results
+                or not prior_notified
+                or (prior_record and prior_record.get("processing_status") == "UNAVAILABLE" and processing_status == "EXTRACTED")
             )
             channel = "EMAIL"
-            success = bool(result.get("success") and (result.get("accepted") or result.get("delivered")))
-            if not success:
-                result = await WhatsAppProvider().send_notification(
-                    recipient=settings.whatsapp_recipient_phone,
+            email_accepted = False
+            success = False
+            if should_notify:
+                # Email is primary; WhatsApp is an explicit fallback only.
+                result = await EmailProvider().send_notification(
+                    recipient=settings.email_to,
                     subject=subject,
                     content=content,
-                    metadata={"attachment_path": str(report_path.with_suffix(".pdf"))},
+                    metadata={
+                        "attachments": pdf_attachments,
+                        "html_body": results_email_html(content),
+                    },
                 )
-                channel = "WHATSAPP"
-                success = bool(result.get("success") and (result.get("accepted") or result.get("delivered")))
+                email_accepted = bool(result.get("success") and (result.get("accepted") or result.get("delivered")))
+                success = email_accepted
+                if not email_accepted and settings.enable_whatsapp:
+                    result = await WhatsAppProvider().send_notification(
+                        recipient=settings.whatsapp_recipient_phone,
+                        subject=subject,
+                        content=content,
+                        metadata={"attachment_path": pdf_attachments[0] if pdf_attachments else None},
+                    )
+                    channel = "WHATSAPP"
+                    success = bool(result.get("success") and (result.get("accepted") or result.get("delivered")))
+            elif prior_notified:
+                success = True
+                channel = str(prior_record.get("channel") or "EMAIL")
+            if should_notify and settings.enable_email and not email_accepted:
+                notification_failures += 1
             if success:
                 accepted_count += 1
                 store.record_event(
@@ -1123,8 +1291,11 @@ async def monitor_financial_results() -> Dict[str, Any]:
                     event_date=str(item.get("period_ended") or item.get("broadcast_time") or ""),
                     status="ACCEPTED",
                     channel=channel,
+                    processing_status=processing_status,
                 )
             else:
+                if not settings.enable_email:
+                    notification_skipped += 1
                 store.record_event(
                     item["event_key"],
                     event_type="FINANCIAL_RESULTS_FILING",
@@ -1132,13 +1303,20 @@ async def monitor_financial_results() -> Dict[str, Any]:
                     event_date=str(item.get("period_ended") or item.get("broadcast_time") or ""),
                     status="FAILED",
                     channel=None,
+                    processing_status=processing_status,
                 )
 
-    status = "PARTIAL" if errors else "SUCCESS"
+    status = "PARTIAL" if errors or documents_unavailable or notification_failures else (
+        "REPORT_ONLY" if notification_skipped else "SUCCESS"
+    )
     store.record_run(
         command="results",
         status=status,
-        detail=f"symbols_checked={checked}; new_filings={new_filings}; notifications_accepted={accepted_count}; errors={errors}",
+        detail=(
+            f"symbols_checked={checked}; new_filings={new_filings}; "
+            f"notifications_accepted={accepted_count}; notification_failures={notification_failures}; "
+            f"notification_skipped={notification_skipped}; documents_unavailable={documents_unavailable}; errors={errors}"
+        ),
     )
     return {
         "status": status,
@@ -1146,6 +1324,9 @@ async def monitor_financial_results() -> Dict[str, Any]:
         "symbols_checked": checked,
         "new_filings": new_filings,
         "notifications_accepted": accepted_count,
+        "notification_failures": notification_failures,
+        "notification_skipped": notification_skipped,
+        "documents_unavailable": documents_unavailable,
         "errors": errors,
         "reports_dir": str(report_dir),
     }

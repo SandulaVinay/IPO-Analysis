@@ -1,7 +1,7 @@
 """Daily IPO digest: evidence-linked status summary without unsupported recommendations."""
 
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 from zoneinfo import ZoneInfo
@@ -9,7 +9,6 @@ from zoneinfo import ZoneInfo
 from src.common.config import settings
 from src.common.logging import logger
 from src.notifications.email import EmailProvider
-from src.notifications.whatsapp import WhatsAppProvider
 from src.state.store import StateStore
 from src.reporting.pdf import markdown_to_pdf
 from src.reporting.email_html import digest_email_html
@@ -136,20 +135,30 @@ def _company_source_links(ipo: Any) -> list[tuple[str, str]]:
 def _latest_gmp(ipo: Any, now: datetime) -> str:
     """Display a captured GMP only when its timestamp is recent enough to be useful."""
     snapshots = list(getattr(ipo, "gmp_snapshots", None) or [])
-    snapshots.sort(key=lambda item: getattr(item, "captured_at", None) or datetime.min, reverse=True)
+    def captured_utc(item: Any) -> datetime:
+        value = getattr(item, "captured_at", None)
+        if not isinstance(value, datetime):
+            return datetime.min.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+    snapshots.sort(key=captured_utc, reverse=True)
     if not snapshots:
         return "Not available from a captured snapshot"
     snapshot = snapshots[0]
     captured = getattr(snapshot, "captured_at", None)
     if not isinstance(captured, datetime):
         return "Not verified — snapshot timestamp missing"
-    if captured.tzinfo is None:
-        captured = captured.replace(tzinfo=IST)
-    age_hours = (now - captured.astimezone(IST)).total_seconds() / 3600
+    # Database DateTime columns use the repository's naive-UTC convention.
+    captured = captured.replace(tzinfo=timezone.utc) if captured.tzinfo is None else captured.astimezone(timezone.utc)
+    now_utc = now.replace(tzinfo=IST).astimezone(timezone.utc) if now.tzinfo is None else now.astimezone(timezone.utc)
+    captured_ist = captured.astimezone(IST)
+    age_hours = (now_utc - captured).total_seconds() / 3600
     if age_hours < 0 or age_hours > 48:
-        return f"Stale snapshot ({captured.astimezone(IST).strftime('%d %b %Y, %I:%M %p IST')}); not used as current GMP"
+        return f"Stale snapshot ({captured_ist.strftime('%d %b %Y, %I:%M %p IST')}); not used as current GMP"
     source = str(getattr(snapshot, "source", "") or "source not recorded")
-    return f"₹{float(snapshot.gmp_value):,.2f} ({source}; captured {captured.astimezone(IST).strftime('%d %b %Y, %I:%M %p IST')})"
+    if source.upper() == "IPOWATCH":
+        source = "IPOWATCH (unofficial; quote timestamp unavailable; https://ipowatch.cc/gmp)"
+    return f"₹{float(snapshot.gmp_value):,.2f} ({source}; captured {captured_ist.strftime('%d %b %Y, %I:%M %p IST')})"
 
 
 
@@ -286,7 +295,7 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
 
 
 async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateStore] = None) -> Dict[str, Any]:
-    """Create a daily artifact and send WhatsApp-first/email-fallback if configured."""
+    """Create a daily artifact and send it by SMTP email when configured."""
     store = store or StateStore()
     ipos = list(ipos)
     now = datetime.now(IST)
@@ -297,7 +306,14 @@ async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateSt
     report_text, message = _build_report(ipos, now=now, discovery_run=discovery_run)
     report_path = report_dir / f"ipo_digest_{now.strftime('%Y%m%d')}.md"
     report_path.write_text(report_text, encoding="utf-8")
-    markdown_to_pdf(report_text, report_path.with_suffix(".pdf"), title="Daily Indian IPO Status Digest")
+    pdf_path = report_path.with_suffix(".pdf")
+    pdf_attachments = []
+    try:
+        markdown_to_pdf(report_text, pdf_path, title="Daily Indian IPO Status Digest")
+        if pdf_path.is_file():
+            pdf_attachments = [str(pdf_path)]
+    except Exception as exc:
+        logger.warning("Daily digest PDF rendering failed (%s); sending the email body without an attachment.", type(exc).__name__)
 
     # A previous SMTP acceptance is not proof the recipient received the message.
     # Allow an explicitly requested manual resend for the current day's digest, while
@@ -318,30 +334,17 @@ async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateSt
     if force_resend and store.has_processed_event(event_key):
         logger.warning("Manual digest resend override enabled for today's already-processed digest.")
 
-    accepted = False
-    channel = None
-    whatsapp = await WhatsAppProvider().send_notification(
-        recipient=settings.whatsapp_recipient_phone,
+    email = await EmailProvider().send_notification(
+        recipient=settings.email_to,
         subject=f"Daily IPO status digest — {now.strftime('%d %b %Y')}",
         content=message,
-        metadata={"attachment_path": str(report_path.with_suffix(".pdf"))},
+        metadata={
+            "attachments": pdf_attachments,
+            "html_body": digest_email_html(report_text),
+        },
     )
-    if whatsapp.get("success") and (whatsapp.get("accepted") or whatsapp.get("delivered")):
-        accepted = True
-        channel = "WHATSAPP"
-    else:
-        email = await EmailProvider().send_notification(
-            recipient=settings.email_to,
-            subject=f"Daily IPO status digest — {now.strftime('%d %b %Y')}",
-            content=message,
-            metadata={
-                "attachments": [str(report_path.with_suffix(".pdf"))],
-                "html_body": digest_email_html(report_text),
-            },
-        )
-        if email.get("success") and (email.get("accepted") or email.get("delivered")):
-            accepted = True
-            channel = "EMAIL"
+    accepted = bool(email.get("success") and (email.get("accepted") or email.get("delivered")))
+    channel = "EMAIL" if accepted else None
 
     if accepted:
         store.record_event(
@@ -377,4 +380,5 @@ async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateSt
         "report_path": str(report_path),
         "notifications_accepted": int(accepted),
         "channel": channel,
+        "pdf_available": bool(pdf_attachments),
     }

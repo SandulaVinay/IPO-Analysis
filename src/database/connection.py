@@ -27,7 +27,7 @@ AsyncSessionLocal = async_sessionmaker(
 async def init_db() -> None:
     """Initialize database tables idempotently."""
     async with engine.begin() as conn:
-        logger.info(f"Initializing database schema using URL: {settings.database_url}")
+        logger.info("Initializing database schema using %s backend.", engine.url.get_backend_name())
         await conn.run_sync(Base.metadata.create_all)
         logger.info("Database schema initialized successfully.")
 

@@ -9,11 +9,11 @@ A production-quality, evidence-driven, deterministic intelligence platform for d
 1. **Deterministic calculations**: Financial formulas and scoring calculations are performed in Python; an AI model is not required for numerical calculations.
 2. **Evidence and provenance**: Prospectus documents are hashed and versioned. Extracted PDF passages retain page references and remain explicitly `UNVERIFIED` until the period, unit and statement-basis checks are completed.
 3. **Fail-closed production analysis**: Missing, conflicting or unverified critical inputs produce `UNABLE_TO_ASSESS`. The system must not invent financial values or issue unsupported `APPLY` / `AVOID` recommendations.
-4. **IPO discovery and results monitoring**: Official NSE/BSE IPO pages are checked; financial-results monitoring uses the configured company watchlist, exact issuer-name matching, NSE filings/XBRL facts, and BSE scrip-code announcements for BSE-listed companies.
+4. **IPO discovery and results monitoring**: Official NSE/BSE IPO pages are checked. The results monitor matches configured issuers and BSE scrip codes, then reads official PDF, XML/iXBRL, HTML, CSV/TSV, XLS, and XLSX attachments. Extracted values stay `CANDIDATE_UNVERIFIED` and are never sent to scoring automatically.
 5. **GitHub Actions automation**: Weekday checks run at 08:30, 11:30, 14:30 and 17:30 IST. The final weekday run generates a daily status digest. Reports are retained as seven-day workflow artifacts and sanitized state is persisted to the public `state` branch.
-6. **Notifications**: SMTP email is the currently supported and preferred delivery channel when the owner configures the required GitHub Actions secrets. WhatsApp delivery is deferred and must not be treated as enabled. Without valid email credentials and an explicitly configured recipient, reports should remain in report-only mode.
+6. **Notifications**: SMTP email is primary when the owner configures the required GitHub Actions secrets. Messages include plain-text and HTML bodies, with a PDF attachment when rendering succeeds. WhatsApp is an optional fallback only when explicitly enabled. Without valid email credentials and an explicitly configured recipient, reports remain in report-only mode.
 7. **Dashboard and CLI**: A FastAPI dashboard and command-line interface are available for local use. No separate always-on server is required for the GitHub Actions scheduled workflow.
-8. **Auditable Reviewer Verification Workflow**: Facts extracted from official prospectuses remain `CANDIDATE_UNVERIFIED` until explicitly promoted by an authorized analyst using `FactReviewService`. The scoring pipeline runs ungated only when critical metrics are reviewer-verified, failing closed with `UNABLE_TO_ASSESS` on unverified or missing data.
+8. **Auditable Reviewer Verification Workflow**: Facts extracted from official prospectuses remain `CANDIDATE_UNVERIFIED` until explicitly promoted by an authorized analyst using `FactReviewService`. Reviewer-verified core terms and financials alone do not enable live scoring: business, governance, peer valuation, proceeds, risk, and market evidence must also be wired and verified. Until then the system returns `UNABLE_TO_ASSESS` and does not issue `APPLY` / `AVOID` advice.
 
 ---
 
@@ -99,22 +99,24 @@ The scheduled automation is deployed from `main`. Its workflow runs discovery, r
 
 - The scheduled workflow persists only sanitized public IPO metadata and event keys on the public `state` branch.
 - Add exchange-specific watchlist entries to `state/watchlist.json` on the `state` branch. NSE entries use the NSE symbol; BSE entries also require `exchange: \"BSE\"` and a six-digit `bse_scrip_code`. Both require exact official issuer names and verified aliases.
-- Result reports are generated as short-lived GitHub Actions artifacts. XBRL values are extracted only when the attachment is a supported XBRL instance; other formats are reported as unavailable rather than guessed.
+- Result reports are generated as short-lived GitHub Actions artifacts. The monitor handles PDF, XBRL/iXBRL, HTML, CSV/TSV, XLS, and XLSX attachments when period, unit, and statement basis can be mapped explicitly; unsupported or ambiguous filings are reported as unavailable. Extracted figures remain candidate-only.
+- The daily digest can include a recent IPOWATCH grey-market premium snapshot only after an exact issuer match and issue-price-band consistency check. GMP is unofficial, may be absent, and does not produce an application suggestion.
 - `ENABLE_DEMO_ANALYSIS` defaults to `false`. Never enable demo analysis in production.
-- Configure SMTP email values through GitHub repository Actions Secrets, not in files or chat. WhatsApp is deferred. Keep recipient fields blank until a real recipient is intentionally configured to prevent accidental sends.
-- This is not yet a full investment recommendation service: verified RHP/DRHP financial extraction, full IPO scoring on real issuer data, and broader results-format coverage remain rollout gates. Production analysis returns `UNABLE_TO_ASSESS` until verified inputs are wired into the analysis pipeline.
+- Configure SMTP email values through GitHub repository Actions Secrets, not in files or chat. WhatsApp is an optional fallback and must be explicitly enabled. Keep recipient fields blank until a real recipient is intentionally configured to prevent accidental sends.
+- For durable reviewer-verified facts and analysis runs across scheduled GitHub Actions executions, set the `DATABASE_URL` repository secret to a persistent async PostgreSQL URL such as `postgresql+asyncpg://...`. Without it, the SQLite fallback is recreated with each runner and only the sanitized registry/event files persist. Database connection logs expose only the backend type, not the URL.
+- This is not yet a full investment recommendation service: verified RHP/DRHP ingestion into the live scorer and business, governance, peer-valuation, proceeds, risk, and market evidence remain rollout gates. Production analysis returns `UNABLE_TO_ASSESS` until the full evidence set is connected and verified. Results-format extraction is candidate-only and does not close those gates.
 
 
 ## Automation v2 architecture and current limitations
 
 See [Automation v2 Architecture and Rollout Gates](docs/ARCHITECTURE_V2.md) for the GitHub Actions design, public state-branch schema, watchlist format, notification secret names, and production-readiness checklist.
 
-**Important:** automated IPO investment recommendations are not production-ready yet. The production path must return `UNABLE_TO_ASSESS` until official RHP/DRHP financial extraction and verification are implemented. The financial-results monitor currently supports only a conservative subset of NSE XBRL facts; BSE announcements are filing notices and their financial metrics are not yet parsed into the same XBRL model; unsupported filings are reported as unavailable rather than guessed. Do not enable real notifications until GitHub Actions Secrets are configured and a manual test is approved.
+**Important:** automated IPO investment recommendations are not production-ready yet. The production path must return `UNABLE_TO_ASSESS` until the full evidence set is connected and verified. Results attachments can be parsed in several formats, including BSE attachments, but those extracted values are candidates for review only. Unsupported or ambiguous filings are reported as unavailable rather than guessed. Do not enable real notifications until GitHub Actions Secrets are configured and a manual test is approved.
 
 
 ### PDF research artifacts
 
-The daily IPO digest, supported financial-results alerts, and prospectus evidence reviews are generated as Markdown and PDF files. The scheduler uploads these as seven-day GitHub Actions artifacts. When email alerts are explicitly enabled and SMTP is configured, the relevant PDF can be attached to the email. Push-triggered validation runs keep email delivery disabled. The daily digest remains `UNABLE_TO_ASSESS` until the real prospectus financial verification workflow is complete.
+The daily IPO digest, financial-results alerts, and prospectus evidence reviews are generated as Markdown reports and PDF files when rendering succeeds. The scheduler uploads these as seven-day GitHub Actions artifacts. When PDF rendering fails, email still sends its plain-text and HTML body without the attachment. Push-triggered validation runs keep email delivery disabled. The daily digest remains `UNABLE_TO_ASSESS` until the full live evidence pipeline is complete.
 
 
 ### Official prospectus source allowlist

@@ -146,6 +146,56 @@ def test_results_parser_prefers_xbrl_over_details_pdf():
     assert rows[0]["details_url"] == "https://nsearchives.nseindia.com/corporate/details.pdf"
 
 
+@pytest.mark.asyncio
+async def test_bse_xbrl_attachment_infers_annual_period_from_unique_context(monkeypatch):
+    import src.results.monitor as monitor_module
+
+    xml = b"""<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance"
+                       xmlns:in-gaap="http://example.test/in-gaap"
+                       xmlns:iso4217="http://www.xbrl.org/2003/iso4217">
+      <xbrli:context id="FY25">
+        <xbrli:entity><xbrli:identifier>EXAMPLE</xbrli:identifier></xbrli:entity>
+        <xbrli:period><xbrli:startDate>2024-04-01</xbrli:startDate><xbrli:endDate>2025-03-31</xbrli:endDate></xbrli:period>
+      </xbrli:context>
+      <xbrli:unit id="INR"><xbrli:measure>iso4217:INR</xbrli:measure></xbrli:unit>
+      <in-gaap:RevenueFromOperations contextRef="FY25" unitRef="INR">1250000000</in-gaap:RevenueFromOperations>
+    </xbrli:xbrl>"""
+
+    class Response:
+        url = "https://www.bseindia.com/xml-data/corpfiling/AttachLive/results.xml"
+        headers = {"content-type": "application/xml"}
+        content = xml
+
+        def raise_for_status(self):
+            return None
+
+    async def get(_url, **_kwargs):
+        return Response()
+
+    monkeypatch.setattr(monitor_module.http_client, "get", get)
+    metrics, document, failures = await monitor_module._extract_official_attachment(
+        {
+            "exchange": "BSE",
+            "period_ended": None,
+            "period_type": None,
+            "relating_to": "Financial Results",
+            "broadcast_time": "30-May-2025 16:30:00",
+            "consolidation": "Standalone",
+        },
+        ["https://www.bseindia.com/xml-data/corpfiling/AttachLive/results.xml"],
+    )
+
+    assert metrics["status"] == "EXTRACTED"
+    assert metrics["period_ended"] == "2025-03-31"
+    assert metrics["period_type"] == "Annual"
+    assert metrics["period_provenance"] == "XBRL_CONTEXT"
+    assert metrics["revenue_cr"] == 125.0
+    assert metrics["source_status"] == "CANDIDATE_UNVERIFIED"
+    assert metrics["assessment_eligible"] is False
+    assert document["format"] == "xbrl_xml"
+    assert failures == []
+
+
 
 def test_bse_results_parser_requires_exact_company_and_normalizes_attachment():
     from src.results.monitor import parse_bse_financial_results_payload

@@ -132,7 +132,11 @@ async def cmd_results():
     table = Table(title="Official Financial Results Monitor", header_style="bold cyan")
     table.add_column("Metric", style="white")
     table.add_column("Value", style="bold")
-    for key in ("status", "watchlist_size", "symbols_checked", "new_filings", "notifications_accepted", "errors"):
+    for key in (
+        "status", "watchlist_size", "symbols_checked", "new_filings",
+        "notifications_accepted", "notification_failures", "notification_skipped",
+        "documents_unavailable", "errors",
+    ):
         if key in result:
             table.add_row(key.replace("_", " ").title(), str(result[key]))
     console.print(table)

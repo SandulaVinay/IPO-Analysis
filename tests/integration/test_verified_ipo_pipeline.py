@@ -115,7 +115,7 @@ async def test_partially_verified_financials_fail_closed(async_session: AsyncSes
 
 
 @pytest.mark.asyncio
-async def test_fully_reviewer_verified_ipo_yields_ungated_assessment(async_session: AsyncSession):
+async def test_core_verified_ipo_stays_gated_without_other_live_assessment_evidence(async_session: AsyncSession):
     repo = IPORepository(async_session)
     ipo = await repo.create_or_update_ipo(
         symbol="VERIFIED_WINNER",
@@ -163,12 +163,11 @@ async def test_fully_reviewer_verified_ipo_yields_ungated_assessment(async_sessi
         )
     await async_session.commit()
 
-    # Run analysis pipeline
+    # Core terms and financials are verified, but the live scorer does not yet
+    # have verified governance, peer valuation, proceeds, risk, or market inputs.
     result = await run_pipeline_for_ipo(ipo, async_session)
-    assert result["assessment_status"] == "ASSESSED"
-    assert result["score_data"]["is_safety_gated"] is False
-    assert result["score_data"]["overall_score"] > 5.0
-    assert result["score_data"]["verdict"] in {"ATTRACTIVE", "NEUTRAL", "AVOID"}
-    assert result["confidence_level"] == "HIGH"
-    assert result["source_verification_status"] == "VERIFIED"
-    assert len(result["full_report"]) > 100
+    assert result["assessment_status"] == "UNABLE_TO_ASSESS"
+    assert result["score_data"]["is_safety_gated"] is True
+    assert result["score_data"]["verdict"] == "UNABLE_TO_ASSESS"
+    assert "business-model" in result["full_report"]
+    assert "no Apply/Avoid suggestion was generated" in result["full_report"]

@@ -194,9 +194,40 @@ async def run_pipeline_for_ipo(ipo, session: Optional[AsyncSession] = None) -> D
         and len(verified_facts) > 0
     )
 
+    def unavailable_payload(reason: str) -> Dict[str, Any]:
+        safe_report = (
+            f"ASSESSMENT: UNABLE TO ASSESS\n\n{ipo.company_name} ({ipo.symbol})\n\n"
+            f"{reason}\n\nDo not use this report as a basis for an investment decision."
+        )
+        return {
+            "symbol": ipo.symbol,
+            "company_name": ipo.company_name,
+            "confidence_level": completeness["confidence_level"],
+            "source_verification_status": "NOT_VERIFIED" if not verified_facts else "PARTIALLY_VERIFIED",
+            "ipo": ipo_dict,
+            "score_data": {
+                "verdict": "UNABLE_TO_ASSESS",
+                "overall_score": 0.0,
+                "is_safety_gated": True,
+                "safety_gate_reasons": [reason],
+                "pillar_scores": {},
+                "weights_used": {},
+                "horizons": {},
+            },
+            "gmp": {"gmp_value": None, "status": "UNAVAILABLE"},
+            "subscription": {"status": "UNAVAILABLE"},
+            "executive_summary": safe_report,
+            "full_report": safe_report,
+            "copy_mode": safe_report,
+            "assessment_status": "UNABLE_TO_ASSESS",
+        }
+
+    demo_mode = settings.enable_demo_analysis and settings.app_env != "production" and not db_facts
+
     if not is_fully_verified:
-        # Synthetic demo fallback is permitted ONLY if explicit non-production opt-in is enabled and no db facts exist
-        if settings.enable_demo_analysis and settings.app_env != "production" and not db_facts:
+        # Synthetic demo fallback is permitted ONLY when explicitly enabled in a
+        # non-production environment and no database evidence exists.
+        if demo_mode:
             pass
         else:
             missing_fields = completeness["missing_critical_fields"]
@@ -205,32 +236,15 @@ async def run_pipeline_for_ipo(ipo, session: Optional[AsyncSession] = None) -> D
                 f"Analysis is fail-closed because critical evidence is missing or unverified: {missing_str}. "
                 "No investment recommendation was generated until all critical fields have been reviewer-verified."
             )
-            safe_report = (
-                f"ASSESSMENT: UNABLE TO ASSESS\n\n{ipo.company_name} ({ipo.symbol})\n\n"
-                f"{reason}\n\nDo not use this report as a basis for an investment decision."
-            )
-            return {
-                "symbol": ipo.symbol,
-                "company_name": ipo.company_name,
-                "confidence_level": completeness["confidence_level"],
-                "source_verification_status": "NOT_VERIFIED" if not verified_facts else "PARTIALLY_VERIFIED",
-                "ipo": ipo_dict,
-                "score_data": {
-                    "verdict": "UNABLE_TO_ASSESS",
-                    "overall_score": 0.0,
-                    "is_safety_gated": True,
-                    "safety_gate_reasons": [reason],
-                    "pillar_scores": {},
-                    "weights_used": {},
-                    "horizons": {},
-                },
-                "gmp": {"gmp_value": None, "status": "UNAVAILABLE"},
-                "subscription": {"status": "UNAVAILABLE"},
-                "executive_summary": safe_report,
-                "full_report": safe_report,
-                "copy_mode": safe_report,
-                "assessment_status": "UNABLE_TO_ASSESS",
-            }
+            return unavailable_payload(reason)
+
+    if is_fully_verified and not demo_mode:
+        reason = (
+            "Core issuer and financial fields are verified, but verified business-model, governance, peer-valuation, "
+            "issue-proceeds, risk, and market-regime inputs are not connected to the live scoring path. "
+            "The sample assumptions in that path are disabled for live assessments, so no Apply/Avoid suggestion was generated."
+        )
+        return unavailable_payload(reason)
 
     # 1. Gather financials
     if is_fully_verified:

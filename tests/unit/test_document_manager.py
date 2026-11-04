@@ -129,6 +129,33 @@ def test_candidate_report_is_explicitly_unverified_and_contains_page_citation(tm
     assert "Assessment eligible: No" in content
 
 
+def test_candidate_report_survives_pdf_renderer_failure(tmp_path, monkeypatch):
+    import src.documents.manager as manager_module
+
+    monkeypatch.chdir(tmp_path)
+
+    def fail_pdf(*_args, **_kwargs):
+        raise RuntimeError("renderer unavailable")
+
+    monkeypatch.setattr(manager_module, "markdown_to_pdf", fail_pdf)
+    report_path = manager_module._write_candidate_report(
+        ipo_id=8,
+        document_type="RHP",
+        document_title="Example RHP",
+        source_url="https://www.nseindia.com/example.pdf",
+        document_hash="d" * 64,
+        version_label="v1",
+        extraction={
+            "page_count": 1,
+            "text_pages_extracted": 1,
+            "evidence_count": 0,
+            "evidence": [],
+        },
+    )
+    assert report_path.is_file()
+    assert not report_path.with_suffix(".pdf").exists()
+
+
 
 @pytest.mark.asyncio
 async def test_prospectus_notification_is_idempotent_by_document_hash(tmp_path, monkeypatch):
@@ -167,6 +194,48 @@ async def test_prospectus_notification_is_idempotent_by_document_hash(tmp_path, 
     await _notify_new_document(**kwargs)
     await _notify_new_document(**kwargs)
     assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_prospectus_notification_prefers_email_and_sends_without_missing_pdf(tmp_path, monkeypatch):
+    import src.documents.manager as manager_module
+    import src.notifications.whatsapp as whatsapp_module
+    from src.documents.manager import _notify_new_document
+    from src.state.store import StateStore
+
+    monkeypatch.setenv("STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setattr(settings, "enable_email", True)
+    monkeypatch.setattr(settings, "enable_whatsapp", True)
+    report_dir = tmp_path / "reports" / "prospectus"
+    report_dir.mkdir(parents=True)
+    captured = {}
+
+    async def email_accept(self, recipient, subject, content, metadata=None):
+        captured.update({"content": content, "metadata": metadata})
+        return {"success": True, "accepted": True, "delivered": False}
+
+    async def unexpected_whatsapp(self, **_kwargs):
+        raise AssertionError("WhatsApp is only a fallback after email fails")
+
+    monkeypatch.setattr(manager_module.EmailProvider, "send_notification", email_accept)
+    monkeypatch.setattr(whatsapp_module.WhatsAppProvider, "send_notification", unexpected_whatsapp)
+    await _notify_new_document(
+        store=StateStore(root=str(tmp_path / "state")),
+        symbol="EXAMPLE",
+        company_name="Example Limited",
+        document_type="RHP",
+        document_title="Example RHP",
+        source_url="https://www.nseindia.com/example-rhp.pdf",
+        document_hash="b" * 64,
+        version_label="v1",
+        page_count=100,
+        evidence_count=3,
+        report_pdf=report_dir / "missing.pdf",
+    )
+
+    assert captured["content"]
+    assert captured["metadata"]["attachments"] == []
+    assert captured["metadata"]["html_body"]
 
 
 

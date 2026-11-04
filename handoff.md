@@ -37,10 +37,10 @@ Do not jump straight to a scoring formula. First trace the current data flow, sc
 
 | Area | Status | Notes |
 |---|---|---|
-| GitHub Actions / automated test workflow | In place | Complete CI configuration, all 147 tests pass without error. |
-| Results monitoring and event/notification orchestration | In place | Idempotent event ledger, deduped alerts, support for NSE XBRL & BSE scrip announcements. |
-| Email-first notifications | Implemented | Production email delivery with SMTP health diagnostics; WhatsApp safely deferred. |
-| Bounded PDF text extraction | Implemented | `src/results/monitor.py` uses bounded extraction with SHA-256 provenance. |
+| GitHub Actions / automated test workflow | In place | Local full suite: 179 passed. Remote Actions were not run for the current uncommitted branch. |
+| Results monitoring and event/notification orchestration | In place | Idempotent event ledger, retry for unavailable attachments, exact NSE/BSE issuer matching, candidate-only extraction from PDF, XML/iXBRL, HTML, CSV/TSV, XLS, and XLSX. |
+| Email-first notifications | Implemented | Plain-text and HTML email bodies; PDF attachment is optional on render success. WhatsApp is an explicit fallback when enabled. |
+| Bounded financial-results extraction | Implemented | `src/results/document_extractors.py` handles PDF, XML/iXBRL, HTML, CSV/TSV, XLS, and XLSX within size/row limits; values stay candidate-only. |
 | PDF report rendering / source URLs | Implemented | Long source URLs wrapped cleanly in PDF and Markdown executive summaries. |
 | Verification and fail-closed assessment gates | Implemented | Missing critical fields and unverified financial inputs fail closed (`UNABLE_TO_ASSESS`). |
 | Financial trend scoring | Implemented | `src/analysis/financials.py` scores verified multi-period trends without artificial neutrals. |
@@ -48,10 +48,22 @@ Do not jump straight to a scoring formula. First trace the current data flow, sc
 | Period/unit/basis reconciliation | Complete | `src/verification/financial_evidence.py` and `tests/fixtures/official_prospectus_manifest.json`. |
 | Real official prospectus validation | Passed for selected ESDS DRHP rows | Actual SEBI PDF downloaded, hashed, text-extracted, period/unit/basis normalized, and three FY2024 values matched. See run 41421645589. |
 | Reviewer-controlled fact promotion | Complete | `src/verification/reviewer.py` (`FactReviewService`) with full audit logging in `AuditLog`. |
-| Verified IPO recommendations / production decisioning | Complete | `src/web/app.py` wires only reviewer-verified facts to scoring; unverified inputs fail closed. |
-| End-to-end production readiness | Complete | Scanned-PDF OCR detection, database audit sanitization, 147/147 test pass rate. |
+| Verified IPO recommendations / production decisioning | Not complete | Live scoring remains `UNABLE_TO_ASSESS` until business, governance, peer valuation, proceeds, risk, and market evidence are wired and verified. |
+| End-to-end production readiness | Not complete | Local tests pass, but remote workflow and SMTP delivery have not been verified for the current branch; recommendation evidence pipeline remains incomplete. |
 
 **Overall production status: NOT COMPLETE.** The live ESDS DRHP extraction gate passed for three selected rows, but no candidate is verified by extraction alone. Reviewer approval, source reconciliation, and remaining production release gates still apply.
+
+### Current local work (2026-11-04)
+
+Branch: `codex/workflow-results-reliability` (local, uncommitted; no push or remote Actions run for this work).
+
+- Results monitoring now processes official PDF, XBRL/iXBRL, HTML, CSV/TSV, XLS, and XLSX attachments. Periods can be inferred only from explicit, unambiguous attachment/XBRL context; extracted values are labelled `CANDIDATE_UNVERIFIED` and are not assessment-eligible.
+- Attachments that are temporarily unavailable are retried without duplicate emails; the recipient gets one follow-up if extraction later succeeds. A missing attachment is recorded separately.
+- Discovery can include an IPOWATCH GMP snapshot only after exact issuer matching and consistency with the official price band. These quotes are unofficial, may lack a quote timestamp, expire from the digest after 48 hours, and do not affect Apply/Avoid advice.
+- Email includes plain-text and HTML bodies. PDF rendering failure no longer prevents sending; the message omits a PDF attachment in that case.
+- The scheduler accepts a `DATABASE_URL` secret for persistent async PostgreSQL storage. Its default SQLite database is runner-local, so reviewer facts and analysis runs do not persist between workflows unless the secret is configured; the sanitized state branch remains the fallback for public IPO metadata and event keys.
+- Live assessment returns `UNABLE_TO_ASSESS` when business-model, governance, peer-valuation, issue-proceeds, risk, or market-regime evidence is not connected to reviewer-verified source facts. The current core financial fields alone are insufficient.
+- Verification on this local branch: 179 tests passed. SMTP delivery and a GitHub Actions run were not performed, so external credentials/source availability remain unverified.
 
 ---
 

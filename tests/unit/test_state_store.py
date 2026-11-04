@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timedelta, timezone
+import pytest
 
 from src.state.store import StateStore
 
@@ -38,6 +39,21 @@ def test_state_store_does_not_mark_failed_events_as_processed(tmp_path):
         channel=None,
     )
     assert not store.has_processed_event("T2_EXAMPLE_2026-11-10")
+
+
+def test_state_store_keeps_extraction_status_for_retryable_filing_events(tmp_path):
+    store = StateStore(str(tmp_path))
+    store.record_event(
+        "RESULT_EXAMPLE",
+        event_type="FINANCIAL_RESULTS_FILING",
+        symbol="EXAMPLE",
+        event_date="2026-11-04",
+        status="ACCEPTED",
+        channel="EMAIL",
+        processing_status="UNAVAILABLE",
+    )
+    assert store.has_processed_event("RESULT_EXAMPLE")
+    assert store.event_record("RESULT_EXAMPLE")["processing_status"] == "UNAVAILABLE"
 
 
 
@@ -113,6 +129,92 @@ def test_public_document_registry_redacts_token_like_query_parameters(tmp_path):
     assert "private-token" not in payload_text
     assert "token=" not in payload["documents"][0]["source_url"]
     assert store.has_document_url(source_url) is True
+
+
+@pytest.mark.asyncio
+async def test_public_ipo_registry_persists_only_latest_unofficial_gmp_snapshot(tmp_path):
+    from types import SimpleNamespace
+
+    ipo = SimpleNamespace(
+        symbol="EXAMPLE",
+        company_name="Example Industries Limited",
+        industry=None,
+        issue_type="MAINBOARD",
+        status="IPO_DISCOVERED",
+        announced_open_date=None,
+        announced_close_date=None,
+        verified_open_date=None,
+        verified_close_date=None,
+        min_price=100.0,
+        max_price=110.0,
+        lot_size=None,
+        issue_size_cr=None,
+        fresh_issue_cr=None,
+        ofs_cr=None,
+        gmp_snapshots=[
+            SimpleNamespace(
+                source="IPOWATCH",
+                gmp_value=15.0,
+                upper_price=110.0,
+                captured_at=datetime(2026, 11, 4, 10, 0),
+                trend="UNKNOWN",
+            ),
+            SimpleNamespace(
+                source="Other Source",
+                gmp_value=999.0,
+                upper_price=110.0,
+                captured_at=datetime(2026, 11, 4, 11, 0),
+                trend="UNKNOWN",
+            ),
+        ],
+    )
+
+    class Result:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return [ipo]
+
+    class Session:
+        async def execute(self, _statement):
+            return Result()
+
+    store = StateStore(str(tmp_path))
+    assert await store.save_ipo_registry(Session()) == 1
+    payload = json.loads((tmp_path / "ipo_registry.json").read_text(encoding="utf-8"))
+    snapshot = payload["ipos"][0]["gmp_snapshots"][0]
+    assert snapshot["source"] == "IPOWATCH"
+    assert snapshot["gmp_value"] == 15.0
+    assert snapshot["upper_price"] == 110.0
+    assert "Other Source" not in json.dumps(payload)
+
+
+@pytest.mark.asyncio
+async def test_restore_ipo_registry_skips_gmp_from_a_different_price_band(tmp_path, async_session):
+    from src.database.repository import IPORepository
+
+    store = StateStore(str(tmp_path))
+    (tmp_path / "ipo_registry.json").write_text(json.dumps({
+        "schema_version": 1,
+        "ipos": [{
+            "symbol": "EXAMPLE",
+            "company_name": "Example Limited",
+            "max_price": 120.0,
+            "gmp_snapshots": [{
+                "gmp_value": 20.0,
+                "upper_price": 110.0,
+                "captured_at": "2026-11-04T10:00:00+00:00",
+                "source": "IPOWATCH",
+                "trend": "UNKNOWN",
+            }],
+        }],
+    }), encoding="utf-8")
+
+    assert await store.restore_ipo_registry(async_session) == 1
+    ipo = await IPORepository(async_session).get_ipo_by_symbol("EXAMPLE")
+    assert ipo.max_price == 120.0
+    assert ipo.gmp_snapshots == []
 
 
 

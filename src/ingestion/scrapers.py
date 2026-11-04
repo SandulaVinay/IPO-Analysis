@@ -4,7 +4,7 @@ Only values actually present in the source HTML are emitted. If the page layout
 changes or the table is not available, the adapter returns no rows rather than
 manufacturing a sample IPO.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 import re
 from urllib.parse import urljoin, urlparse
@@ -17,10 +17,78 @@ from src.ingestion.client import http_client
 
 NSE_IPO_URL = "https://www.nseindia.com/market-data/all-upcoming-issues-ipo"
 BSE_IPO_URL = "https://www.bseindia.com/markets/PublicIssues/IPOIssues_new.aspx?id=1&Type=p"
+IPOWATCH_GMP_URL = "https://ipowatch.cc/gmp"
 
 
 def _norm(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip().lower()
+
+
+def _ipo_name_key(value: str) -> str:
+    """Normalize an issuer name conservatively for exact cross-source matching."""
+    normalized = re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
+    normalized = re.sub(r"\b(?:limited|ltd|private|pvt)\b", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _parse_currency_cell(value: str) -> Optional[float]:
+    text = str(value or "").replace(",", "").replace("₹", " ").replace("−", "-").replace("–", "-")
+    # Handle legacy mojibake too, while parsing actual Unicode from HTTP responses.
+    text = text.replace("â‚¹", " ").replace("âˆ’", "-").replace("â€“", "-").strip()
+    parenthesized_negative = text.startswith("(") and text.endswith(")")
+    if parenthesized_negative:
+        text = text[1:-1].strip()
+    match = re.search(r"([+-])?\s*(?:rs\.?\s*)?(\d+(?:\.\d+)?)", text, re.IGNORECASE)
+    if not match:
+        return None
+    number = float(match.group(2))
+    return -number if parenthesized_negative or match.group(1) == "-" else number
+
+def parse_ipowatch_gmp_rows(html: str) -> List[Dict[str, Any]]:
+    """Parse IPOWATCH's table as unofficial sentiment data, never as an exchange quote."""
+    soup = BeautifulSoup(html or "", "lxml")
+    parsed: List[Dict[str, Any]] = []
+    for table in soup.find_all("table"):
+        header_row = table.find("tr")
+        if header_row is None:
+            continue
+        headers = [_norm(cell.get_text(" ", strip=True)) for cell in header_row.find_all(["th", "td"])]
+
+        def index_for(*aliases: str) -> Optional[int]:
+            return next((index for index, header in enumerate(headers) if any(alias in header for alias in aliases)), None)
+
+        company_index = index_for("ipo", "company", "name")
+        type_index = index_for("type", "segment", "board")
+        status_index = index_for("status")
+        band_index = index_for("band", "price range")
+        gmp_index = index_for("gmp", "premium")
+        if None in (company_index, status_index, band_index, gmp_index):
+            continue
+
+        for row in table.find_all("tr")[1:]:
+            cells = row.find_all(["td", "th"])
+            if any(index is None or index >= len(cells) for index in (company_index, status_index, band_index, gmp_index)):
+                continue
+            company_name = re.sub(r"\s+", " ", cells[company_index].get_text(" ", strip=True)).strip()
+            status = re.sub(r"\s+", " ", cells[status_index].get_text(" ", strip=True)).strip()
+            band_text = cells[band_index].get_text(" ", strip=True)
+            band_values = [float(value.replace(",", "")) for value in re.findall(r"\d[\d,]*(?:\.\d+)?", band_text)]
+            gmp_value = _parse_currency_cell(cells[gmp_index].get_text(" ", strip=True))
+            if not company_name or not status or len(band_values) < 2 or gmp_value is None:
+                continue
+            type_value = cells[type_index].get_text(" ", strip=True).upper() if type_index is not None and type_index < len(cells) else ""
+            parsed.append({
+                "company_name": company_name,
+                "name_key": _ipo_name_key(company_name),
+                "status": status,
+                "issue_type": "SME" if "SME" in type_value else "MAINBOARD" if type_value else "UNKNOWN",
+                "min_price": band_values[0],
+                "max_price": band_values[1],
+                "gmp_value": gmp_value,
+                "source_url": IPOWATCH_GMP_URL,
+                "source_timestamp": None,
+            })
+    return parsed
 
 def _parse_date_value(value: str):
     if not value:
@@ -162,7 +230,7 @@ def _parse_official_issue_tables(html: str, *, source_name: str, source_url: str
                 "source_name": source_name,
                 "source_tier": "TIER_1",
                 "source_url": source_url,
-                "captured_at": datetime.utcnow().isoformat(),
+                "captured_at": datetime.now(timezone.utc).isoformat(),
             }
             if cell_text(symbol_idx):
                 row["symbol"] = cell_text(symbol_idx).upper()
@@ -212,6 +280,7 @@ class PortalScraper(BaseScraper):
     def __init__(self):
         self.last_source_status = "NOT_RUN"
         self.last_source_errors = []
+        self._gmp_rows_by_name: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
     async def fetch_upcoming_ipos(self) -> List[Dict[str, Any]]:
         collected: List[Dict[str, Any]] = []
@@ -335,10 +404,53 @@ class PortalScraper(BaseScraper):
             logger.warning("No official IPO rows were parsed. No candidate or recommendation will be fabricated.")
         return list(deduped.values())
 
+    async def _load_gmp_rows(self) -> Dict[str, List[Dict[str, Any]]]:
+        if self._gmp_rows_by_name is not None:
+            return self._gmp_rows_by_name
+        try:
+            response = await http_client.get(
+                IPOWATCH_GMP_URL,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; IPO-Analysis/2.0)",
+                    "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+                    "Referer": "https://ipowatch.cc/",
+                },
+                timeout=30.0,
+            )
+            rows = parse_ipowatch_gmp_rows(response.text)
+            indexed: Dict[str, List[Dict[str, Any]]] = {}
+            for row in rows:
+                if row.get("name_key"):
+                    indexed.setdefault(row["name_key"], []).append(row)
+            self._gmp_rows_by_name = indexed
+            logger.info("Loaded %s IPOWATCH GMP rows as unofficial sentiment data.", len(rows))
+        except Exception as exc:
+            # GMP is supplementary. A site outage must not prevent official IPO discovery.
+            self._gmp_rows_by_name = {}
+            logger.warning("Unofficial IPOWATCH GMP source unavailable (%s).", type(exc).__name__)
+        return self._gmp_rows_by_name
+
+    async def fetch_live_gmp_for_company(self, company_name: str) -> Optional[Dict[str, Any]]:
+        """Return one current/upcoming exact-name quote; zero means no fresh quote."""
+        key = _ipo_name_key(company_name)
+        if not key:
+            return None
+        rows = (await self._load_gmp_rows()).get(key, [])
+        active = [
+            row for row in rows
+            if _norm(row.get("status", "")) in {"open", "upcoming", "closing today", "opening soon"}
+        ]
+        if len(active) != 1:
+            return None
+        quote = dict(active[0])
+        if quote.get("gmp_value") in (None, 0):
+            return None
+        quote["captured_at"] = datetime.now(timezone.utc).isoformat()
+        return quote
+
     async def fetch_live_gmp(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """GMP is unofficial sentiment and is intentionally unavailable by default."""
-        logger.info("GMP unavailable for %s; no verified source adapter is configured.", symbol)
-        return None
+        """Compatibility wrapper for callers that have a company name as the symbol."""
+        return await self.fetch_live_gmp_for_company(symbol)
 
     async def fetch_subscription_status(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Subscription data is unavailable until an exchange source adapter is configured."""

@@ -306,7 +306,7 @@ class GMPSnapshot(Base):
     potential_listing_gain_pct = Column(Float, nullable=False)
     source = Column(String(100), default="GMP Aggregator")
     captured_at = Column(DateTime, default=datetime.utcnow, index=True)
-    trend = Column(String(20), default="STABLE")  # RISING, FALLING, STABLE
+    trend = Column(String(20), default="UNKNOWN")  # RISING, FALLING, STABLE, UNKNOWN
 
     ipo = relationship("IPO", back_populates="gmp_snapshots")
 

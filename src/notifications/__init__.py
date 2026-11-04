@@ -2,13 +2,30 @@
 Notifications module exports.
 """
 
-from src.notifications.provider import NotificationProvider
-from src.notifications.whatsapp import WhatsAppProvider
-from src.notifications.email import EmailProvider
-from src.notifications.sms import SMSProvider
-from src.notifications.console import ConsoleProvider
-from src.notifications.orchestrator import NotificationOrchestrator
-from src.notifications.scheduler import SystemScheduler
+from importlib import import_module
+
+_EXPORTS = {
+    "NotificationProvider": "provider",
+    "WhatsAppProvider": "whatsapp",
+    "EmailProvider": "email",
+    "SMSProvider": "sms",
+    "ConsoleProvider": "console",
+    "NotificationOrchestrator": "orchestrator",
+    "SystemScheduler": "scheduler",
+}
+
+
+def __getattr__(name):
+    """Load provider exports lazily so notification imports do not pull in the scheduler."""
+    module_name = _EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module = import_module(f"{__name__}.{module_name}")
+    return getattr(module, name)
+
+
+def __dir__():
+    return sorted(set(globals()) | set(__all__))
 
 __all__ = [
     "NotificationProvider",

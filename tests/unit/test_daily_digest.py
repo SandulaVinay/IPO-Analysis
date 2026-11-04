@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
@@ -77,7 +77,7 @@ async def test_daily_digest_creates_report_without_claiming_delivery_when_channe
 
 
 @pytest.mark.asyncio
-async def test_daily_digest_uses_email_fallback_with_pdf_when_whatsapp_fails(tmp_path, monkeypatch):
+async def test_daily_digest_sends_pdf_by_email_when_whatsapp_is_enabled(tmp_path, monkeypatch):
     import src.reporting.daily_digest as digest_module
 
     monkeypatch.chdir(tmp_path)
@@ -85,14 +85,10 @@ async def test_daily_digest_uses_email_fallback_with_pdf_when_whatsapp_fails(tmp
     monkeypatch.setattr(settings, "enable_email", True)
     captured = {}
 
-    async def whatsapp_fail(self, recipient, subject, content, metadata=None):
-        return {"success": False, "accepted": False, "delivered": False, "error": "test failure"}
-
     async def email_accept(self, recipient, subject, content, metadata=None):
         captured["metadata"] = metadata
         return {"success": True, "accepted": True, "delivered": False, "error": None}
 
-    monkeypatch.setattr(digest_module.WhatsAppProvider, "send_notification", whatsapp_fail)
     monkeypatch.setattr(digest_module.EmailProvider, "send_notification", email_accept)
     store = StateStore(root=str(tmp_path / "state"))
     result = await generate_daily_ipo_digest([], store)
@@ -101,6 +97,33 @@ async def test_daily_digest_uses_email_fallback_with_pdf_when_whatsapp_fails(tmp
     attachment = captured["metadata"]["attachments"][0]
     assert attachment.endswith(".pdf")
     assert (tmp_path / attachment).exists()
+
+
+@pytest.mark.asyncio
+async def test_daily_digest_sends_html_and_plain_email_when_pdf_rendering_fails(tmp_path, monkeypatch):
+    import src.reporting.daily_digest as digest_module
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "enable_email", True)
+    monkeypatch.setattr(settings, "enable_whatsapp", False)
+    captured = {}
+
+    def fail_pdf(*_args, **_kwargs):
+        raise RuntimeError("renderer unavailable")
+
+    async def email_accept(self, recipient, subject, content, metadata=None):
+        captured.update({"content": content, "metadata": metadata})
+        return {"success": True, "accepted": True, "delivered": False, "error": None}
+
+    monkeypatch.setattr(digest_module, "markdown_to_pdf", fail_pdf)
+    monkeypatch.setattr(digest_module.EmailProvider, "send_notification", email_accept)
+    result = await generate_daily_ipo_digest([], StateStore(root=str(tmp_path / "state")))
+
+    assert result["status"] == "ACCEPTED"
+    assert result["pdf_available"] is False
+    assert captured["content"]
+    assert captured["metadata"]["attachments"] == []
+    assert captured["metadata"]["html_body"]
 
 
 
@@ -172,6 +195,35 @@ def test_daily_digest_does_not_use_old_gmp_as_current():
     now = datetime(2026, 10, 29, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
     assert "Stale snapshot" in _latest_gmp(ipo, now)
     assert "not used as current GMP" in _latest_gmp(ipo, now)
+
+
+def test_daily_digest_interprets_naive_database_gmp_timestamp_as_utc():
+    from src.reporting.daily_digest import _latest_gmp
+
+    ipo = SimpleNamespace(gmp_snapshots=[
+        SimpleNamespace(
+            gmp_value=15.0,
+            source="IPOWATCH",
+            captured_at=datetime(2026, 11, 2, 15, 0),
+        )
+    ])
+    now = datetime(2026, 11, 4, 14, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
+    display = _latest_gmp(ipo, now)
+    assert "15.00" in display
+    assert "quote timestamp unavailable" in display
+
+
+def test_daily_digest_sorts_mixed_timezone_gmp_snapshots_safely():
+    from src.reporting.daily_digest import _latest_gmp
+
+    ipo = SimpleNamespace(gmp_snapshots=[
+        SimpleNamespace(gmp_value=10.0, source="older", captured_at=datetime(2026, 11, 3, 10, 0)),
+        SimpleNamespace(gmp_value=18.0, source="IPOWATCH", captured_at=datetime(2026, 11, 4, 4, 0, tzinfo=timezone.utc)),
+    ])
+    now = datetime(2026, 11, 4, 11, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
+
+    display = _latest_gmp(ipo, now)
+    assert "18.00" in display
 
 
 

@@ -3,6 +3,7 @@ IPO Discovery Engine.
 Orchestrates discovery across multi-tier sources, normalizes records, and registers them in the database.
 """
 
+from datetime import datetime, timezone
 from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.common.logging import logger
@@ -11,6 +12,22 @@ from src.database.repository import IPORepository
 from src.documents.manager import DocumentManager
 from src.discovery.normalizer import Normalizer
 from src.ingestion.scrapers import PortalScraper
+
+IPOWATCH_GMP_SOURCE = "IPOWATCH"
+
+
+def _naive_utc(value: Any) -> datetime:
+    """Convert a parsed source capture time to the database's naive-UTC convention."""
+    if isinstance(value, datetime):
+        captured = value
+    else:
+        try:
+            captured = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            captured = datetime.now(timezone.utc)
+    if captured.tzinfo is None:
+        captured = captured.replace(tzinfo=timezone.utc)
+    return captured.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 class DiscoveryEngine:
@@ -79,6 +96,45 @@ class DiscoveryEngine:
                 logger.warning("Official source conflict for %s (%s); conflicted fields were cleared.", company_name, symbol)
             elif ipo.status == "SOURCE_CONFLICT":
                 ipo.status = "IPO_DISCOVERED"
+
+            # GMP is an unofficial sentiment field. Match only a unique exact
+            # issuer name and require the tracker band to agree with the official
+            # exchange price before persisting it.
+            fetch_gmp = getattr(self.scraper, "fetch_live_gmp_for_company", None)
+            if fetch_gmp and ipo.status != "SOURCE_CONFLICT" and ipo.max_price:
+                try:
+                    quote = await fetch_gmp(company_name)
+                    if quote and quote.get("gmp_value") not in (None, 0):
+                        quote_upper = quote.get("max_price")
+                        quote_type = str(quote.get("issue_type") or "UNKNOWN").upper()
+                        ipo_type = str(ipo.issue_type or "UNKNOWN").upper()
+                        if quote_upper is None or abs(float(quote_upper) - float(ipo.max_price)) > 0.01:
+                            logger.info("Skipping GMP for %s because its unofficial price band does not match the official listing.", symbol)
+                        elif quote_type != "UNKNOWN" and ipo_type not in {"UNKNOWN", quote_type}:
+                            logger.info("Skipping GMP for %s because the tracker issue type conflicts with official discovery.", symbol)
+                        else:
+                            previous = await self.repo.latest_gmp_snapshot(ipo.id, source=IPOWATCH_GMP_SOURCE)
+                            gmp_value = float(quote["gmp_value"])
+                            trend = "UNKNOWN"
+                            if previous and abs(float(previous.gmp_value) - gmp_value) > 0.0001:
+                                trend = "RISING" if gmp_value > float(previous.gmp_value) else "FALLING"
+                            if (
+                                previous is None
+                                or abs(float(previous.gmp_value) - gmp_value) > 0.0001
+                                or abs(float(previous.upper_price) - float(ipo.max_price)) > 0.01
+                            ):
+                                await self.repo.add_gmp(
+                                    ipo_id=ipo.id,
+                                    gmp_value=gmp_value,
+                                    upper_price=float(ipo.max_price),
+                                    source=IPOWATCH_GMP_SOURCE,
+                                    trend=trend,
+                                    captured_at=_naive_utc(quote.get("captured_at")),
+                                )
+                except Exception as exc:
+                    # Keep official IPO discovery available when the unofficial
+                    # sentiment site is blocked, stale, or changes its layout.
+                    logger.warning("GMP lookup skipped for %s (%s).", symbol, type(exc).__name__)
 
             # Prospectus links are optional: only real, validated PDFs are ingested.
             # A failed download never creates a placeholder and never unblocks scoring.

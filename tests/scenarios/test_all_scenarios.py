@@ -40,7 +40,7 @@ def test_scenario_1_strong_ipo():
         {"period_name": "FY25", "revenue": 1000.0, "pat": 140.0, "cfo": 135.0, "net_debt": 0.0, "net_worth": 425.0},
     ]
     fin = FinancialAnalyzer.analyze_financials(periods)
-    biz = BusinessAnalyzer.analyze_business({"top5_customer_concentration_pct": 20.0, "recurring_revenue_pct": 70.0, "has_proprietary_tech_or_moat": True})
+    biz = BusinessAnalyzer.analyze_business({"top5_customer_concentration_pct": 20.0, "recurring_revenue_pct": 70.0, "has_proprietary_tech_or_moat": True, "is_cyclical": False})
     struct = StructureAnalyzer.analyze_structure({"issue_size_cr": 1000.0, "fresh_issue_cr": 800.0, "ofs_cr": 200.0})
     val = ValuationEngine.evaluate_valuation(issue_price=400.0, post_issue_shares_cr=10.0, total_debt_cr=0.0, cash_cr=100.0, latest_pat_cr=140.0, latest_ebitda_cr=220.0, latest_revenue_cr=1000.0, net_worth_cr=425.0, peer_median_pe=38.0, peer_median_ev_ebitda=24.0)
     
@@ -125,6 +125,7 @@ def test_scenario_7_tech_saas_ipo():
         "recurring_revenue_pct": 88.0,
         "has_proprietary_tech_or_moat": True,
         "top5_customer_concentration_pct": 14.0,
+        "is_cyclical": False,
     })
     assert biz["business_quality_score"] >= 8.5
 
@@ -182,3 +183,20 @@ def test_scenario_11_changed_opening_date():
     diff = DocumentDiffEngine.compare_ipo_parameters(old_p, new_p)
     assert diff["has_changes"] is True
     assert diff["is_reanalysis_required"] is True
+
+
+def test_evidence_gated_pillars_do_not_invent_neutral_scores():
+    from src.analysis.regime import MarketRegimeAnalyzer
+
+    business = BusinessAnalyzer.analyze_business({})
+    management = ManagementAnalyzer.analyze_management({})
+    structure = StructureAnalyzer.analyze_structure({})
+    risk = RiskEngine.evaluate_risks([])
+    regime = MarketRegimeAnalyzer.evaluate_market_regime()
+
+    assert business["assessment_status"] == "UNABLE_TO_ASSESS"
+    assert business["business_quality_score"] is None
+    assert management["management_governance_score"] is None
+    assert structure["ipo_structure_score"] is None
+    assert risk["risk_score"] is None
+    assert regime["market_sentiment_score"] is None

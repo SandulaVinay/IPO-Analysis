@@ -33,8 +33,15 @@ class ValuationEngine:
             reason = "Valuation inputs must be numeric."
             return {"assessment_status": "UNABLE_TO_ASSESS", "valuation_score": None,
                     "insights": [reason], "limitations": [reason]}
-        if any(not math.isfinite(v) for v in numeric) or float(issue_price) <= 0 or float(post_issue_shares_cr) <= 0:
-            reason = "Valuation inputs must be finite and issue price/share count must be positive."
+        peer_values = [v for v in (peer_median_pe, peer_median_ev_ebitda) if v is not None]
+        try:
+            peer_values = [float(v) for v in peer_values]
+        except (TypeError, ValueError, OverflowError):
+            peer_values = [float("nan")]
+        if (any(not math.isfinite(v) for v in numeric + peer_values)
+                or any(v <= 0 for v in peer_values)
+                or float(issue_price) <= 0 or float(post_issue_shares_cr) <= 0):
+            reason = "Valuation inputs and available peer multiples must be finite and positive where applicable."
             return {"assessment_status": "UNABLE_TO_ASSESS", "valuation_score": None,
                     "insights": [reason], "limitations": [reason]}
         market_cap = FinancialMath.calculate_post_ipo_market_cap(issue_price, post_issue_shares_cr)

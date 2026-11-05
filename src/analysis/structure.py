@@ -16,7 +16,13 @@ class StructureAnalyzer:
             return {"assessment_status": "UNABLE_TO_ASSESS", "ipo_structure_score": None,
                     "fresh_issue_pct": None, "ofs_pct": None, "is_ofs_heavy": None,
                     "insights": [reason], "limitations": [reason]}
-        issue_size, fresh, ofs = (float(data[k]) for k in StructureAnalyzer.REQUIRED_FIELDS)
+        try:
+            issue_size, fresh, ofs = (float(data[k]) for k in StructureAnalyzer.REQUIRED_FIELDS)
+        except (TypeError, ValueError, OverflowError):
+            reason = "Issue size and fresh/OFS amounts must be numeric."
+            return {"assessment_status": "UNABLE_TO_ASSESS", "ipo_structure_score": None,
+                    "fresh_issue_pct": None, "ofs_pct": None, "is_ofs_heavy": None,
+                    "insights": [reason], "limitations": [reason]}
         if (not all(math.isfinite(v) for v in (issue_size, fresh, ofs))
                 or issue_size <= 0 or fresh < 0 or ofs < 0 or fresh + ofs > issue_size * 1.02):
             reason = "Issue size and fresh/OFS amounts are inconsistent or outside valid ranges."

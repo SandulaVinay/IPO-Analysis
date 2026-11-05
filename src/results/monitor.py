@@ -1203,6 +1203,9 @@ async def monitor_financial_results() -> Dict[str, Any]:
         )
 
         force_resend_results = os.getenv("FORCE_RESEND_RESULTS", "").strip().lower() in {"1", "true", "yes"}
+        if force_resend_results and not recent_filings and filings:
+            logger.info("FORCE_RESEND_RESULTS is enabled: selecting latest available filing for %s as recent filings window is empty.", symbol)
+            recent_filings = [filings[0]]
         for item in recent_filings:
             was_processed = store.has_processed_event(item["event_key"])
             get_event_record = getattr(store, "event_record", None)

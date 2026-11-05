@@ -253,3 +253,40 @@ def test_watchlist_accepts_bse_scrip_code_and_rejects_missing_code(tmp_path):
     )
     with pytest.raises(RuntimeError, match="six-digit bse_scrip_code"):
         store.load_watchlist()
+
+
+@pytest.mark.asyncio
+async def test_restore_and_save_ipo_registry_filters_invalid_company_labels(tmp_path, async_session):
+    store = StateStore(str(tmp_path))
+    path = tmp_path / "ipo_registry.json"
+    path.write_text(
+        json.dumps({
+            "schema_version": 1,
+            "ipos": [
+                {
+                    "symbol": "VALID_CO",
+                    "company_name": "Valid Technology Corp Limited",
+                    "status": "IPO_DISCOVERED",
+                },
+                {
+                    "symbol": "OFFERED_RESERVED",
+                    "company_name": "offered/ reserved",
+                    "status": "IPO_DISCOVERED",
+                },
+                {
+                    "symbol": "NO_RECS",
+                    "company_name": "no records found",
+                    "status": "IPO_DISCOVERED",
+                },
+            ],
+        }),
+        encoding="utf-8",
+    )
+    restored = await store.restore_ipo_registry(async_session)
+    assert restored == 1
+
+    saved = await store.save_ipo_registry(async_session)
+    saved_payload = json.loads(path.read_text(encoding="utf-8"))
+    assert len(saved_payload["ipos"]) == 1
+    assert saved_payload["ipos"][0]["symbol"] == "VALID_CO"
+

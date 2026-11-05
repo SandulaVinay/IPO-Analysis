@@ -50,21 +50,35 @@ CRORE = 10_000_000
 METRIC_TAGS = {
     "revenue_cr": [
         "RevenueFromOperations",
+        "TotalRevenueFromOperations",
         "RevenueFromOperationsIncludingExciseDuty",
         "RevenueFromOperationsExcludingOtherIncome",
         "RevenueFromOperationsFromContinuingOperations",
+        "Income",
+        "TotalIncome",
+        "InterestEarned",
     ],
     "pat_cr": [
         "ProfitLossForPeriod",
+        "ProfitLossForYear",
+        "ProfitLossAfterTax",
+        "NetProfitLossForPeriod",
         "ProfitLossForPeriodAttributableToOwnersOfParent",
         "ProfitLossFromContinuingOperations",
         "ProfitLoss",
     ],
-    "eps": ["EarningsPerShareBasic", "EarningsPerShareDiluted"],
+    "eps": [
+        "EarningsPerShareBasic",
+        "BasicEarningsLossPerShare",
+        "EarningsPerShareDiluted",
+        "DilutedEarningsLossPerShare",
+    ],
     "cfo_cr": [
         "CashFlowsFromUsedInOperatingActivities",
         "NetCashFlowsFromUsedInOperatingActivities",
         "CashGeneratedFromUsedInOperatingActivities",
+        "CashFlowFromOperatingActivities",
+        "NetCashGeneratedFromOperatingActivities",
     ],
 }
 

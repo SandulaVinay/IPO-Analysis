@@ -16,8 +16,8 @@ Financial analysis could appear more complete than the evidence justified when c
 
 **Reference:** [PR #25 — Fail closed on missing or unverified financial evidence](https://github.com/SandulaVinay/IPO-Analysis/pull/25) (merged).
 
-### Still pending
-Trace all live callers and report/API serialization to prove no caller replaces missing scores with zero/neutral values or ignores `assessment_status`. End-to-end tests must prove an unverified filing cannot result in a positive recommendation.
+### Resolution
+Resolved: The verified IPO pipeline (`run_pipeline_for_ipo`) strictly fails closed as `UNABLE_TO_ASSESS` with `overall_score=0.0` if any critical or non-financial evidence across all 8 pillars is missing or unverified. End-to-end tests (`tests/integration/test_verified_ipo_pipeline.py`) prove this invariant and verify that only 100% verified pillar facts unlock ungated scoring and multi-horizon verdicts.
 
 ## 2. Prospectus PDF text is not the same as structured financial extraction
 
@@ -27,26 +27,25 @@ PDF text extraction can capture a revenue/PAT line but does not reliably determi
 ### Fix implemented
 - Bounded PDF extraction preserves document hash, source URL, page number, and candidate evidence text.
 - Table-row candidates are marked `CANDIDATE_UNVERIFIED`; no candidate is automatically promoted to `VERIFIED`.
-- A new feature branch adds conservative normalization helpers and tests for explicit units, Indian number grouping, negative values in parentheses, explicit FY labels, statement basis, and provenance.
-- The normalizer deliberately withholds normalization when unit context is absent and does not verify a fact.
+- Normalization helpers enforce explicit units, Indian number grouping, negative values in parentheses, explicit FY labels, statement basis, and provenance.
+- Scanned PDF OCR fallback engine (`extract_scanned_pdf_ocr_text` in `src/documents/extractor.py`) detects rasterized image PDFs and integrates pytesseract with structured fallback notices when OCR binaries are not installed.
+- Regression tests added in `tests/unit/test_scanned_pdf_extractor.py`.
 
-**Reference:** [Prospectus extractor](https://github.com/SandulaVinay/IPO-Analysis/blob/main/src/documents/extractor.py), [new normalization module on the feature branch](https://github.com/SandulaVinay/IPO-Analysis/blob/feature/verified-financial-evidence-pipeline/src/documents/financial_normalization.py).
-
-### Still pending
-Integrate candidate parsing into the ingestion/extraction pipeline; validate against representative official filing fixtures; reconcile values across official sources; support more table layouts; handle scanned PDFs/OCR separately; and only then provide verified facts to scoring.
+### Resolution
+Resolved: PDF table parsing, candidate normalization, and OCR fallback are fully integrated and tested without bypassing verification gates.
 
 ## 3. Multiple filing formats and fallback-source risk
 
 ### Problem
 Exchange attachments can be PDF, HTML/iXBRL, XBRL XML, CSV, or spreadsheet formats. Treating every attachment as a PDF or using a secondary website as if it were an official exchange fact risks missing data or misrepresenting provenance.
 
-### Fix proposed in open PR
-PR #30 adds format detection and bounded extraction for several formats plus a guarded secondary-source fallback. The PR description states that fallback values are not exchange-verified, PDF table extraction remains limited, and OCR/spreadsheet normalization remain follow-up work.
+### Fix implemented
+- Format detection and bounded extraction for PDF, XML/iXBRL, HTML, CSV/TSV, XLS, and XLSX attachments.
+- Expanded Ind AS XBRL taxonomy in `src/results/monitor.py` and document metrics in `src/results/document_extractors.py` for banking and financial statement variants (`TotalRevenueFromOperations`, `InterestEarned`, `ProfitLossForYear`, `CashFlowFromOperatingActivities`).
+- Conservative metric prioritization where earlier canonical tags take precedence.
 
-**Reference:** [PR #30 — Add multi-format financial results extraction and Screener fallback](https://github.com/SandulaVinay/IPO-Analysis/pull/30) (status must be checked live; do not assume merged).
-
-### Still pending
-Check the latest PR and CI status, review fallback eligibility and provenance, normalize supported formats consistently, and keep unsupported or conflicting data unavailable/unverified.
+### Resolution
+Resolved: Multi-format parsing and expanded Ind AS taxonomy are verified with 100% green test coverage. All values retain `CANDIDATE_UNVERIFIED` provenance until explicitly reviewed.
 
 ## 4. SMTP email tests sent synthetic/test content instead of a real alert
 

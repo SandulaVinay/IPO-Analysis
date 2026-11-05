@@ -22,19 +22,72 @@ from src.database.models import Fact, FinancialPeriod, AuditLog, IPO
 class FactReviewService:
     """Manages audited transitions from candidate facts to VERIFIED canonical facts."""
 
+    FINANCIAL_STATEMENT_FIELDS = {
+        "revenue_from_operations",
+        "profit_after_tax",
+        "operating_cash_flow",
+        "revenue_latest",
+        "pat_latest",
+        "cfo_latest",
+        "ebitda_latest",
+        "net_worth",
+        "total_debt",
+    }
+
     CRITICAL_TARGET_FIELDS = {
+        # Core financial statement metrics
         "revenue_from_operations": "revenue_latest",
         "profit_after_tax": "pat_latest",
         "operating_cash_flow": "cfo_latest",
         "revenue_latest": "revenue_latest",
         "pat_latest": "pat_latest",
         "cfo_latest": "cfo_latest",
+        "ebitda_latest": "ebitda_latest",
+        "net_worth": "net_worth",
+        "total_debt": "total_debt",
+
+        # Core issue terms
         "min_price": "min_price",
         "max_price": "max_price",
         "lot_size": "lot_size",
         "issue_size_cr": "issue_size_cr",
         "fresh_issue_cr": "fresh_issue_cr",
         "ofs_cr": "ofs_cr",
+        "verified_open_date": "verified_open_date",
+        "verified_close_date": "verified_close_date",
+
+        # Business Quality
+        "top5_customer_concentration_pct": "top5_customer_concentration_pct",
+        "recurring_revenue_pct": "recurring_revenue_pct",
+        "has_proprietary_tech_or_moat": "has_proprietary_tech_or_moat",
+        "is_cyclical": "is_cyclical",
+        "business_description": "business_description",
+
+        # Governance & Management
+        "promoter_pre_holding_pct": "promoter_pre_holding_pct",
+        "promoter_post_holding_pct": "promoter_post_holding_pct",
+        "promoter_pledge_pct": "promoter_pledge_pct",
+        "has_auditor_qualifications": "has_auditor_qualifications",
+        "frequent_auditor_changes": "frequent_auditor_changes",
+        "rpt_revenue_pct": "rpt_revenue_pct",
+        "has_promoter_litigation": "has_promoter_litigation",
+
+        # Structure & Proceeds
+        "capex_growth_cr": "capex_growth_cr",
+        "debt_repayment_cr": "debt_repayment_cr",
+
+        # Valuation & Peers
+        "peer_median_pe": "peer_median_pe",
+        "peer_median_ev_ebitda": "peer_median_ev_ebitda",
+        "post_issue_shares_cr": "post_issue_shares_cr",
+        "cash_cr": "cash_cr",
+
+        # Risk & Market
+        "risk_register": "risk_register",
+        "nifty_50dma_status": "nifty_50dma_status",
+        "midcap_sentiment": "midcap_sentiment",
+        "recent_ipos_avg_listing_gain_pct": "recent_ipos_avg_listing_gain_pct",
+        "india_vix": "india_vix",
     }
 
     @staticmethod
@@ -168,33 +221,18 @@ class FactReviewService:
                 parsed_meta = json.loads(candidate.value_text)
             except (TypeError, ValueError) as exc:
                 raise ValueError("Candidate JSON metadata is malformed and cannot be verified.") from exc
-            if not isinstance(parsed_meta, dict):
+            if isinstance(parsed_meta, dict):
+                candidate_meta = parsed_meta
+            elif isinstance(parsed_meta, list):
+                if candidate.field_name in cls.FINANCIAL_STATEMENT_FIELDS:
+                    raise ValueError("Candidate JSON metadata must be an object.")
+                candidate_meta = {}
+            else:
                 raise ValueError("Candidate JSON metadata must be an object.")
-            candidate_meta = parsed_meta
 
         # Provenance validation
         if not candidate.source_url or not str(candidate.source_url).startswith("https://"):
             raise ValueError("Cannot verify candidate with missing or non-HTTPS source URL.")
-
-        # If candidate metadata exists, enforce period & basis checks
-        if candidate_meta:
-            period = candidate_meta.get("period")
-            period_label = period.get("label") if isinstance(period, dict) else None
-            if not period_label:
-                raise ValueError("Cannot verify candidate with missing or ambiguous financial period.")
-
-            statement_basis = str(candidate_meta.get("statement_basis") or "").upper()
-            if statement_basis not in {"CONSOLIDATED", "STANDALONE"}:
-                raise ValueError("Cannot verify candidate with missing or ambiguous statement basis.")
-
-            if verified_numeric_value is None:
-                norm_str = candidate_meta.get("normalized_value_inr_crore")
-                if norm_str is None:
-                    raise ValueError("Cannot verify candidate lacking explicit unit or normalized INR Crore value.")
-                try:
-                    verified_numeric_value = float(Decimal(str(norm_str)))
-                except Exception as exc:
-                    raise ValueError("Normalized candidate value cannot be converted to float.") from exc
 
         # Resolve the canonical field before comparing evidence. Different extraction
         # labels can map to the same production field and must share one conflict domain.
@@ -203,6 +241,35 @@ class FactReviewService:
         )).strip()
         if not canonical:
             raise ValueError("A canonical target field name is required.")
+
+        # If candidate metadata exists, enforce period & basis checks for financial statements
+        if candidate_meta:
+            period = candidate_meta.get("period")
+            period_label = period.get("label") if isinstance(period, dict) else None
+            statement_basis = str(candidate_meta.get("statement_basis") or "").upper()
+
+            if canonical in cls.FINANCIAL_STATEMENT_FIELDS:
+                if not period_label:
+                    raise ValueError("Cannot verify candidate with missing or ambiguous financial period.")
+                if statement_basis not in {"CONSOLIDATED", "STANDALONE"}:
+                    raise ValueError("Cannot verify candidate with missing or ambiguous statement basis.")
+
+            if verified_numeric_value is None:
+                norm_str = candidate_meta.get("normalized_value_inr_crore")
+                if norm_str is not None:
+                    try:
+                        verified_numeric_value = float(Decimal(str(norm_str)))
+                    except Exception as exc:
+                        raise ValueError("Normalized candidate value cannot be converted to float.") from exc
+                elif canonical in cls.FINANCIAL_STATEMENT_FIELDS:
+                    raise ValueError("Cannot verify candidate lacking explicit unit or normalized INR Crore value.")
+                elif candidate.value_numeric is not None:
+                    verified_numeric_value = candidate.value_numeric
+                elif "value_numeric" in candidate_meta:
+                    try:
+                        verified_numeric_value = float(Decimal(str(candidate_meta["value_numeric"])))
+                    except Exception:
+                        pass
 
         # Compare independent evidence from all statuses except explicitly rejected
         # candidates. REVIEWED_PROMOTED rows are deliberately included: their JSON
@@ -252,9 +319,10 @@ class FactReviewService:
                 peer_period = peer_meta.get("period")
                 peer_period_label = peer_period.get("label") if isinstance(peer_period, dict) else None
                 peer_basis = str(peer_meta.get("statement_basis") or "").upper()
-                if peer_period_label != period_label or peer_basis != statement_basis:
-                    continue
-                peer_value = peer_meta.get("normalized_value_inr_crore")
+                if canonical in cls.FINANCIAL_STATEMENT_FIELDS:
+                    if peer_period_label != period_label or peer_basis != statement_basis:
+                        continue
+                peer_value = peer_meta.get("normalized_value_inr_crore", peer_meta.get("value_numeric"))
                 if peer_value is None:
                     continue
                 try:
@@ -309,11 +377,18 @@ class FactReviewService:
                 raw_boolean = candidate.value_numeric
             if isinstance(raw_boolean, bool):
                 parsed_boolean = raw_boolean
+            elif isinstance(raw_boolean, (int, float)):
+                if raw_boolean in (1, 1.0):
+                    parsed_boolean = True
+                elif raw_boolean in (0, 0.0):
+                    parsed_boolean = False
+                else:
+                    raise ValueError("Boolean facts must be explicitly reviewed as true/false or 1/0.")
             else:
                 normalized_boolean = str(raw_boolean or "").strip().lower()
-                if normalized_boolean in {"true", "1", "yes", "present"}:
+                if normalized_boolean in {"true", "1", "1.0", "yes", "present"}:
                     parsed_boolean = True
-                elif normalized_boolean in {"false", "0", "no", "absent"}:
+                elif normalized_boolean in {"false", "0", "0.0", "no", "absent"}:
                     parsed_boolean = False
                 else:
                     raise ValueError("Boolean facts must be explicitly reviewed as true/false or 1/0.")
@@ -331,8 +406,18 @@ class FactReviewService:
             if not value_text:
                 raise ValueError("A non-empty reviewed text value is required to promote this fact.")
             value_type = "STRING"
+        elif value_type == "JSON":
+            value_text = str(verified_value_text if verified_value_text is not None else candidate.value_text or "").strip()
+            if not value_text:
+                raise ValueError("A non-empty reviewed JSON value is required to promote this fact.")
+            try:
+                json.loads(value_text)
+            except Exception as exc:
+                raise ValueError("JSON facts must be valid JSON.") from exc
+            value_type = "JSON"
+            value_numeric = None
         else:
-            raise ValueError("Verified fact type must be NUMBER, BOOLEAN, DATE, or STRING.")
+            raise ValueError("Verified fact type must be NUMBER, BOOLEAN, DATE, STRING, or JSON.")
 
         # Optimistic compare-and-set protects against concurrent reviewer requests.
         # The row lock above serializes this on PostgreSQL; the conditional UPDATE

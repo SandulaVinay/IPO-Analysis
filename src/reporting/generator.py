@@ -74,14 +74,14 @@ class ReportGenerator:
 
 | Dimension | Score | Weight | Weighted Score |
 | :--- | :--- | :--- | :--- |
-| **Business Quality** | {pillars.get('business_quality', 'N/A')}/10 | 20% | {round(pillars.get('business_quality', 0)*0.20, 2)} |
-| **Financial Quality** | {pillars.get('financial_quality', 'N/A')}/10 | 20% | {round(pillars.get('financial_quality', 0)*0.20, 2)} |
-| **Management & Governance** | {pillars.get('management_governance', 'N/A')}/10 | 10% | {round(pillars.get('management_governance', 0)*0.10, 2)} |
-| **IPO Issue Structure** | {pillars.get('ipo_structure', 'N/A')}/10 | 10% | {round(pillars.get('ipo_structure', 0)*0.10, 2)} |
-| **Valuation & Multiples** | {pillars.get('valuation', 'N/A')}/10 | 20% | {round(pillars.get('valuation', 0)*0.20, 2)} |
-| **Growth & Industry Moat** | {pillars.get('growth_industry', 'N/A')}/10 | 10% | {round(pillars.get('growth_industry', 0)*0.10, 2)} |
-| **Risk Factors** | {pillars.get('risk', 'N/A')}/10 | 5% | {round(pillars.get('risk', 0)*0.05, 2)} |
-| **Market Sentiment** | {pillars.get('market_sentiment', 'N/A')}/10 | 5% | {round(pillars.get('market_sentiment', 0)*0.05, 2)} |
+| **Business Quality** | {pillars.get('business_quality', 'N/A')}/10 | 20% | {round((pillars.get('business_quality') or 0.0)*0.20, 2)} |
+| **Financial Quality** | {pillars.get('financial_quality', 'N/A')}/10 | 20% | {round((pillars.get('financial_quality') or 0.0)*0.20, 2)} |
+| **Management & Governance** | {pillars.get('management_governance', 'N/A')}/10 | 10% | {round((pillars.get('management_governance') or 0.0)*0.10, 2)} |
+| **IPO Issue Structure** | {pillars.get('ipo_structure', 'N/A')}/10 | 10% | {round((pillars.get('ipo_structure') or 0.0)*0.10, 2)} |
+| **Valuation & Multiples** | {pillars.get('valuation', 'N/A')}/10 | 20% | {round((pillars.get('valuation') or 0.0)*0.20, 2)} |
+| **Growth & Industry Moat** | {pillars.get('growth_industry', 'N/A')}/10 | 10% | {round((pillars.get('growth_industry') or 0.0)*0.10, 2)} |
+| **Risk Factors** | {pillars.get('risk', 'N/A')}/10 | 5% | {round((pillars.get('risk') or 0.0)*0.05, 2)} |
+| **Market Sentiment** | {pillars.get('market_sentiment', 'N/A')}/10 | 5% | {round((pillars.get('market_sentiment') or 0.0)*0.05, 2)} |
 | **OVERALL COMPOSITE** | **{score_data.get('overall_score', 'N/A')}/10** | **100%** | **{score_data.get('overall_score', 'N/A')}** |
 
 **Final Assessment**: {verdict_emoji} **{score_data.get('verdict', 'UNABLE_TO_ASSESS')}**

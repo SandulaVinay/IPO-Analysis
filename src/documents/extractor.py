@@ -450,6 +450,7 @@ def extract_pdf_candidate_evidence(
     *,
     source_url: str,
     table_page_numbers: Optional[set[int]] = None,
+    enable_ocr: bool = False,
 ) -> Dict[str, Any]:
     """Extract candidate passages from a validated PDF byte stream with strict limits."""
     if not pdf_bytes:
@@ -601,11 +602,27 @@ def extract_pdf_candidate_evidence(
     ocr_required = is_scanned_image
 
     if is_scanned_image:
-        status = "SCANNED_IMAGE_DETECTED"
-        notice = (
-            "SCANNED_PDF_NEEDS_OCR: Document contains scanned/rasterized image pages without "
-            "an embedded text layer. Automated extraction requires OCR preprocessing before candidate analysis."
-        )
+        if enable_ocr:
+            ocr_res = extract_scanned_pdf_ocr_text(pdf_bytes, source_url=source_url)
+            if ocr_res.get("evidence"):
+                evidence.extend(ocr_res["evidence"])
+                status = "CANDIDATES_FOUND"
+                notice = "Candidates extracted via OCR fallback."
+            elif ocr_res.get("text_pages_extracted", 0) > 0:
+                status = "NO_CANDIDATES_FOUND"
+                notice = "OCR executed successfully but no candidate keywords matched."
+            else:
+                status = "SCANNED_IMAGE_DETECTED"
+                notice = ocr_res.get("notice") or (
+                    "SCANNED_PDF_NEEDS_OCR: Document contains scanned/rasterized image pages without "
+                    "an embedded text layer. Automated extraction requires OCR preprocessing before candidate analysis."
+                )
+        else:
+            status = "SCANNED_IMAGE_DETECTED"
+            notice = (
+                "SCANNED_PDF_NEEDS_OCR: Document contains scanned/rasterized image pages without "
+                "an embedded text layer. Automated extraction requires OCR preprocessing before candidate analysis."
+            )
     elif evidence:
         status = "CANDIDATES_FOUND"
         notice = None
@@ -624,4 +641,101 @@ def extract_pdf_candidate_evidence(
         "is_scanned_image": is_scanned_image,
         "ocr_required": ocr_required,
         "notice": notice,
+    }
+
+
+def extract_scanned_pdf_ocr_text(
+    pdf_bytes: bytes,
+    *,
+    source_url: str = "",
+    max_pages: int = 10,
+) -> Dict[str, Any]:
+    """Fallback OCR text extractor for scanned or image-based PDF prospectuses.
+
+    Attempts to extract embedded images from pages and process them with pytesseract
+    if available. Fails gracefully if pytesseract or the Tesseract binary is not installed,
+    returning structured diagnostic information without crashing or inferring synthetic values.
+    """
+    if not pdf_bytes:
+        raise ValueError("PDF content is empty.")
+    if len(pdf_bytes) > MAX_PDF_BYTES:
+        raise ValueError("PDF exceeds the 50 MB extraction limit.")
+    if b"%PDF-" not in pdf_bytes[:1024]:
+        raise ValueError("Content is not a recognizable PDF.")
+
+    document_hash = hashlib.sha256(pdf_bytes).hexdigest()
+    try:
+        reader = PdfReader(BytesIO(pdf_bytes), strict=True)
+    except Exception as exc:
+        raise ValueError("PDF could not be parsed safely.") from exc
+
+    try:
+        import pytesseract  # type: ignore
+        from PIL import Image  # type: ignore
+    except ImportError:
+        return {
+            "status": "OCR_TOOL_UNAVAILABLE",
+            "ocr_available": False,
+            "document_hash": document_hash,
+            "page_count": len(reader.pages),
+            "text_pages_extracted": 0,
+            "evidence_count": 0,
+            "evidence": [],
+            "page_texts": [],
+            "notice": "OCR engine unavailable: pytesseract is not installed in the python environment.",
+        }
+
+    page_texts: List[str] = []
+    total_pages = min(len(reader.pages), max_pages)
+
+    try:
+        for idx in range(total_pages):
+            page = reader.pages[idx]
+            page_text_pieces: List[str] = []
+            direct_text = (page.extract_text() or "").strip()
+            if direct_text:
+                page_text_pieces.append(direct_text)
+            else:
+                images = getattr(page, "images", [])
+                for img_obj in images:
+                    try:
+                        img_bytes = img_obj.data
+                        pil_img = Image.open(BytesIO(img_bytes))
+                        ocr_result = pytesseract.image_to_string(pil_img)
+                        if ocr_result and ocr_result.strip():
+                            page_text_pieces.append(ocr_result.strip())
+                    except Exception:
+                        continue
+            page_texts.append("\n".join(page_text_pieces)[:MAX_PAGE_TEXT])
+    except Exception as exc:
+        return {
+            "status": "OCR_ENGINE_ERROR",
+            "ocr_available": False,
+            "document_hash": document_hash,
+            "page_count": len(reader.pages),
+            "text_pages_extracted": 0,
+            "evidence_count": 0,
+            "evidence": [],
+            "page_texts": [],
+            "notice": f"OCR extraction failed or Tesseract binary not found: {str(exc)}",
+        }
+
+    evidence = extract_candidate_evidence_from_pages(
+        page_texts,
+        source_url=source_url,
+        document_hash=document_hash,
+    )
+
+    text_pages_count = sum(bool(text.strip()) for text in page_texts)
+
+    return {
+        "status": "OCR_EXTRACTED" if text_pages_count > 0 else "NO_TEXT_EXTRACTED",
+        "ocr_available": True,
+        "document_hash": document_hash,
+        "page_count": len(reader.pages),
+        "text_pages_extracted": text_pages_count,
+        "evidence_count": len(evidence),
+        "evidence": evidence,
+        "page_texts": page_texts,
+        "notice": None if text_pages_count > 0 else "OCR completed but no readable text was identified.",
     }

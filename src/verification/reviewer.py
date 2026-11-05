@@ -162,9 +162,12 @@ class FactReviewService:
         candidate_meta: Dict[str, Any] = {}
         if candidate.value_type == "JSON" and candidate.value_text:
             try:
-                candidate_meta = json.loads(candidate.value_text)
-            except Exception:
-                pass
+                parsed_meta = json.loads(candidate.value_text)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Candidate JSON metadata is malformed and cannot be verified.") from exc
+            if not isinstance(parsed_meta, dict):
+                raise ValueError("Candidate JSON metadata must be an object.")
+            candidate_meta = parsed_meta
 
         # Provenance validation
         if not candidate.source_url or not str(candidate.source_url).startswith("https://"):

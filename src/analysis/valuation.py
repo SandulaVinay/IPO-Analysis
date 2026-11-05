@@ -27,7 +27,12 @@ class ValuationEngine:
             reason = "Missing verified valuation evidence: " + ", ".join(missing)
             return {"assessment_status": "UNABLE_TO_ASSESS", "valuation_score": None,
                     "insights": [reason], "limitations": [reason]}
-        numeric = [float(v) for v in required.values()]
+        try:
+            numeric = [float(v) for v in required.values()]
+        except (TypeError, ValueError, OverflowError):
+            reason = "Valuation inputs must be numeric."
+            return {"assessment_status": "UNABLE_TO_ASSESS", "valuation_score": None,
+                    "insights": [reason], "limitations": [reason]}
         if any(not math.isfinite(v) for v in numeric) or float(issue_price) <= 0 or float(post_issue_shares_cr) <= 0:
             reason = "Valuation inputs must be finite and issue price/share count must be positive."
             return {"assessment_status": "UNABLE_TO_ASSESS", "valuation_score": None,

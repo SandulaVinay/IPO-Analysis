@@ -1,52 +1,37 @@
-"""
-Market Regime and Macro Sentiment Context Analyzer.
-Tracks broader Nifty trend, Mid/Small-cap market heat, and recent IPO listing performance.
-Informs short-term expectations without overriding company fundamentals.
-"""
-
-from typing import Dict, Any, List, Optional
-
+"""Evidence-gated market regime and macro sentiment analyzer."""
+from typing import Any, Dict, Optional
+import math
 
 class MarketRegimeAnalyzer:
-    """Evaluates macro secondary market environment."""
+    REQUIRED_FIELDS = ("nifty_50dma_status", "midcap_sentiment", "recent_ipos_avg_listing_gain_pct", "india_vix")
 
     @staticmethod
     def evaluate_market_regime(data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        data keys:
-            - nifty_50dma_status: ABOVE / BELOW
-            - midcap_sentiment: BULLISH / NEUTRAL / BEARISH
-            - recent_ipos_avg_listing_gain_pct: float
-            - india_vix: float
-        """
         d = data or {}
-        vix = d.get("india_vix", 14.5)
-        gain_avg = d.get("recent_ipos_avg_listing_gain_pct", 22.0)
-        nifty_above = d.get("nifty_50dma_status", "ABOVE") == "ABOVE"
-
-        score = 6.0
-        if nifty_above:
-            score += 1.5
-        if gain_avg >= 20.0:
-            score += 1.5
-        elif gain_avg < 0.0:
-            score -= 2.0
-
-        if vix > 22.0:
-            score -= 1.5
-            regime = "BEARISH_VOLATILE"
-        elif score >= 7.5:
-            regime = "BULLISH"
-        elif score <= 4.5:
-            regime = "BEARISH"
-        else:
-            regime = "NEUTRAL"
-
-        final_score = max(1.0, min(10.0, round(score, 1)))
-
-        return {
-            "market_sentiment_score": final_score,
-            "regime": regime,
-            "india_vix": vix,
-            "recent_ipos_avg_listing_gain_pct": gain_avg,
-        }
+        missing = [key for key in MarketRegimeAnalyzer.REQUIRED_FIELDS if key not in d or d[key] is None]
+        if missing:
+            reason = "Missing current market-regime observations: " + ", ".join(missing)
+            return {"assessment_status": "UNABLE_TO_ASSESS", "market_sentiment_score": None,
+                    "regime": "UNKNOWN", "insights": [reason], "limitations": [reason]}
+        status, midcap = str(d["nifty_50dma_status"]).upper(), str(d["midcap_sentiment"]).upper()
+        if status not in {"ABOVE", "BELOW"} or midcap not in {"BULLISH", "NEUTRAL", "BEARISH"}:
+            reason = "Market trend fields contain unsupported values."
+            return {"assessment_status": "UNABLE_TO_ASSESS", "market_sentiment_score": None,
+                    "regime": "UNKNOWN", "insights": [reason], "limitations": [reason]}
+        try:
+            vix, gain = float(d["india_vix"]), float(d["recent_ipos_avg_listing_gain_pct"])
+        except (TypeError, ValueError, OverflowError):
+            reason = "Market-regime numeric observations must be valid numbers."
+            return {"assessment_status": "UNABLE_TO_ASSESS", "market_sentiment_score": None,
+                    "regime": "UNKNOWN", "insights": [reason], "limitations": [reason]}
+        if not math.isfinite(vix) or not math.isfinite(gain) or vix < 0:
+            reason = "India VIX cannot be negative."
+            return {"assessment_status": "UNABLE_TO_ASSESS", "market_sentiment_score": None,
+                    "regime": "UNKNOWN", "insights": [reason], "limitations": [reason]}
+        score = 6.0 + (1.0 if status == "ABOVE" else -1.0)
+        score += 0.5 if midcap == "BULLISH" else (-0.5 if midcap == "BEARISH" else 0.0)
+        score += 1.0 if gain >= 20 else (-1.5 if gain < 0 else 0.0)
+        if vix > 22: score -= 1.5
+        regime = "BEARISH_VOLATILE" if vix > 22 else ("BULLISH" if score >= 7.5 else ("BEARISH" if score <= 4.5 else "NEUTRAL"))
+        return {"assessment_status": "ASSESSED", "market_sentiment_score": max(1.0, min(10.0, round(score, 1))),
+                "regime": regime, "india_vix": vix, "recent_ipos_avg_listing_gain_pct": gain, "limitations": []}

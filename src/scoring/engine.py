@@ -4,7 +4,8 @@ Computes weighted composite score across 8 standardized pillars using configurab
 Integrates Hard Safety Gates and Multi-Horizon Decision outputs.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+import math
 from src.common.config import settings
 from src.scoring.safety_gates import SafetyGateEvaluator
 from src.scoring.horizons import MultiHorizonClassifier
@@ -27,14 +28,14 @@ class ScoringEngine:
 
     def compute_decision(
         self,
-        business_score: float,
-        financial_score: float,
-        governance_score: float,
-        structure_score: float,
-        valuation_score: float,
-        growth_score: float,
-        risk_score: float,
-        sentiment_score: float,
+        business_score: Optional[float],
+        financial_score: Optional[float],
+        governance_score: Optional[float],
+        structure_score: Optional[float],
+        valuation_score: Optional[float],
+        growth_score: Optional[float],
+        risk_score: Optional[float],
+        sentiment_score: Optional[float],
         completeness_info: Dict[str, Any],
         conflict_info: Dict[str, Any],
         management_info: Dict[str, Any],
@@ -53,26 +54,50 @@ class ScoringEngine:
             financial_info=financial_info,
         )
 
+        # A missing/non-finite pillar is missing evidence, never a neutral score.
+        raw_scores = {
+            "business_quality": business_score,
+            "financial_quality": financial_score,
+            "management_governance": governance_score,
+            "ipo_structure": structure_score,
+            "valuation": valuation_score,
+            "growth_industry": growth_score,
+            "risk": risk_score,
+            "market_sentiment": sentiment_score,
+        }
+        def is_valid_score(value: Any) -> bool:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return False
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError, OverflowError):
+                return False
+            return math.isfinite(numeric) and 0.0 <= numeric <= 10.0
+
+        missing_scores = [
+            name for name, value in raw_scores.items() if not is_valid_score(value)
+        ]
+        if missing_scores:
+            is_gated = True
+            gate_reasons = list(gate_reasons) + [
+                "Pillar assessment unavailable due to missing/non-finite evidence: " + ", ".join(missing_scores) + "."
+            ]
+        safe_scores = {name: float(value) if name not in missing_scores else 0.0
+                       for name, value in raw_scores.items()}
+
         # 2. Weighted Overall Score
-        overall_weighted = (
-            (business_score * self.weights["business_quality"])
-            + (financial_score * self.weights["financial_quality"])
-            + (governance_score * self.weights["management_governance"])
-            + (structure_score * self.weights["ipo_structure"])
-            + (valuation_score * self.weights["valuation"])
-            + (growth_score * self.weights["growth_industry"])
-            + (risk_score * self.weights["risk"])
-            + (sentiment_score * self.weights["market_sentiment"])
+        overall_weighted = sum(
+            safe_scores[name] * self.weights[name] for name in safe_scores
         )
         overall_score = round(overall_weighted, 1)
 
         # 3. Multi-Horizon Breakdown
         horizons = MultiHorizonClassifier.classify_horizons(
-            business_score=business_score,
-            financial_score=financial_score,
-            governance_score=governance_score,
-            valuation_score=valuation_score,
-            risk_score=risk_score,
+            business_score=safe_scores["business_quality"],
+            financial_score=safe_scores["financial_quality"],
+            governance_score=safe_scores["management_governance"],
+            valuation_score=safe_scores["valuation"],
+            risk_score=safe_scores["risk"],
             gmp_gain_pct=gmp_gain_pct,
             subscription_times=subscription_times,
             is_gated=is_gated,
@@ -85,16 +110,7 @@ class ScoringEngine:
             "safety_gate_reasons": gate_reasons,
             "overall_score": overall_score if not is_gated else 0.0,
             "verdict": verdict,
-            "pillar_scores": {
-                "business_quality": business_score,
-                "financial_quality": financial_score,
-                "management_governance": governance_score,
-                "ipo_structure": structure_score,
-                "valuation": valuation_score,
-                "growth_industry": growth_score,
-                "risk": risk_score,
-                "market_sentiment": sentiment_score,
-            },
+            "pillar_scores": raw_scores,
             "weights_used": self.weights,
             "horizons": horizons,
         }

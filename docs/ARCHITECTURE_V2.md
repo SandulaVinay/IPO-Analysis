@@ -183,3 +183,19 @@ The public state branch now stores only prospectus metadata (symbol, sanitized s
 ## Prospectus table candidates
 
 The PDF extractor now supplements linear page text with best-effort table-row extraction on pages containing financial labels. It retains the row's header context and cell values as a page-cited `TABLE_ROW_CANDIDATE`; it does not map values to years, infer units, or mark any numeric fact verified. Period/basis/unit reconciliation remains a separate production gate.
+
+
+## Reviewer API authentication and workflow
+
+Reviewer-only endpoints are disabled unless `REVIEWER_API_TOKENS` is configured. Set it to a JSON object mapping stable reviewer IDs to high-entropy secret tokens, for example:
+
+```dotenv
+REVIEWER_API_TOKENS={"analyst_1":"<generated-random-token>","senior_reviewer":"<another-generated-random-token>"}
+```
+
+Generate each token locally with `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Store the values in the deployment secret manager; do not commit real tokens or paste them into issues, logs, or chat. The API accepts the token in the `X-Reviewer-Token` header. The server maps the token to a reviewer ID, so a caller cannot impersonate another reviewer by changing a request-body field. Tokens are compared in constant time. A missing configuration disables the endpoints with HTTP 503; invalid credentials return HTTP 401.
+
+- `GET /api/ipos/{symbol}/facts/pending` lists unverified candidates for an IPO.
+- `POST /api/facts/{fact_id}/review` accepts a `VERIFIED` or `REJECTED` decision, required audit notes, and optional reviewed value/type/field and explicit conflict override.
+
+The review endpoint delegates to `FactReviewService`; it does not bypass provenance, period, statement-basis, state-transition, conflict, or audit-log checks. Conflict overrides must be deliberate and documented. Keep this API behind HTTPS and a trusted network boundary; rotate tokens when reviewer access changes. The endpoint does not replace organizational identity management, MFA, or a full reviewer-role/permission system.

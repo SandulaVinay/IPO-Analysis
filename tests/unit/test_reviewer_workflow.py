@@ -2,6 +2,7 @@
 import json
 import pytest
 from datetime import date
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models import IPO, Fact, AuditLog
@@ -212,3 +213,164 @@ async def test_reviewer_can_promote_qualitative_evidence_as_text_or_boolean(asyn
     promoted = {fact.field_name: fact for fact in fresh_ipo.facts if fact.verification_status == "VERIFIED"}
     assert promoted["business_model_summary"].value_type == "STRING"
     assert promoted["has_auditor_qualifications"].value_type == "BOOLEAN"
+
+
+@pytest.mark.asyncio
+async def test_reviewer_cannot_reopen_rejected_or_already_promoted_candidate(async_session: AsyncSession):
+    repo = IPORepository(async_session)
+    ipo = await repo.create_or_update_ipo(symbol="TEST_REV6", company_name="Review State Guard Ltd")
+    fact = await repo.add_fact(
+        ipo_id=ipo.id,
+        field_name="revenue_from_operations",
+        value_text='{"period": {"label": "FY2025"}, "statement_basis": "CONSOLIDATED", "normalized_value_inr_crore": "100.0"}',
+        value_numeric=None,
+        value_type="JSON",
+        source_name="PROSPECTUS_TABLE_CANDIDATE",
+        source_url="https://www.sebi.gov.in/review-state.pdf",
+    )
+    await async_session.commit()
+
+    await FactReviewService.review_and_promote_fact(
+        async_session, fact_id=fact.id, reviewer_id="analyst_1", decision="VERIFIED",
+        notes="Checked against the official statement and page citation.",
+    )
+    with pytest.raises(ValueError, match="only pending candidates"):
+        await FactReviewService.review_and_promote_fact(
+            async_session, fact_id=fact.id, reviewer_id="analyst_1", decision="VERIFIED",
+            notes="Attempted second promotion.",
+        )
+
+
+@pytest.mark.asyncio
+async def test_reviewer_blocks_comparable_conflicts_unless_audited_override(async_session: AsyncSession):
+    repo = IPORepository(async_session)
+    ipo = await repo.create_or_update_ipo(symbol="TEST_REV7", company_name="Review Conflict Guard Ltd")
+    payload = lambda value: json.dumps({
+        "period": {"label": "FY2025"},
+        "statement_basis": "CONSOLIDATED",
+        "normalized_value_inr_crore": str(value),
+    })
+    first = await repo.add_fact(
+        ipo_id=ipo.id, field_name="revenue_from_operations", value_text=payload("100.0"),
+        value_numeric=None, value_type="JSON", source_name="PROSPECTUS_CANDIDATE",
+        source_url="https://www.sebi.gov.in/first.pdf",
+    )
+    await repo.add_fact(
+        ipo_id=ipo.id, field_name="revenue_from_operations", value_text=payload("101.0"),
+        value_numeric=None, value_type="JSON", source_name="EXCHANGE_CANDIDATE",
+        source_url="https://www.nseindia.com/second.pdf",
+    )
+    await async_session.commit()
+
+    with pytest.raises(ValueError, match="Conflicting evidence exists"):
+        await FactReviewService.review_and_promote_fact(
+            async_session, fact_id=first.id, reviewer_id="senior_analyst", decision="VERIFIED",
+            notes="Checked original filing.",
+        )
+
+    result = await FactReviewService.review_and_promote_fact(
+        async_session, fact_id=first.id, reviewer_id="senior_analyst", decision="VERIFIED",
+        notes="Override after checking the issuer's signed consolidated statement; second source uses a different comparative column.",
+        override_conflict=True,
+    )
+    assert result["decision"] == "VERIFIED"
+    audits = (await async_session.execute(select(AuditLog).where(AuditLog.event_type == "FACT_VERIFICATION"))).scalars().all()
+    assert len(audits) == 1
+    assert audits[0].metadata_json["override_conflict"] is True
+    assert audits[0].metadata_json["conflict_details"][0]["normalized_value_inr_crore"] == "101.0"
+
+
+@pytest.mark.asyncio
+async def test_reviewer_detects_conflict_against_previously_promoted_canonical_fact(async_session: AsyncSession):
+    repo = IPORepository(async_session)
+    ipo = await repo.create_or_update_ipo(symbol="TEST_REV8", company_name="Previously Verified Conflict Ltd")
+    payload = lambda value: json.dumps({
+        "period": {"label": "FY2025"},
+        "statement_basis": "CONSOLIDATED",
+        "normalized_value_inr_crore": str(value),
+    })
+    original = await repo.add_fact(
+        ipo_id=ipo.id, field_name="revenue_from_operations", value_text=payload(100),
+        value_numeric=None, value_type="JSON", source_name="PROSPECTUS_CANDIDATE",
+        source_url="https://www.sebi.gov.in/original.pdf",
+    )
+    await async_session.commit()
+    await FactReviewService.review_and_promote_fact(
+        async_session, fact_id=original.id, reviewer_id="reviewer_one", decision="VERIFIED",
+        target_field_name="revenue_latest", notes="Verified against the consolidated FY2025 statement.",
+    )
+    await async_session.commit()
+
+    later = await repo.add_fact(
+        ipo_id=ipo.id, field_name="revenue_latest", value_text=payload(101),
+        value_numeric=None, value_type="JSON", source_name="EXCHANGE_CANDIDATE",
+        source_url="https://www.nseindia.com/later-filing.pdf",
+    )
+    await async_session.commit()
+    with pytest.raises(ValueError, match="Conflicting evidence"):
+        await FactReviewService.review_and_promote_fact(
+            async_session, fact_id=later.id, reviewer_id="reviewer_two", decision="VERIFIED",
+            notes="Reviewing later filing.",
+        )
+
+
+@pytest.mark.asyncio
+async def test_reviewer_conflicts_are_compared_after_canonical_field_mapping(async_session: AsyncSession):
+    repo = IPORepository(async_session)
+    ipo = await repo.create_or_update_ipo(symbol="TEST_REV9", company_name="Canonical Mapping Conflict Ltd")
+    payload = lambda value: json.dumps({
+        "period": {"label": "FY2025"},
+        "statement_basis": "STANDALONE",
+        "normalized_value_inr_crore": str(value),
+    })
+    first = await repo.add_fact(
+        ipo_id=ipo.id, field_name="profit_after_tax", value_text=payload(20),
+        value_numeric=None, value_type="JSON", source_name="SOURCE_A",
+        source_url="https://www.sebi.gov.in/a.pdf",
+    )
+    await repo.add_fact(
+        ipo_id=ipo.id, field_name="pat_latest", value_text=payload(25),
+        value_numeric=None, value_type="JSON", source_name="SOURCE_B",
+        source_url="https://www.nseindia.com/b.pdf",
+    )
+    await async_session.commit()
+    with pytest.raises(ValueError, match="Conflicting evidence"):
+        await FactReviewService.review_and_promote_fact(
+            async_session, fact_id=first.id, reviewer_id="reviewer_one", decision="VERIFIED",
+            notes="Reviewing source A.",
+        )
+
+
+@pytest.mark.asyncio
+async def test_reviewer_rejects_non_object_json_metadata(async_session: AsyncSession):
+    repo = IPORepository(async_session)
+    ipo = await repo.create_or_update_ipo(symbol="TEST_REV10", company_name="Malformed Candidate Ltd")
+    fact = await repo.add_fact(
+        ipo_id=ipo.id, field_name="revenue_from_operations", value_text='["not", "an", "object"]',
+        value_numeric=None, value_type="JSON", source_name="SOURCE_A",
+        source_url="https://www.sebi.gov.in/malformed.pdf",
+    )
+    await async_session.commit()
+    with pytest.raises(ValueError, match="must be an object"):
+        await FactReviewService.review_and_promote_fact(
+            async_session, fact_id=fact.id, reviewer_id="reviewer_one", decision="VERIFIED",
+            notes="Reviewing malformed candidate.",
+        )
+
+
+@pytest.mark.asyncio
+async def test_reviewer_pending_queue_includes_all_reviewable_candidate_states(async_session: AsyncSession):
+    repo = IPORepository(async_session)
+    ipo = await repo.create_or_update_ipo(symbol="TEST_REV11", company_name="Pending Queue Coverage Ltd")
+    created = []
+    for index, status in enumerate(("UNVERIFIED", "CANDIDATE_UNVERIFIED", "CONFLICTED")):
+        created.append(await repo.add_fact(
+            ipo_id=ipo.id, field_name=f"pending_field_{index}", value_text="candidate",
+            value_numeric=None, value_type="STRING", source_name="EXTRACTION",
+            source_url="https://www.sebi.gov.in/pending.pdf", verification_status=status,
+        ))
+    await async_session.commit()
+    pending = await FactReviewService.list_candidate_facts(async_session, ipo.id)
+    assert {item["verification_status"] for item in pending} == {
+        "UNVERIFIED", "CANDIDATE_UNVERIFIED", "CONFLICTED"
+    }

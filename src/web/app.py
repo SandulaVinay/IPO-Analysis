@@ -4,13 +4,14 @@ Provides REST APIs for IPO Intelligence and serves an interactive Glassmorphism 
 """
 
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, Query, Request
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, Field
 
 from src.common.config import settings
 from src.common.logging import logger
@@ -42,8 +43,42 @@ from src.youtube.client import YouTubeResearchEngine
 from src.notifications.orchestrator import NotificationOrchestrator
 from src.notifications.scheduler import SystemScheduler
 from src.monitoring.health import HealthMonitor
+from src.verification.reviewer import FactReviewService
+from src.web.reviewer_auth import (
+    ReviewerAuthConfigurationError,
+    ReviewerAuthDisabled,
+    ReviewerAuthenticationError,
+    reviewer_id_for_token,
+)
 
 scheduler = SystemScheduler()
+
+
+class FactReviewRequest(BaseModel):
+    """Reviewer decision payload; reviewer identity is derived from the API token."""
+
+    decision: Literal["VERIFIED", "REJECTED"]
+    target_field_name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    verified_numeric_value: Optional[float] = None
+    verified_value_text: Optional[str] = Field(default=None, max_length=20000)
+    verified_value_type: Optional[Literal["NUMBER", "BOOLEAN", "DATE", "STRING"]] = None
+    notes: str = Field(min_length=1, max_length=4000)
+    override_conflict: bool = False
+
+
+async def require_reviewer(
+    x_reviewer_token: str = Header(default="", alias="X-Reviewer-Token"),
+) -> str:
+    """Authenticate reviewer and return the server-configured reviewer identity."""
+    try:
+        return reviewer_id_for_token(x_reviewer_token, settings.reviewer_api_tokens)
+    except ReviewerAuthDisabled as exc:
+        raise HTTPException(status_code=503, detail="Reviewer API is not configured.") from exc
+    except ReviewerAuthConfigurationError as exc:
+        logger.error("Reviewer API token configuration is invalid: %s", exc)
+        raise HTTPException(status_code=503, detail="Reviewer API authentication is misconfigured.") from exc
+    except ReviewerAuthenticationError as exc:
+        raise HTTPException(status_code=401, detail="Invalid reviewer credentials.") from exc
 
 
 @asynccontextmanager
@@ -103,6 +138,46 @@ async def list_ipos(session: AsyncSession = Depends(get_db)):
             "potential_listing_gain_pct": latest_gmp.potential_listing_gain_pct if latest_gmp else None,
         })
     return result
+
+
+@app.get("/api/ipos/{symbol}/facts/pending")
+async def list_pending_facts(
+    symbol: str,
+    reviewer_id: str = Depends(require_reviewer),
+    session: AsyncSession = Depends(get_db),
+):
+    """List unverified evidence candidates for an authenticated reviewer."""
+    repo = IPORepository(session)
+    ipo = await repo.get_ipo_by_symbol(symbol)
+    if not ipo:
+        raise HTTPException(status_code=404, detail=f"IPO {symbol} not found")
+    candidates = await FactReviewService.list_candidate_facts(session, ipo.id)
+    return {"symbol": ipo.symbol, "reviewer_id": reviewer_id, "candidate_count": len(candidates), "candidates": candidates}
+
+
+@app.post("/api/facts/{fact_id}/review")
+async def review_fact(
+    fact_id: int,
+    payload: FactReviewRequest,
+    reviewer_id: str = Depends(require_reviewer),
+    session: AsyncSession = Depends(get_db),
+):
+    """Record a reviewer decision; reviewer identity comes only from the token map."""
+    try:
+        return await FactReviewService.review_and_promote_fact(
+            session,
+            fact_id=fact_id,
+            reviewer_id=reviewer_id,
+            decision=payload.decision,
+            target_field_name=payload.target_field_name,
+            verified_numeric_value=payload.verified_numeric_value,
+            verified_value_text=payload.verified_value_text,
+            verified_value_type=payload.verified_value_type,
+            notes=payload.notes,
+            override_conflict=payload.override_conflict,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/discover")
@@ -390,7 +465,16 @@ async def run_pipeline_for_ipo(ipo, session: Optional[AsyncSession] = None) -> D
         {"risk_title": "Foreign Exchange Rate Fluctuations", "severity": "LOW", "probability": "HIGH", "impact": "LOW", "evidence_citation": "RHP Page 45"},
     ]
     risk_info = RiskEngine.evaluate_risks(risks)
-    regime = MarketRegimeAnalyzer.evaluate_market_regime()
+    # Synthetic regime observations are used only by the explicit non-production
+    # demo path. Live assessments return UNABLE_TO_ASSESS until connected to verified
+    # current market data; no hard-coded market defaults enter production scoring.
+    demo_regime = {
+        "nifty_50dma_status": "ABOVE",
+        "midcap_sentiment": "BULLISH",
+        "recent_ipos_avg_listing_gain_pct": 22.0,
+        "india_vix": 14.5,
+    } if demo_mode else None
+    regime = MarketRegimeAnalyzer.evaluate_market_regime(demo_regime)
 
     # Completeness verification
     completeness = VerificationEngine.evaluate_ipo_completeness(ipo_dict, facts_data)

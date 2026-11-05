@@ -106,3 +106,44 @@ def test_scoring_engine_composite():
     assert result["is_safety_gated"] is False
     assert result["verdict"] == "ATTRACTIVE"
     assert result["overall_score"] >= 8.0
+
+
+def test_scoring_engine_fails_closed_when_any_pillar_is_unavailable():
+    result = ScoringEngine().compute_decision(
+        business_score=None,
+        financial_score=8.0,
+        governance_score=8.0,
+        structure_score=8.0,
+        valuation_score=8.0,
+        growth_score=8.0,
+        risk_score=8.0,
+        sentiment_score=8.0,
+        completeness_info={"missing_critical_fields": []},
+        conflict_info={"is_critical_tier1_conflict": False},
+        management_info={"has_critical_governance_flag": False},
+        financial_info={"verification_status": "VERIFIED"},
+    )
+    assert result["is_safety_gated"] is True
+    assert result["verdict"] == "UNABLE_TO_ASSESS"
+    assert result["overall_score"] == 0.0
+    assert result["pillar_scores"]["business_quality"] is None
+    assert any("business_quality" in reason for reason in result["safety_gate_reasons"])
+
+
+def test_scoring_engine_fails_closed_on_out_of_range_pillar_score():
+    result = ScoringEngine().compute_decision(
+        business_score=11.0,
+        financial_score=8.0,
+        governance_score=8.0,
+        structure_score=8.0,
+        valuation_score=8.0,
+        growth_score=8.0,
+        risk_score=8.0,
+        sentiment_score=8.0,
+        completeness_info={"missing_critical_fields": []},
+        conflict_info={"is_critical_tier1_conflict": False},
+        management_info={"has_critical_governance_flag": False},
+        financial_info={"verification_status": "VERIFIED"},
+    )
+    assert result["is_safety_gated"] is True
+    assert result["overall_score"] == 0.0

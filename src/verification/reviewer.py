@@ -13,7 +13,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models import Fact, FinancialPeriod, AuditLog, IPO
@@ -41,14 +41,17 @@ class FactReviewService:
     async def list_candidate_facts(
         session: AsyncSession,
         ipo_id: int,
-        status: str = "UNVERIFIED",
+        status: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """List candidate facts for an IPO that await reviewer evaluation."""
-        stmt = (
-            select(Fact)
-            .where(Fact.ipo_id == ipo_id, Fact.verification_status == status)
-            .order_by(Fact.id.asc())
-        )
+        stmt = select(Fact).where(Fact.ipo_id == ipo_id)
+        if status is None:
+            stmt = stmt.where(Fact.verification_status.in_(
+                ("UNVERIFIED", "CANDIDATE_UNVERIFIED", "CONFLICTED")
+            ))
+        else:
+            stmt = stmt.where(Fact.verification_status == status.upper())
+        stmt = stmt.order_by(Fact.id.asc())
         res = await session.execute(stmt)
         facts = res.scalars().all()
 
@@ -107,15 +110,32 @@ class FactReviewService:
         if decision_upper not in {"VERIFIED", "REJECTED"}:
             raise ValueError("Decision must be either 'VERIFIED' or 'REJECTED'.")
 
-        stmt = select(Fact).where(Fact.id == fact_id)
+        stmt = select(Fact).where(Fact.id == fact_id).with_for_update()
         res = await session.execute(stmt)
         candidate = res.scalars().first()
         if candidate is None:
             raise ValueError(f"Fact with ID {fact_id} not found.")
 
+        current_status = str(candidate.verification_status or "").upper()
+        if current_status not in {"UNVERIFIED", "CANDIDATE_UNVERIFIED", "CONFLICTED"}:
+            raise ValueError(
+                f"Candidate fact cannot be reviewed from status {current_status or 'UNKNOWN'}; "
+                "only pending candidates may be reviewed."
+            )
+
         now_utc = datetime.now(timezone.utc)
 
         if decision_upper == "REJECTED":
+            claim = await session.execute(
+                update(Fact)
+                .where(
+                    Fact.id == candidate.id,
+                    Fact.verification_status == candidate.verification_status,
+                )
+                .values(verification_status="REJECTED", confidence="LOW")
+            )
+            if claim.rowcount != 1:
+                raise ValueError("Candidate was already reviewed by another request; reload before retrying.")
             candidate.verification_status = "REJECTED"
             candidate.confidence = "LOW"
             audit = AuditLog(
@@ -145,9 +165,12 @@ class FactReviewService:
         candidate_meta: Dict[str, Any] = {}
         if candidate.value_type == "JSON" and candidate.value_text:
             try:
-                candidate_meta = json.loads(candidate.value_text)
-            except Exception:
-                pass
+                parsed_meta = json.loads(candidate.value_text)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Candidate JSON metadata is malformed and cannot be verified.") from exc
+            if not isinstance(parsed_meta, dict):
+                raise ValueError("Candidate JSON metadata must be an object.")
+            candidate_meta = parsed_meta
 
         # Provenance validation
         if not candidate.source_url or not str(candidate.source_url).startswith("https://"):
@@ -173,10 +196,86 @@ class FactReviewService:
                 except Exception as exc:
                     raise ValueError("Normalized candidate value cannot be converted to float.") from exc
 
-        # Determine canonical field name and the reviewed value type.
-        canonical = target_field_name
+        # Resolve the canonical field before comparing evidence. Different extraction
+        # labels can map to the same production field and must share one conflict domain.
+        canonical = str(target_field_name or cls.CRITICAL_TARGET_FIELDS.get(
+            candidate.field_name, candidate.field_name
+        )).strip()
         if not canonical:
-            canonical = cls.CRITICAL_TARGET_FIELDS.get(candidate.field_name, candidate.field_name)
+            raise ValueError("A canonical target field name is required.")
+
+        # Compare independent evidence from all statuses except explicitly rejected
+        # candidates. REVIEWED_PROMOTED rows are deliberately included: their JSON
+        # payload preserves period/basis/value and prevents later reviewers from
+        # silently contradicting an already verified source.
+        conflict_details: List[Dict[str, Any]] = []
+        if candidate_meta and verified_numeric_value is not None:
+            period = candidate_meta.get("period")
+            period_label = period.get("label") if isinstance(period, dict) else None
+            statement_basis = str(candidate_meta.get("statement_basis") or "").upper()
+            reviewed_decimal = Decimal(str(verified_numeric_value))
+            if not reviewed_decimal.is_finite():
+                raise ValueError("A verified finite numeric value is required to compare financial evidence.")
+            peer_stmt = select(Fact).where(
+                Fact.ipo_id == candidate.ipo_id,
+                Fact.id != candidate.id,
+            )
+            peer_res = await session.execute(peer_stmt)
+            for peer in peer_res.scalars().all():
+                peer_status = str(peer.verification_status or "").upper()
+                if peer_status == "REJECTED":
+                    continue
+                peer_canonical = cls.CRITICAL_TARGET_FIELDS.get(peer.field_name, peer.field_name)
+                if peer_canonical != canonical:
+                    continue
+
+                same_source_url = (
+                    str(peer.source_url or "").strip().rstrip("/")
+                    == str(candidate.source_url or "").strip().rstrip("/")
+                )
+                same_document = (
+                    peer.document_id == candidate.document_id
+                    if peer.document_id is not None or candidate.document_id is not None
+                    else True
+                )
+                if same_source_url and same_document:
+                    continue
+
+                if peer.value_type != "JSON" or not peer.value_text:
+                    continue
+                try:
+                    peer_meta = json.loads(peer.value_text)
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(peer_meta, dict):
+                    continue
+                peer_period = peer_meta.get("period")
+                peer_period_label = peer_period.get("label") if isinstance(peer_period, dict) else None
+                peer_basis = str(peer_meta.get("statement_basis") or "").upper()
+                if peer_period_label != period_label or peer_basis != statement_basis:
+                    continue
+                peer_value = peer_meta.get("normalized_value_inr_crore")
+                if peer_value is None:
+                    continue
+                try:
+                    peer_decimal = Decimal(str(peer_value))
+                except Exception:
+                    continue
+                if peer_decimal.is_finite() and peer_decimal != reviewed_decimal:
+                    conflict_details.append({
+                        "fact_id": peer.id,
+                        "verification_status": peer_status,
+                        "field_name": peer.field_name,
+                        "canonical_field_name": peer_canonical,
+                        "source_url": peer.source_url,
+                        "normalized_value_inr_crore": str(peer_decimal),
+                    })
+
+        if conflict_details and not override_conflict:
+            raise ValueError(
+                "Conflicting evidence exists for the same canonical field, period, and statement basis. "
+                "Resolve the conflict or explicitly set override_conflict=True with an audit rationale."
+            )
 
         if verified_value_type:
             value_type = str(verified_value_type).strip().upper()
@@ -235,6 +334,21 @@ class FactReviewService:
         else:
             raise ValueError("Verified fact type must be NUMBER, BOOLEAN, DATE, or STRING.")
 
+        # Optimistic compare-and-set protects against concurrent reviewer requests.
+        # The row lock above serializes this on PostgreSQL; the conditional UPDATE
+        # also protects databases that do not implement SELECT FOR UPDATE.
+        claim = await session.execute(
+            update(Fact)
+            .where(
+                Fact.id == candidate.id,
+                Fact.verification_status == current_status,
+            )
+            .values(verification_status="REVIEWED_PROMOTED")
+        )
+        if claim.rowcount != 1:
+            raise ValueError("Candidate was already reviewed by another request; reload before retrying.")
+        candidate.verification_status = "REVIEWED_PROMOTED"
+
         # Create the canonical VERIFIED fact
         verified_fact = Fact(
             ipo_id=candidate.ipo_id,
@@ -254,9 +368,6 @@ class FactReviewService:
         )
         session.add(verified_fact)
 
-        # Mark candidate as REVIEWED_PROMOTED to maintain historical trace
-        candidate.verification_status = "REVIEWED_PROMOTED"
-
         # Record audit log
         audit = AuditLog(
             timestamp=now_utc,
@@ -272,6 +383,8 @@ class FactReviewService:
                 "candidate_fact_id": candidate.id,
                 "original_field": candidate.field_name,
                 "canonical_field": canonical,
+                "period_label": (candidate_meta.get("period") or {}).get("label") if isinstance(candidate_meta.get("period"), dict) else None,
+                "statement_basis": str(candidate_meta.get("statement_basis") or "").upper() or None,
                 "verified_numeric_value": value_numeric,
                 "verified_value_text": value_text,
                 "verified_value_type": value_type,
@@ -279,6 +392,7 @@ class FactReviewService:
                 "page_number": candidate.page_number,
                 "notes": cleaned_notes,
                 "override_conflict": override_conflict,
+                "conflict_details": conflict_details,
             },
         )
         session.add(audit)

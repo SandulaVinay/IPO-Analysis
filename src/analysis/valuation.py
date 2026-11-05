@@ -1,5 +1,6 @@
 """Evidence-gated valuation and peer-multiple analysis."""
 from typing import Any, Dict, List, Optional
+import math
 from src.calculations.math import FinancialMath
 
 
@@ -27,7 +28,7 @@ class ValuationEngine:
             return {"assessment_status": "UNABLE_TO_ASSESS", "valuation_score": None,
                     "insights": [reason], "limitations": [reason]}
         numeric = [float(v) for v in required.values()]
-        if any(not __import__("math").isfinite(v) for v in numeric) or float(issue_price) <= 0 or float(post_issue_shares_cr) <= 0:
+        if any(not math.isfinite(v) for v in numeric) or float(issue_price) <= 0 or float(post_issue_shares_cr) <= 0:
             reason = "Valuation inputs must be finite and issue price/share count must be positive."
             return {"assessment_status": "UNABLE_TO_ASSESS", "valuation_score": None,
                     "insights": [reason], "limitations": [reason]}

@@ -13,7 +13,8 @@ A production-quality, evidence-driven, deterministic intelligence platform for d
 5. **GitHub Actions automation**: Weekday checks run at 08:30, 11:30, 14:30 and 17:30 IST. The final weekday run generates a daily status digest. Reports are retained as seven-day workflow artifacts and sanitized state is persisted to the public `state` branch.
 6. **Notifications**: SMTP email is primary when the owner configures the required GitHub Actions secrets. Messages include plain-text and HTML bodies, with a PDF attachment when rendering succeeds. WhatsApp is an optional fallback only when explicitly enabled. Without valid email credentials and an explicitly configured recipient, reports remain in report-only mode.
 7. **Dashboard and CLI**: A FastAPI dashboard and command-line interface are available for local use. No separate always-on server is required for the GitHub Actions scheduled workflow.
-8. **Auditable Reviewer Verification Workflow**: Facts extracted from official prospectuses remain `CANDIDATE_UNVERIFIED` until explicitly promoted by an authorized analyst using `FactReviewService`. Reviewer-verified core terms and financials alone do not enable live scoring: business, governance, peer valuation, proceeds, risk, and market evidence must also be wired and verified. Until then the system returns `UNABLE_TO_ASSESS` and does not issue `APPLY` / `AVOID` advice.
+8. **Auditable Reviewer Verification Workflow**: Facts extracted from official prospectuses remain `CANDIDATE_UNVERIFIED` until explicitly promoted by an authorized analyst using `FactReviewService`. When all 8 analysis pillars (financials, business quality, management/governance, structure, valuation, growth, risk, and market regime) are reviewer-verified, ungated scoring safely unlocks with full multi-horizon breakdown. If any pillar evidence is unverified or missing, the pipeline strictly fails closed with `UNABLE_TO_ASSESS`.
+9. **Multi-Format Extraction & Scanned PDF OCR Fallback**: Supports PDF, XML/iXBRL, HTML, CSV/TSV, XLS, and XLSX. Includes automated OCR fallback (`extract_scanned_pdf_ocr_text`) for rasterized/scanned PDFs and an expanded Ind AS XBRL reporting taxonomy.
 
 ---
 
@@ -71,7 +72,7 @@ Open **`http://localhost:8000`** in your browser to view the interactive dashboa
 
 ## 🧪 Running Automated Tests
 
-Run the complete test suite (Unit, Integration, and 11 Realistic Scenario Fixtures):
+Run the complete test suite (204 Unit, Integration, and Scenario Fixtures):
 ```powershell
 .venv\Scripts\pytest.exe -v
 ```

@@ -8,6 +8,7 @@ from src.results.document_extractors import (
     extract_financial_metrics_from_tables,
     extract_ixbrl_as_xbrl,
     infer_xbrl_reporting_period,
+    _metric_for_label,
 )
 
 
@@ -209,3 +210,13 @@ def test_xbrl_period_inference_uses_duration_and_fails_closed_on_same_end_date_a
 def test_format_detection_uses_signature_before_misleading_url_extension():
     assert detect_document_format(b"%PDF-1.7", "text/plain", "https://exchange/file.csv") == "pdf"
     assert detect_document_format(b"<html><table></table></html>", "", "https://exchange/file.bin") == "html"
+
+
+def test_ind_as_metric_for_label_banking_and_variants():
+    assert _metric_for_label("Total revenue from operations") == "revenue_cr"
+    assert _metric_for_label("Interest Earned") == "revenue_cr"
+    assert _metric_for_label("Total Interest Income") == "revenue_cr"
+    assert _metric_for_label("Net Profit Loss for Period") == "pat_cr"
+    assert _metric_for_label("Cash Flow from Operating Activities") == "cfo_cr"
+    assert _metric_for_label("Basic Earnings Per Share") == "eps"
+

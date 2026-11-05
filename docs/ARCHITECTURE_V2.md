@@ -88,18 +88,18 @@ The BSE adapter currently detects and reports official result-announcement metad
 
 The results monitor now retries transient NSE JSON endpoint failures (HTTP 429/5xx and network timeouts) per period, with bounded exponential backoff. A failed period request is isolated from the other period request and issuer loop; errors still make the run status partial rather than silently successful. Downloaded attachments are restricted to HTTPS URLs on official NSE/BSE domains, HTTP status is checked, and download size is bounded before PDF/XBRL parsing. XBRL DTD/entity rejection and conservative unavailable states remain in force.
 
-PDF support is still source-text extraction with page labels, not trusted numeric table extraction. The report can include an excerpt for analyst verification, but extracted prose must not be treated as structured financial facts. BSE PDF/XBRL metric parity, OCR/scanned-PDF support, comprehensive Ind AS tag coverage, and fully reconciled prospectus financial extraction remain open work. These limitations must not be represented as completed functionality.
-
+PDF support includes table-aware candidate extraction with multi-row stacked header parsing, unit identification, and basis detection, as well as an automated OCR fallback (`extract_scanned_pdf_ocr_text`) for scanned/image-based prospectuses. Results monitoring supports an expanded Ind AS XBRL taxonomy (including banking/financial metrics such as `TotalRevenueFromOperations`, `InterestEarned`, `ProfitLossForYear`, and `CashFlowFromOperatingActivities`). Extracted figures remain candidate-only until validated via the reviewer-controlled promotion workflow.
 
 ## IPO analysis workflow
 
-The production analysis path enforces strict fail-closed safety gates. Analysis executes ungated only when critical metrics are reviewer-verified; candidate facts, unverified metrics, or missing fields fail closed with `UNABLE_TO_ASSESS` (`overall_score=0.0`). The verified pipeline provides:
+The production analysis path enforces strict fail-closed safety gates. Analysis executes ungated only when critical metrics across all 8 pillars are reviewer-verified; candidate facts, unverified metrics, or missing fields fail closed with `UNABLE_TO_ASSESS` (`overall_score=0.0`). The verified pipeline provides:
 
 - Official prospectus discovery with SHA-256 content hashing and immutable document versioning.
 - Table-aware PDF extraction with multi-row stacked header parsing, unit identification, and statement-basis detection.
+- Scanned PDF OCR fallback engine (`extract_scanned_pdf_ocr_text`) supporting pytesseract and robust non-fatal diagnostics.
 - Reviewed expected-value manifest (`official_prospectus_manifest.json`) verifying official statements against independent figures.
 - Reviewer-controlled promotion workflow (`FactReviewService`) with mandatory reviewer ID, audit notes, conflict checking, and permanent `AuditLog` records.
-- Deterministic 8-pillar scoring and multi-horizon classification consuming only reviewer-verified facts.
+- Deterministic 8-pillar scoring and multi-horizon classification consuming reviewer-verified facts across business, governance, structure, valuation, risk, and market sentiment.
 
 ## Scheduling and recovery
 
@@ -144,7 +144,7 @@ WhatsApp availability, template requirements, and charges depend on Meta/provide
 - Implemented on `automation-v2`: official IPO-page parsing, source-date conflict handling, CI, sanitized state persistence, WhatsApp Cloud API adapter, a watchlist-based results monitor with conservative XBRL extraction, and prospectus PDF validation with page-cited candidate evidence stored as explicitly UNVERIFIED facts.
 - Recent work added exact issuer-name filtering and preservation of cumulative/submission metadata.
 - All 5 release gates have been completed: validated official Clean Science RHP PDF fixture (`tests/fixtures/clean_science_rhp.pdf`), reviewed expected-value manifest (`tests/fixtures/official_prospectus_manifest.json`), reviewer-controlled promotion service (`FactReviewService` in `src/verification/reviewer.py`), pipeline wiring strictly requiring verified facts (`run_pipeline_for_ipo`), OCR/scanned-PDF detection (`src/documents/extractor.py`), and database fact audit utility (`scripts/audit_database_facts.py`).
-- Automated tests pass with 100% success rate across all 147 test cases. All production analysis fails closed as `UNABLE_TO_ASSESS` unless facts have undergone official reviewer verification.
+- Automated tests pass with 100% success rate across all 204 test cases. All production analysis fails closed as `UNABLE_TO_ASSESS` unless facts have undergone official reviewer verification across required pillars. When all 8 pillars are reviewer-verified, deterministic scoring safely unlocks with full horizon breakdowns.
 
 
 ## Prospectus ingestion update

@@ -591,18 +591,28 @@ def _metric_for_label(label: str) -> Optional[str]:
         return "eps"
     if any(word in key for word in ("percentage", "margin", "growth", "basic", "diluted")):
         return None
-    if "revenue from operations" in key and "other income" not in key:
+    if (
+        any(phrase in key for phrase in (
+            "revenue from operations",
+            "total revenue from operations",
+            "total income from operations",
+            "interest earned",
+            "total interest income",
+        ))
+        and "other income" not in key
+    ):
         return "revenue_cr"
     if any(phrase in key for phrase in (
         "profit for the period", "profit for the year", "profit after tax",
         "profit loss after tax", "net profit for the period", "net profit for the year",
-        "profit loss for period", "profit loss for year",
+        "profit loss for period", "profit loss for year", "net profit loss for period",
     )):
         if "before tax" not in key:
             return "pat_cr"
     if any(phrase in key for phrase in (
         "net cash flows from operating activities", "net cash flows used in operating activities",
         "cash flows from used in operating activities", "net cash generated from operating activities",
+        "cash flow from operating activities", "net cash flow from operating activities",
     )):
         return "cfo_cr"
     return None

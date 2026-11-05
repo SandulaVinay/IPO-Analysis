@@ -262,7 +262,7 @@ async def test_reviewer_blocks_comparable_conflicts_unless_audited_override(asyn
     )
     await async_session.commit()
 
-    with pytest.raises(ValueError, match="Conflicting candidates exist"):
+    with pytest.raises(ValueError, match="Conflicting evidence exists"):
         await FactReviewService.review_and_promote_fact(
             async_session, fact_id=first.id, reviewer_id="senior_analyst", decision="VERIFIED",
             notes="Checked original filing.",

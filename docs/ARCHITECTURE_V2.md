@@ -144,7 +144,7 @@ WhatsApp availability, template requirements, and charges depend on Meta/provide
 - Implemented on `automation-v2`: official IPO-page parsing, source-date conflict handling, CI, sanitized state persistence, WhatsApp Cloud API adapter, a watchlist-based results monitor with conservative XBRL extraction, and prospectus PDF validation with page-cited candidate evidence stored as explicitly UNVERIFIED facts.
 - Recent work added exact issuer-name filtering and preservation of cumulative/submission metadata.
 - All 5 release gates have been completed: validated official Clean Science RHP PDF fixture (`tests/fixtures/clean_science_rhp.pdf`), reviewed expected-value manifest (`tests/fixtures/official_prospectus_manifest.json`), reviewer-controlled promotion service (`FactReviewService` in `src/verification/reviewer.py`), pipeline wiring strictly requiring verified facts (`run_pipeline_for_ipo`), OCR/scanned-PDF detection (`src/documents/extractor.py`), and database fact audit utility (`scripts/audit_database_facts.py`).
-- Automated tests pass with 100% success rate across all 204 test cases. All production analysis fails closed as `UNABLE_TO_ASSESS` unless facts have undergone official reviewer verification across required pillars. When all 8 pillars are reviewer-verified, deterministic scoring safely unlocks with full horizon breakdowns.
+- Automated tests pass with 100% success rate across all 205 test cases. All production analysis fails closed as `UNABLE_TO_ASSESS` unless facts have undergone official reviewer verification across required pillars. When all 8 pillars are reviewer-verified, deterministic scoring safely unlocks with full horizon breakdowns.
 
 
 ## Prospectus ingestion update

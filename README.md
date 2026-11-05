@@ -72,7 +72,7 @@ Open **`http://localhost:8000`** in your browser to view the interactive dashboa
 
 ## 🧪 Running Automated Tests
 
-Run the complete test suite (204 Unit, Integration, and Scenario Fixtures):
+Run the complete test suite (205 Unit, Integration, and Scenario Fixtures):
 ```powershell
 .venv\Scripts\pytest.exe -v
 ```

@@ -142,7 +142,7 @@ async def cmd_results():
     console.print(table)
     if result.get("reports_dir"):
         console.print(f"Reports generated in: {result['reports_dir']}")
-    if result.get("status") == "PARTIAL":
+    if result.get("status") == "FAILED" or result.get("errors", 0) > 0:
         raise SystemExit(1)
 
 

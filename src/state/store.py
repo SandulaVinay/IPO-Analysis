@@ -39,6 +39,14 @@ def _as_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
+INVALID_COMPANY_NAMES = {
+    "company name", "name of company", "company", "issuer", "issuer name",
+    "offered reserved", "offered / reserved", "offered/ reserved",
+    "offered", "reserved", "total", "grand total", "no records found",
+    "no data available", "no records available", "no upcoming issues",
+}
+
+
 class StateStore:
     def __init__(self, root: Optional[str] = None):
         configured = root or os.getenv("STATE_DIR", ".runtime_state")
@@ -94,6 +102,9 @@ class StateStore:
         restored = 0
         for item in records:
             if not isinstance(item, dict) or not item.get("symbol") or not item.get("company_name"):
+                continue
+            normalized_name = re.sub(r"\s+", " ", str(item["company_name"])).strip().lower()
+            if normalized_name in INVALID_COMPANY_NAMES or normalized_name.startswith("offered"):
                 continue
             ipo = await repository.create_or_update_ipo(
                 symbol=str(item["symbol"]),
@@ -151,6 +162,9 @@ class StateStore:
         ipos = list(result.scalars().all())
         records = []
         for ipo in ipos:
+            normalized_name = re.sub(r"\s+", " ", str(ipo.company_name or "")).strip().lower()
+            if normalized_name in INVALID_COMPANY_NAMES or normalized_name.startswith("offered"):
+                continue
             source_snapshots = [snapshot for snapshot in ipo.gmp_snapshots if snapshot.source == "IPOWATCH"]
             source_snapshots.sort(
                 key=lambda snapshot: _as_utc(snapshot.captured_at or datetime.min.replace(tzinfo=timezone.utc)),

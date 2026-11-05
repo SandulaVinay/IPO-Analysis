@@ -41,14 +41,17 @@ class FactReviewService:
     async def list_candidate_facts(
         session: AsyncSession,
         ipo_id: int,
-        status: str = "UNVERIFIED",
+        status: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """List candidate facts for an IPO that await reviewer evaluation."""
-        stmt = (
-            select(Fact)
-            .where(Fact.ipo_id == ipo_id, Fact.verification_status == status)
-            .order_by(Fact.id.asc())
-        )
+        stmt = select(Fact).where(Fact.ipo_id == ipo_id)
+        if status is None:
+            stmt = stmt.where(Fact.verification_status.in_(
+                ("UNVERIFIED", "CANDIDATE_UNVERIFIED", "CONFLICTED")
+            ))
+        else:
+            stmt = stmt.where(Fact.verification_status == status.upper())
+        stmt = stmt.order_by(Fact.id.asc())
         res = await session.execute(stmt)
         facts = res.scalars().all()
 

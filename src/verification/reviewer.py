@@ -196,7 +196,19 @@ class FactReviewService:
             )
             peer_res = await session.execute(peer_stmt)
             for peer in peer_res.scalars().all():
-                if str(peer.verification_status or "").upper() == "REJECTED":
+                peer_status = str(peer.verification_status or "").upper()
+                if peer_status in {"REJECTED", "REVIEWED_PROMOTED"}:
+                    continue
+                # Multiple rows/candidates extracted from the same prospectus are
+                # not independent corroborating sources. The reviewer is inspecting
+                # that source directly; compare against separately sourced evidence.
+                same_source_url = str(peer.source_url or "").strip().rstrip("/") == str(candidate.source_url or "").strip().rstrip("/")
+                same_document = (
+                    peer.document_id == candidate.document_id
+                    if peer.document_id is not None or candidate.document_id is not None
+                    else True
+                )
+                if same_source_url and same_document:
                     continue
                 if peer.value_type != "JSON" or not peer.value_text:
                     continue

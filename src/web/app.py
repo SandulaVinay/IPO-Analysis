@@ -465,7 +465,16 @@ async def run_pipeline_for_ipo(ipo, session: Optional[AsyncSession] = None) -> D
         {"risk_title": "Foreign Exchange Rate Fluctuations", "severity": "LOW", "probability": "HIGH", "impact": "LOW", "evidence_citation": "RHP Page 45"},
     ]
     risk_info = RiskEngine.evaluate_risks(risks)
-    regime = MarketRegimeAnalyzer.evaluate_market_regime()
+    # Synthetic regime observations are used only by the explicit non-production
+    # demo path. Live assessments return UNABLE_TO_ASSESS until connected to verified
+    # current market data; no hard-coded market defaults enter production scoring.
+    demo_regime = {
+        "nifty_50dma_status": "ABOVE",
+        "midcap_sentiment": "BULLISH",
+        "recent_ipos_avg_listing_gain_pct": 22.0,
+        "india_vix": 14.5,
+    } if demo_mode else None
+    regime = MarketRegimeAnalyzer.evaluate_market_regime(demo_regime)
 
     # Completeness verification
     completeness = VerificationEngine.evaluate_ipo_completeness(ipo_dict, facts_data)

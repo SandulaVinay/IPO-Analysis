@@ -65,9 +65,17 @@ class ScoringEngine:
             "risk": risk_score,
             "market_sentiment": sentiment_score,
         }
+        def is_valid_score(value: Any) -> bool:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return False
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError, OverflowError):
+                return False
+            return math.isfinite(numeric) and 0.0 <= numeric <= 10.0
+
         missing_scores = [
-            name for name, value in raw_scores.items()
-            if value is None or not isinstance(value, (int, float)) or not math.isfinite(float(value)) or not 0.0 <= float(value) <= 10.0
+            name for name, value in raw_scores.items() if not is_valid_score(value)
         ]
         if missing_scores:
             is_gated = True

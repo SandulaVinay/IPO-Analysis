@@ -214,6 +214,8 @@ class FactReviewService:
             period_label = period.get("label") if isinstance(period, dict) else None
             statement_basis = str(candidate_meta.get("statement_basis") or "").upper()
             reviewed_decimal = Decimal(str(verified_numeric_value))
+            if not reviewed_decimal.is_finite():
+                raise ValueError("A verified finite numeric value is required to compare financial evidence.")
             peer_stmt = select(Fact).where(
                 Fact.ipo_id == candidate.ipo_id,
                 Fact.id != candidate.id,

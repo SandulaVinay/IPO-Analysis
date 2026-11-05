@@ -113,6 +113,13 @@ class FactReviewService:
         if candidate is None:
             raise ValueError(f"Fact with ID {fact_id} not found.")
 
+        current_status = str(candidate.verification_status or "").upper()
+        if current_status not in {"UNVERIFIED", "CANDIDATE_UNVERIFIED", "CONFLICTED"}:
+            raise ValueError(
+                f"Candidate fact cannot be reviewed from status {current_status or 'UNKNOWN'}; "
+                "only pending candidates may be reviewed."
+            )
+
         now_utc = datetime.now(timezone.utc)
 
         if decision_upper == "REJECTED":
@@ -172,6 +179,55 @@ class FactReviewService:
                     verified_numeric_value = float(Decimal(str(norm_str)))
                 except Exception as exc:
                     raise ValueError("Normalized candidate value cannot be converted to float.") from exc
+
+        # Compare this reviewed value with other candidates for the same explicit
+        # field, period, and statement basis. A conflict must never be silently
+        # ignored; an override is possible only through an explicit audited action.
+        conflict_details: List[Dict[str, Any]] = []
+        if candidate_meta and verified_numeric_value is not None:
+            period = candidate_meta.get("period")
+            period_label = period.get("label") if isinstance(period, dict) else None
+            statement_basis = str(candidate_meta.get("statement_basis") or "").upper()
+            reviewed_decimal = Decimal(str(verified_numeric_value))
+            peer_stmt = select(Fact).where(
+                Fact.ipo_id == candidate.ipo_id,
+                Fact.field_name == candidate.field_name,
+                Fact.id != candidate.id,
+            )
+            peer_res = await session.execute(peer_stmt)
+            for peer in peer_res.scalars().all():
+                if str(peer.verification_status or "").upper() == "REJECTED":
+                    continue
+                if peer.value_type != "JSON" or not peer.value_text:
+                    continue
+                try:
+                    peer_meta = json.loads(peer.value_text)
+                except (TypeError, ValueError):
+                    continue
+                peer_period = peer_meta.get("period")
+                peer_period_label = peer_period.get("label") if isinstance(peer_period, dict) else None
+                peer_basis = str(peer_meta.get("statement_basis") or "").upper()
+                if peer_period_label != period_label or peer_basis != statement_basis:
+                    continue
+                peer_value = peer_meta.get("normalized_value_inr_crore")
+                if peer_value is None:
+                    continue
+                try:
+                    peer_decimal = Decimal(str(peer_value))
+                except Exception:
+                    continue
+                if peer_decimal.is_finite() and peer_decimal != reviewed_decimal:
+                    conflict_details.append({
+                        "fact_id": peer.id,
+                        "source_url": peer.source_url,
+                        "normalized_value_inr_crore": str(peer_decimal),
+                    })
+
+        if conflict_details and not override_conflict:
+            raise ValueError(
+                "Conflicting candidates exist for the same field, period, and statement basis. "
+                "Resolve the conflict or explicitly set override_conflict=True with an audit rationale."
+            )
 
         # Determine canonical field name and the reviewed value type.
         canonical = target_field_name
@@ -279,6 +335,7 @@ class FactReviewService:
                 "page_number": candidate.page_number,
                 "notes": cleaned_notes,
                 "override_conflict": override_conflict,
+                "conflict_details": conflict_details,
             },
         )
         session.add(audit)

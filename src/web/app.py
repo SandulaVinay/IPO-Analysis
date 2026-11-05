@@ -6,7 +6,6 @@ Provides REST APIs for IPO Intelligence and serves an interactive Glassmorphism 
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Literal
 from contextlib import asynccontextmanager
-import json
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles

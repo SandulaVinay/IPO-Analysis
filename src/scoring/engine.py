@@ -67,7 +67,7 @@ class ScoringEngine:
         }
         missing_scores = [
             name for name, value in raw_scores.items()
-            if value is None or not isinstance(value, (int, float)) or not math.isfinite(float(value))
+            if value is None or not isinstance(value, (int, float)) or not math.isfinite(float(value)) or not 0.0 <= float(value) <= 10.0
         ]
         if missing_scores:
             is_gated = True

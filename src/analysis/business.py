@@ -20,8 +20,13 @@ class BusinessAnalyzer:
             reason = "Missing verified business evidence: " + ", ".join(missing)
             return {"assessment_status": "UNABLE_TO_ASSESS", "business_quality_score": None,
                     "insights": [reason], "limitations": [reason], "concentration_risk": None}
-        top5 = float(data["top5_customer_concentration_pct"])
-        recurring = float(data["recurring_revenue_pct"])
+        try:
+            top5 = float(data["top5_customer_concentration_pct"])
+            recurring = float(data["recurring_revenue_pct"])
+        except (TypeError, ValueError, OverflowError):
+            reason = "Business percentage evidence must be numeric."
+            return {"assessment_status": "UNABLE_TO_ASSESS", "business_quality_score": None,
+                    "insights": [reason], "limitations": [reason], "concentration_risk": None}
         if (not math.isfinite(top5) or not math.isfinite(recurring)
                 or not 0 <= top5 <= 100 or not 0 <= recurring <= 100
                 or not isinstance(data["has_proprietary_tech_or_moat"], bool)

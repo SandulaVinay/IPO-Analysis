@@ -13,6 +13,10 @@ class RiskEngine:
                     "high_severity_count": 0, "top_risks": [], "limitations": [reason]}
         required = ("risk_title", "severity", "probability", "impact", "evidence_citation")
         for index, risk in enumerate(risks):
+            if not isinstance(risk, dict):
+                reason = f"Risk item {index + 1} must be an object with explicit evidence fields."
+                return {"assessment_status": "UNABLE_TO_ASSESS", "risk_score": None, "total_risk_count": len(risks),
+                        "high_severity_count": 0, "top_risks": [], "limitations": [reason]}
             missing = [key for key in required if not risk.get(key)]
             severity, probability, impact = (str(risk.get(k, "")).upper() for k in ("severity", "probability", "impact"))
             if missing or severity not in cls.SEVERITY_WEIGHTS or probability not in cls.VALID_PROBABILITY_IMPACT or impact not in cls.VALID_PROBABILITY_IMPACT:

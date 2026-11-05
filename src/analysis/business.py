@@ -21,7 +21,10 @@ class BusinessAnalyzer:
                     "insights": [reason], "limitations": [reason], "concentration_risk": None}
         top5 = float(data["top5_customer_concentration_pct"])
         recurring = float(data["recurring_revenue_pct"])
-        if not 0 <= top5 <= 100 or not 0 <= recurring <= 100:
+        if (not math.isfinite(top5) or not math.isfinite(recurring)
+                or not 0 <= top5 <= 100 or not 0 <= recurring <= 100
+                or not isinstance(data["has_proprietary_tech_or_moat"], bool)
+                or not isinstance(data["is_cyclical"], bool)):
             reason = "Customer concentration and recurring revenue must be percentages between 0 and 100."
             return {"assessment_status": "UNABLE_TO_ASSESS", "business_quality_score": None,
                     "insights": [reason], "limitations": [reason], "concentration_risk": None}

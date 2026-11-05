@@ -1,5 +1,6 @@
 """Evidence-gated management and corporate governance analysis."""
 from typing import Any, Dict, List
+import math
 
 
 class ManagementAnalyzer:

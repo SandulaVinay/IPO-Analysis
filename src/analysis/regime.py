@@ -18,7 +18,12 @@ class MarketRegimeAnalyzer:
             reason = "Market trend fields contain unsupported values."
             return {"assessment_status": "UNABLE_TO_ASSESS", "market_sentiment_score": None,
                     "regime": "UNKNOWN", "insights": [reason], "limitations": [reason]}
-        vix, gain = float(d["india_vix"]), float(d["recent_ipos_avg_listing_gain_pct"])
+        try:
+            vix, gain = float(d["india_vix"]), float(d["recent_ipos_avg_listing_gain_pct"])
+        except (TypeError, ValueError, OverflowError):
+            reason = "Market-regime numeric observations must be valid numbers."
+            return {"assessment_status": "UNABLE_TO_ASSESS", "market_sentiment_score": None,
+                    "regime": "UNKNOWN", "insights": [reason], "limitations": [reason]}
         if not math.isfinite(vix) or not math.isfinite(gain) or vix < 0:
             reason = "India VIX cannot be negative."
             return {"assessment_status": "UNABLE_TO_ASSESS", "market_sentiment_score": None,

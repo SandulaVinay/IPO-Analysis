@@ -1,5 +1,6 @@
 """Evidence-gated market regime and macro sentiment analyzer."""
 from typing import Any, Dict, Optional
+import math
 
 class MarketRegimeAnalyzer:
     REQUIRED_FIELDS = ("nifty_50dma_status", "midcap_sentiment", "recent_ipos_avg_listing_gain_pct", "india_vix")

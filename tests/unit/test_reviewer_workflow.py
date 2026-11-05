@@ -356,3 +356,21 @@ async def test_reviewer_rejects_non_object_json_metadata(async_session: AsyncSes
             async_session, fact_id=fact.id, reviewer_id="reviewer_one", decision="VERIFIED",
             notes="Reviewing malformed candidate.",
         )
+
+
+@pytest.mark.asyncio
+async def test_reviewer_pending_queue_includes_all_reviewable_candidate_states(async_session: AsyncSession):
+    repo = IPORepository(async_session)
+    ipo = await repo.create_or_update_ipo(symbol="TEST_REV11", company_name="Pending Queue Coverage Ltd")
+    created = []
+    for index, status in enumerate(("UNVERIFIED", "CANDIDATE_UNVERIFIED", "CONFLICTED")):
+        created.append(await repo.add_fact(
+            ipo_id=ipo.id, field_name=f"pending_field_{index}", value_text="candidate",
+            value_numeric=None, value_type="STRING", source_name="EXTRACTION",
+            source_url="https://www.sebi.gov.in/pending.pdf", verification_status=status,
+        ))
+    await async_session.commit()
+    pending = await FactReviewService.list_candidate_facts(async_session, ipo.id)
+    assert {item["verification_status"] for item in pending} == {
+        "UNVERIFIED", "CANDIDATE_UNVERIFIED", "CONFLICTED"
+    }

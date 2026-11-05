@@ -1,5 +1,6 @@
 """Evidence-gated business quality analysis."""
 from typing import Any, Dict, List
+import math
 
 
 class BusinessAnalyzer:

@@ -13,7 +13,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models import Fact, FinancialPeriod, AuditLog, IPO
@@ -107,7 +107,7 @@ class FactReviewService:
         if decision_upper not in {"VERIFIED", "REJECTED"}:
             raise ValueError("Decision must be either 'VERIFIED' or 'REJECTED'.")
 
-        stmt = select(Fact).where(Fact.id == fact_id)
+        stmt = select(Fact).where(Fact.id == fact_id).with_for_update()
         res = await session.execute(stmt)
         candidate = res.scalars().first()
         if candidate is None:
@@ -123,6 +123,16 @@ class FactReviewService:
         now_utc = datetime.now(timezone.utc)
 
         if decision_upper == "REJECTED":
+            claim = await session.execute(
+                update(Fact)
+                .where(
+                    Fact.id == candidate.id,
+                    Fact.verification_status == candidate.verification_status,
+                )
+                .values(verification_status="REJECTED", confidence="LOW")
+            )
+            if claim.rowcount != 1:
+                raise ValueError("Candidate was already reviewed by another request; reload before retrying.")
             candidate.verification_status = "REJECTED"
             candidate.confidence = "LOW"
             audit = AuditLog(
@@ -180,9 +190,18 @@ class FactReviewService:
                 except Exception as exc:
                     raise ValueError("Normalized candidate value cannot be converted to float.") from exc
 
-        # Compare this reviewed value with other candidates for the same explicit
-        # field, period, and statement basis. A conflict must never be silently
-        # ignored; an override is possible only through an explicit audited action.
+        # Resolve the canonical field before comparing evidence. Different extraction
+        # labels can map to the same production field and must share one conflict domain.
+        canonical = str(target_field_name or cls.CRITICAL_TARGET_FIELDS.get(
+            candidate.field_name, candidate.field_name
+        )).strip()
+        if not canonical:
+            raise ValueError("A canonical target field name is required.")
+
+        # Compare independent evidence from all statuses except explicitly rejected
+        # candidates. REVIEWED_PROMOTED rows are deliberately included: their JSON
+        # payload preserves period/basis/value and prevents later reviewers from
+        # silently contradicting an already verified source.
         conflict_details: List[Dict[str, Any]] = []
         if candidate_meta and verified_numeric_value is not None:
             period = candidate_meta.get("period")
@@ -191,18 +210,21 @@ class FactReviewService:
             reviewed_decimal = Decimal(str(verified_numeric_value))
             peer_stmt = select(Fact).where(
                 Fact.ipo_id == candidate.ipo_id,
-                Fact.field_name == candidate.field_name,
                 Fact.id != candidate.id,
             )
             peer_res = await session.execute(peer_stmt)
             for peer in peer_res.scalars().all():
                 peer_status = str(peer.verification_status or "").upper()
-                if peer_status in {"REJECTED", "REVIEWED_PROMOTED"}:
+                if peer_status == "REJECTED":
                     continue
-                # Multiple rows/candidates extracted from the same prospectus are
-                # not independent corroborating sources. The reviewer is inspecting
-                # that source directly; compare against separately sourced evidence.
-                same_source_url = str(peer.source_url or "").strip().rstrip("/") == str(candidate.source_url or "").strip().rstrip("/")
+                peer_canonical = cls.CRITICAL_TARGET_FIELDS.get(peer.field_name, peer.field_name)
+                if peer_canonical != canonical:
+                    continue
+
+                same_source_url = (
+                    str(peer.source_url or "").strip().rstrip("/")
+                    == str(candidate.source_url or "").strip().rstrip("/")
+                )
                 same_document = (
                     peer.document_id == candidate.document_id
                     if peer.document_id is not None or candidate.document_id is not None
@@ -210,11 +232,14 @@ class FactReviewService:
                 )
                 if same_source_url and same_document:
                     continue
+
                 if peer.value_type != "JSON" or not peer.value_text:
                     continue
                 try:
                     peer_meta = json.loads(peer.value_text)
                 except (TypeError, ValueError):
+                    continue
+                if not isinstance(peer_meta, dict):
                     continue
                 peer_period = peer_meta.get("period")
                 peer_period_label = peer_period.get("label") if isinstance(peer_period, dict) else None
@@ -231,20 +256,18 @@ class FactReviewService:
                 if peer_decimal.is_finite() and peer_decimal != reviewed_decimal:
                     conflict_details.append({
                         "fact_id": peer.id,
+                        "verification_status": peer_status,
+                        "field_name": peer.field_name,
+                        "canonical_field_name": peer_canonical,
                         "source_url": peer.source_url,
                         "normalized_value_inr_crore": str(peer_decimal),
                     })
 
         if conflict_details and not override_conflict:
             raise ValueError(
-                "Conflicting candidates exist for the same field, period, and statement basis. "
+                "Conflicting evidence exists for the same canonical field, period, and statement basis. "
                 "Resolve the conflict or explicitly set override_conflict=True with an audit rationale."
             )
-
-        # Determine canonical field name and the reviewed value type.
-        canonical = target_field_name
-        if not canonical:
-            canonical = cls.CRITICAL_TARGET_FIELDS.get(candidate.field_name, candidate.field_name)
 
         if verified_value_type:
             value_type = str(verified_value_type).strip().upper()
@@ -303,6 +326,21 @@ class FactReviewService:
         else:
             raise ValueError("Verified fact type must be NUMBER, BOOLEAN, DATE, or STRING.")
 
+        # Optimistic compare-and-set protects against concurrent reviewer requests.
+        # The row lock above serializes this on PostgreSQL; the conditional UPDATE
+        # also protects databases that do not implement SELECT FOR UPDATE.
+        claim = await session.execute(
+            update(Fact)
+            .where(
+                Fact.id == candidate.id,
+                Fact.verification_status == current_status,
+            )
+            .values(verification_status="REVIEWED_PROMOTED")
+        )
+        if claim.rowcount != 1:
+            raise ValueError("Candidate was already reviewed by another request; reload before retrying.")
+        candidate.verification_status = "REVIEWED_PROMOTED"
+
         # Create the canonical VERIFIED fact
         verified_fact = Fact(
             ipo_id=candidate.ipo_id,
@@ -322,9 +360,6 @@ class FactReviewService:
         )
         session.add(verified_fact)
 
-        # Mark candidate as REVIEWED_PROMOTED to maintain historical trace
-        candidate.verification_status = "REVIEWED_PROMOTED"
-
         # Record audit log
         audit = AuditLog(
             timestamp=now_utc,
@@ -340,6 +375,8 @@ class FactReviewService:
                 "candidate_fact_id": candidate.id,
                 "original_field": candidate.field_name,
                 "canonical_field": canonical,
+                "period_label": (candidate_meta.get("period") or {}).get("label") if isinstance(candidate_meta.get("period"), dict) else None,
+                "statement_basis": str(candidate_meta.get("statement_basis") or "").upper() or None,
                 "verified_numeric_value": value_numeric,
                 "verified_value_text": value_text,
                 "verified_value_type": value_type,

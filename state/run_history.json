@@ -809,6 +809,18 @@
       "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; notification_failures=0; notification_skipped=0; documents_unavailable=0; errors=0",
       "status": "SUCCESS",
       "timestamp": "2026-11-05T09:12:40.433121+00:00"
+    },
+    {
+      "command": "discover",
+      "detail": "restored=1; discovered=0; registry_total=1; source_coverage=PARTIAL",
+      "status": "PARTIAL",
+      "timestamp": "2026-11-05T10:28:46.657772+00:00"
+    },
+    {
+      "command": "results",
+      "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; notification_failures=0; notification_skipped=0; documents_unavailable=0; errors=0",
+      "status": "SUCCESS",
+      "timestamp": "2026-11-05T10:28:53.800015+00:00"
     }
   ],
   "schema_version": 1

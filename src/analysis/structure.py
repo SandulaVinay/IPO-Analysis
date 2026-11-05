@@ -1,5 +1,6 @@
 """Evidence-gated IPO issue structure and use-of-proceeds analysis."""
 from typing import Any, Dict, List
+import math
 
 
 class StructureAnalyzer:

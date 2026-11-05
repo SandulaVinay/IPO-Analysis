@@ -41,3 +41,26 @@ def test_reviewer_identity_is_not_accepted_from_untrusted_payload():
     configured = json.dumps({"trusted_reviewer": "trusted-secret"})
     with pytest.raises(ReviewerAuthenticationError):
         reviewer_id_for_token("attacker-supplied-reviewer-id", configured)
+
+
+@pytest.mark.asyncio
+async def test_fastapi_reviewer_dependency_binds_identity_and_fails_closed(monkeypatch):
+    from fastapi import HTTPException
+    from src.common.config import settings
+    from src.web.app import app, require_reviewer
+
+    monkeypatch.setattr(settings, "reviewer_api_tokens", json.dumps({"lead_analyst": "server-secret"}))
+    assert await require_reviewer("server-secret") == "lead_analyst"
+
+    with pytest.raises(HTTPException) as invalid:
+        await require_reviewer("wrong-secret")
+    assert invalid.value.status_code == 401
+
+    monkeypatch.setattr(settings, "reviewer_api_tokens", "")
+    with pytest.raises(HTTPException) as disabled:
+        await require_reviewer("any-secret")
+    assert disabled.value.status_code == 503
+
+    route_paths = {route.path for route in app.routes}
+    assert "/api/ipos/{symbol}/facts/pending" in route_paths
+    assert "/api/facts/{fact_id}/review" in route_paths

@@ -21,7 +21,10 @@ class ManagementAnalyzer:
         post = float(data["promoter_post_holding_pct"])
         pledge = float(data["promoter_pledge_pct"])
         rpt = float(data["rpt_revenue_pct"])
-        if not all(0 <= v <= 100 for v in (post, pledge, rpt)):
+        if (not all(math.isfinite(v) and 0 <= v <= 100 for v in (post, pledge, rpt))
+                or not isinstance(data["has_auditor_qualifications"], bool)
+                or not isinstance(data["frequent_auditor_changes"], bool)
+                or not isinstance(data["has_promoter_litigation"], bool)):
             reason = "Promoter holding, pledge, and related-party revenue percentages must be between 0 and 100."
             return {"assessment_status": "UNABLE_TO_ASSESS", "management_governance_score": None,
                     "insights": [reason], "red_flags": [], "limitations": [reason],

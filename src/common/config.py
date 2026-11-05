@@ -111,6 +111,9 @@ class Settings(BaseSettings):
     enable_automated_scheduler: bool = False
     enable_demo_analysis: bool = False
 
+    # JSON object mapping reviewer IDs to high-entropy API tokens; empty disables reviewer API.
+    reviewer_api_tokens: str = ""
+
     # Scoring Model Weights (Must sum to 1.0)
     weight_business_quality: float = 0.20
     weight_financial_quality: float = 0.20

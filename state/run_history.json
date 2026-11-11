@@ -1085,6 +1085,24 @@
       "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; notification_failures=0; notification_skipped=0; documents_unavailable=0; errors=0",
       "status": "SUCCESS",
       "timestamp": "2026-11-11T16:48:54.272767+00:00"
+    },
+    {
+      "command": "discover",
+      "detail": "restored=0; discovered=0; registry_total=0; source_coverage=PARTIAL",
+      "status": "PARTIAL",
+      "timestamp": "2026-11-11T19:18:30.606665+00:00"
+    },
+    {
+      "command": "results",
+      "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; notification_failures=0; notification_skipped=0; documents_unavailable=0; errors=0",
+      "status": "SUCCESS",
+      "timestamp": "2026-11-11T19:18:36.461132+00:00"
+    },
+    {
+      "command": "digest",
+      "detail": "records=0; channel=EMAIL",
+      "status": "ACCEPTED",
+      "timestamp": "2026-11-11T19:18:40.919520+00:00"
     }
   ],
   "schema_version": 1

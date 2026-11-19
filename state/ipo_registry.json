@@ -1,5 +1,60 @@
 {
-  "ipos": [],
+  "ipos": [
+    {
+      "announced_close_date": "2026-11-20",
+      "announced_open_date": "2026-11-18",
+      "company_name": "Crystal Crop Protection Limited",
+      "fresh_issue_cr": null,
+      "gmp_snapshots": [],
+      "industry": null,
+      "issue_size_cr": 331.03,
+      "issue_type": "MAINBOARD",
+      "lot_size": null,
+      "max_price": 272.0,
+      "min_price": 259.0,
+      "ofs_cr": null,
+      "status": "IPO_DISCOVERED",
+      "symbol": "CRYSTALCP",
+      "verified_close_date": "2026-11-20",
+      "verified_open_date": "2026-11-18"
+    },
+    {
+      "announced_close_date": "2026-11-23",
+      "announced_open_date": "2026-11-19",
+      "company_name": "Mahanadi Coalfields Limited",
+      "fresh_issue_cr": null,
+      "gmp_snapshots": [],
+      "industry": null,
+      "issue_size_cr": 6705.73,
+      "issue_type": "MAINBOARD",
+      "lot_size": null,
+      "max_price": 136.0,
+      "min_price": 129.0,
+      "ofs_cr": null,
+      "status": "IPO_DISCOVERED",
+      "symbol": "MAHACOAL",
+      "verified_close_date": "2026-11-23",
+      "verified_open_date": "2026-11-19"
+    },
+    {
+      "announced_close_date": "2026-11-23",
+      "announced_open_date": "2026-11-19",
+      "company_name": "Watrana Rentals Limited",
+      "fresh_issue_cr": null,
+      "gmp_snapshots": [],
+      "industry": null,
+      "issue_size_cr": 86.14,
+      "issue_type": "SME",
+      "lot_size": null,
+      "max_price": 245.0,
+      "min_price": 232.0,
+      "ofs_cr": null,
+      "status": "IPO_DISCOVERED",
+      "symbol": "WATRANA",
+      "verified_close_date": "2026-11-23",
+      "verified_open_date": "2026-11-19"
+    }
+  ],
   "schema_version": 1,
-  "updated_at": "2026-11-19T16:13:44.978688+00:00"
+  "updated_at": "2026-11-19T16:59:35.373537+00:00"
 }

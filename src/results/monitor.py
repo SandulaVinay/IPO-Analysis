@@ -42,6 +42,9 @@ from src.results.document_extractors import (
 NSE_ROOT_URL = "https://www.nseindia.com/"
 NSE_RESULTS_URL = "https://www.nseindia.com/companies-listing/corporate-filings-financial-results"
 NSE_RESULTS_API_URL = "https://www.nseindia.com/api/corporates-financial-results"
+NSE_ANNOUNCEMENTS_PAGE_URL = "https://www.nseindia.com/companies-listing/corporate-filings-announcements"
+NSE_ANNOUNCEMENTS_API_URL = "https://www.nseindia.com/api/corporate-announcements"
+NSE_ATTACHMENT_BASE_URL = "https://nsearchives.nseindia.com/corporate/"
 BSE_RESULTS_API_URL = "https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w"
 BSE_RESULTS_PAGE_URL = "https://www.bseindia.com/corporates/ann"
 BSE_ATTACHMENT_BASE_URL = "https://www.bseindia.com/xml-data/corpfiling/AttachLive/"
@@ -96,8 +99,13 @@ def is_official_attachment_url(url: str, exchange: str) -> bool:
     exchange_name = str(exchange or "").upper()
     if exchange_name not in {"BSE", "NSE"}:
         return False
-    official_domain = "bseindia.com" if exchange_name == "BSE" else "nseindia.com"
-    return host == official_domain or host.endswith("." + official_domain)
+    if exchange_name == "BSE":
+        return host == "bseindia.com" or host.endswith(".bseindia.com")
+    return (
+        host in {"nseindia.com", "nseindia.in"}
+        or host.endswith(".nseindia.com")
+        or host.endswith(".nseindia.in")
+    )
 
 
 def _key(value: str) -> str:
@@ -258,6 +266,180 @@ def parse_nse_financial_results_payload(
             "details_url": details_url,
         })
     return output
+
+
+def parse_nse_corporate_announcements_payload(
+    payload: Any,
+    symbol: str,
+    company: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Normalize NSE's corporate announcements feed for financial results filings."""
+    if isinstance(payload, dict):
+        rows = payload.get("data")
+        if rows is None:
+            rows = payload.get("results")
+    else:
+        rows = payload
+    if not isinstance(rows, list):
+        return []
+
+    output: List[Dict[str, Any]] = []
+    seen = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        row_symbol = str(row.get("symbol") or row.get("Symbol") or "").strip().upper()
+        if row_symbol != symbol.strip().upper():
+            continue
+
+        company_name = _clean(str(row.get("sm_name") or row.get("companyName") or row.get("company_name") or ""))
+        if not company_name or not _matches_watchlist_company({"company_name": company_name}, company):
+            continue
+
+        desc = _clean(str(row.get("desc") or ""))
+        headline = _clean(str(row.get("attchmntText") or row.get("smr") or desc))
+        combined = f"{desc} {headline}".lower()
+
+        # Check if announcement represents financial results
+        is_result_desc = desc.lower() in {
+            "financial results",
+            "financial result updates",
+            "financial result",
+            "financial results updates",
+        }
+        is_board_meeting_results = "outcome of board meeting" in desc.lower() and any(
+            k in combined for k in (
+                "financial result",
+                "financial results",
+                "financials",
+                "quarter ended",
+                "half year ended",
+                "year ended",
+                "quarterly results",
+                "annual results",
+                "results for the period",
+                "results for the quarter",
+            )
+        )
+        if not (is_result_desc or is_board_meeting_results):
+            continue
+
+        broadcast = next(
+            (
+                value for value in (
+                    row.get("an_dt"),
+                    row.get("exchdisstime"),
+                    row.get("sort_date"),
+                    row.get("dt"),
+                )
+                if (
+                    _clean(str(value or "")).lower() not in {"", "-", "--", "—", "n/a", "na", "null", "none"}
+                    and not _clean(str(value or "")).lower().startswith("not provided")
+                )
+            ),
+            "",
+        )
+        broadcast = _clean(str(broadcast))
+
+        # Extract period ended date if mentioned in headline / announcement text
+        period_ended = None
+        date_match = re.search(r"(?:period|quarter|half[- ]year|year)\s+ended\s+([A-Za-z0-9\s,.-]+?\d{4})", headline, re.IGNORECASE)
+        if date_match:
+            raw_date = date_match.group(1).strip()
+            clean_date = re.sub(r"(\d+)(?:st|nd|rd|th)\b", r"\1", raw_date).strip()
+            parsed_dt = Normalizer.parse_date(clean_date) or Normalizer.parse_date(clean_date.replace(",", ""))
+            if parsed_dt:
+                period_ended = parsed_dt.strftime("%d-%b-%Y")
+
+        raw_attachment = str(row.get("attchmntFile") or row.get("attmntFile") or row.get("attachment") or "").strip()
+        attachment_url = None
+        if raw_attachment:
+            attachment_url = raw_attachment if raw_attachment.lower().startswith("https://") else urljoin(
+                NSE_ATTACHMENT_BASE_URL, raw_attachment.lstrip("/")
+            )
+
+        period_type = (
+            "Annual" if ("annual" in combined or "year ended" in combined) and "half" not in combined and "quarter" not in combined
+            else "Half Yearly" if "half year" in combined and "quarter" not in combined
+            else "Quarterly"
+        )
+        consolidation = (
+            "Consolidated" if "consolidated" in combined and "non-consolidated" not in combined
+            else "Standalone" if "standalone" in combined
+            else None
+        )
+        seq_id = str(row.get("seq_id") or "").strip()
+        event_material = "|".join([
+            row_symbol, broadcast, desc, seq_id or attachment_url or NSE_ANNOUNCEMENTS_PAGE_URL
+        ])
+        event_key = "RESULT_" + hashlib.sha256(event_material.encode("utf-8")).hexdigest()[:32]
+        if event_key in seen:
+            continue
+        seen.add(event_key)
+
+        output.append({
+            "event_key": event_key,
+            "symbol": row_symbol,
+            "exchange": "NSE",
+            "company_name": company_name,
+            "period_ended": period_ended,
+            "relating_to": desc or "Financial results",
+            "broadcast_time": broadcast or "Not provided by NSE",
+            "audit_status": "Audited" if "audited" in combined and "unaudited" not in combined and "un-audited" not in combined else ("Un-Audited" if "unaudited" in combined or "un-audited" in combined else None),
+            "cumulative_status": None,
+            "period_type": period_type,
+            "submission_type": "Corporate Announcement",
+            "consolidation": consolidation,
+            "source_url": NSE_ANNOUNCEMENTS_PAGE_URL,
+            "attachment_url": attachment_url,
+            "attachments": ([{"url": attachment_url, "label": "NSE results announcement"}] if attachment_url else []),
+            "xbrl_url": None,
+            "details_url": None,
+            "headline": headline,
+        })
+    return output
+
+
+def _merge_nse_filings(filings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Merge corporate announcements and XBRL filings for the same period."""
+    merged: Dict[str, Dict[str, Any]] = {}
+    passthrough: List[Dict[str, Any]] = []
+
+    for item in filings:
+        period = item.get("period_ended")
+        if not period:
+            passthrough.append(item)
+            continue
+        key = f"{item.get('symbol')}_{period}"
+        if key not in merged:
+            merged[key] = dict(item)
+        else:
+            existing = merged[key]
+            # If incoming has xbrl_url and existing doesn't, adopt XBRL attributes
+            if item.get("xbrl_url") and not existing.get("xbrl_url"):
+                existing["xbrl_url"] = item["xbrl_url"]
+                existing["attachment_url"] = item["xbrl_url"]
+                existing["audit_status"] = existing.get("audit_status") or item.get("audit_status")
+                existing["cumulative_status"] = existing.get("cumulative_status") or item.get("cumulative_status")
+                existing["submission_type"] = item.get("submission_type") or existing.get("submission_type")
+            # Include unique attachments
+            for att in item.get("attachments") or []:
+                att_url = att.get("url") if isinstance(att, dict) else att
+                if att_url and all((e.get("url") if isinstance(e, dict) else e) != att_url for e in existing.get("attachments", [])):
+                    existing.setdefault("attachments", []).append(att)
+            if not existing.get("details_url"):
+                for att in existing.get("attachments", []):
+                    att_url = att.get("url") if isinstance(att, dict) else att
+                    if att_url and att_url != existing.get("xbrl_url"):
+                        existing["details_url"] = att_url
+                        break
+            # Keep earliest announcement timestamp if both valid
+            t_exist = _parse_broadcast_datetime(existing.get("broadcast_time"))
+            t_item = _parse_broadcast_datetime(item.get("broadcast_time"))
+            if t_item and t_exist and t_item < t_exist:
+                existing["broadcast_time"] = item["broadcast_time"]
+
+    return list(merged.values()) + passthrough
 
 
 def bse_api_headers() -> Dict[str, str]:
@@ -1082,6 +1264,11 @@ async def monitor_financial_results() -> Dict[str, Any]:
                     headers={**nse_headers, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
                 )
                 results_page.raise_for_status()
+                announcements_page = await session.get(
+                    NSE_ANNOUNCEMENTS_PAGE_URL,
+                    headers={**nse_headers, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+                )
+                announcements_page.raise_for_status()
 
                 for company in nse_companies:
                     symbol = str(company.get("symbol") or "").strip().upper()
@@ -1091,6 +1278,41 @@ async def monitor_financial_results() -> Dict[str, Any]:
                         continue
 
                     company_filings: List[Dict[str, Any]] = []
+                    # 1. Fetch live corporate announcements (which contain immediate Board Meeting outcome PDF filings)
+                    try:
+                        ann_resp = None
+                        for attempt in range(3):
+                            try:
+                                candidate = await session.get(
+                                    NSE_ANNOUNCEMENTS_API_URL,
+                                    params={"index": "equities", "symbol": symbol},
+                                    headers={**nse_headers, "Referer": NSE_ANNOUNCEMENTS_PAGE_URL},
+                                )
+                                if candidate.status_code in {429, 500, 502, 503, 504} and attempt < 2:
+                                    await asyncio.sleep(0.5 * (2 ** attempt))
+                                    continue
+                                candidate.raise_for_status()
+                                ann_resp = candidate
+                                break
+                            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                                if attempt < 2:
+                                    await asyncio.sleep(0.5 * (2 ** attempt))
+                                    continue
+                                raise
+                        if ann_resp is not None:
+                            ann_filings = parse_nse_corporate_announcements_payload(
+                                ann_resp.json(), symbol, company
+                            )
+                            company_filings.extend(ann_filings)
+                            logger.info(
+                                "NSE corporate announcements checked for %s; results announcements matched=%s.",
+                                symbol,
+                                len(ann_filings),
+                            )
+                    except Exception as exc:
+                        logger.warning("NSE announcements API error for %s (%s).", symbol, type(exc).__name__)
+
+                    # 2. Fetch structured XBRL financial-results feed
                     try:
                         for period_type in ("Quarterly", "Annual"):
                             response = None
@@ -1135,11 +1357,12 @@ async def monitor_financial_results() -> Dict[str, Any]:
                                 if consolidated:
                                     parsed = consolidated
                             company_filings.extend(parsed)
-                        nse_rows_by_symbol[symbol] = company_filings
+                        merged = _merge_nse_filings(company_filings)
+                        nse_rows_by_symbol[symbol] = merged
                         logger.info(
-                            "NSE financial-results feed checked for %s; exact issuer filings matched=%s.",
+                            "NSE feeds checked and merged for %s; exact issuer filings matched=%s.",
                             symbol,
-                            len(company_filings),
+                            len(merged),
                         )
                     except Exception as exc:
                         errors += 1
@@ -1150,7 +1373,9 @@ async def monitor_financial_results() -> Dict[str, Any]:
                             status_code if status_code is not None else "n/a",
                             type(exc).__name__,
                         )
-                        nse_rows_by_symbol[symbol] = []
+                        # Retain corporate announcements if results feed failed
+                        merged = _merge_nse_filings(company_filings)
+                        nse_rows_by_symbol[symbol] = merged
         except Exception as exc:
             errors += 1
             status_code = getattr(getattr(exc, "response", None), "status_code", None)

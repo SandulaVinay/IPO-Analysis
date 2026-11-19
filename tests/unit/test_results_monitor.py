@@ -529,3 +529,119 @@ def test_pdf_financial_metrics_maps_actual_rnit_ai_reported_rows():
     assert result["revenue_qoq_pct"] == 108.91
     assert result["pat_qoq_pct"] == 235.10
     assert result["eps"] == 0.50
+
+
+def test_parse_nse_corporate_announcements_extracts_results_metadata():
+    from src.results.monitor import parse_nse_corporate_announcements_payload
+
+    company = {
+        "symbol": "GODAVARIB",
+        "company_name": "Godavari Biorefineries Limited",
+        "company_name_aliases": ["Godavari Biorefineries Ltd"],
+        "exchange": "NSE",
+    }
+    payload = [
+        {
+            "symbol": "GODAVARIB",
+            "sm_name": "Godavari Biorefineries Limited",
+            "desc": "Outcome of Board Meeting",
+            "an_dt": "04-Nov-2026 19:53:23",
+            "attchmntFile": "https://nsearchives.nseindia.com/corporate/GODAVARI_results.pdf",
+            "attchmntText": "Godavari Biorefineries Limited has submitted to the Exchange, the financial results for the period ended September 30, 2026.",
+            "seq_id": "106845643",
+        },
+        {
+            "symbol": "GODAVARIB",
+            "sm_name": "Godavari Biorefineries Limited",
+            "desc": "General Updates",
+            "an_dt": "04-Nov-2026 18:00:00",
+            "attchmntText": "General corporate update without financial results.",
+        },
+    ]
+
+    filings = parse_nse_corporate_announcements_payload(payload, "GODAVARIB", company)
+    assert len(filings) == 1
+    assert filings[0]["symbol"] == "GODAVARIB"
+    assert filings[0]["company_name"] == "Godavari Biorefineries Limited"
+    assert filings[0]["period_ended"] == "30-Sep-2026"
+    assert filings[0]["relating_to"] == "Outcome of Board Meeting"
+    assert filings[0]["broadcast_time"] == "04-Nov-2026 19:53:23"
+    assert filings[0]["attachment_url"] == "https://nsearchives.nseindia.com/corporate/GODAVARI_results.pdf"
+    assert filings[0]["submission_type"] == "Corporate Announcement"
+    assert filings[0]["event_key"].startswith("RESULT_")
+
+
+def test_parse_nse_corporate_announcements_filters_unmatched_symbols_and_non_results():
+    from src.results.monitor import parse_nse_corporate_announcements_payload
+
+    company = {
+        "symbol": "CLEAN",
+        "company_name": "Clean Science and Technology Limited",
+        "exchange": "NSE",
+    }
+    payload = [
+        {
+            "symbol": "OTHER",
+            "sm_name": "Clean Science and Technology Limited",
+            "desc": "Outcome of Board Meeting",
+            "attchmntText": "Financial results for the period ended September 30, 2026.",
+            "an_dt": "04-Nov-2026 19:53:23",
+        },
+        {
+            "symbol": "CLEAN",
+            "sm_name": "Different Company Limited",
+            "desc": "Outcome of Board Meeting",
+            "attchmntText": "Financial results for the period ended September 30, 2026.",
+            "an_dt": "04-Nov-2026 19:53:23",
+        },
+        {
+            "symbol": "CLEAN",
+            "sm_name": "Clean Science and Technology Limited",
+            "desc": "Appointment of Director",
+            "attchmntText": "Appointment of independent director.",
+            "an_dt": "04-Nov-2026 19:53:23",
+        },
+    ]
+
+    filings = parse_nse_corporate_announcements_payload(payload, "CLEAN", company)
+    assert filings == []
+
+
+def test_merge_nse_filings_combines_announcement_and_xbrl():
+    from src.results.monitor import _merge_nse_filings
+
+    announcement = {
+        "event_key": "RESULT_ann_123",
+        "symbol": "GODAVARIB",
+        "company_name": "Godavari Biorefineries Limited",
+        "period_ended": "30-Sep-2026",
+        "relating_to": "Outcome of Board Meeting",
+        "broadcast_time": "04-Nov-2026 19:53:23",
+        "attachment_url": "https://nsearchives.nseindia.com/corporate/results.pdf",
+        "attachments": [{"url": "https://nsearchives.nseindia.com/corporate/results.pdf", "label": "NSE announcement"}],
+        "xbrl_url": None,
+        "details_url": None,
+    }
+    xbrl_filing = {
+        "event_key": "RESULT_xbrl_456",
+        "symbol": "GODAVARIB",
+        "company_name": "Godavari Biorefineries Limited",
+        "period_ended": "30-Sep-2026",
+        "relating_to": "Second Quarter",
+        "broadcast_time": "04-Nov-2026 21:00:00",
+        "attachment_url": "https://nsearchives.nseindia.com/corporate/results.xml",
+        "attachments": [{"url": "https://nsearchives.nseindia.com/corporate/results.xml", "label": "XBRL"}],
+        "xbrl_url": "https://nsearchives.nseindia.com/corporate/results.xml",
+        "details_url": None,
+        "audit_status": "Un-Audited",
+    }
+
+    merged = _merge_nse_filings([announcement, xbrl_filing])
+    assert len(merged) == 1
+    item = merged[0]
+    assert item["symbol"] == "GODAVARIB"
+    assert item["period_ended"] == "30-Sep-2026"
+    assert item["xbrl_url"] == "https://nsearchives.nseindia.com/corporate/results.xml"
+    assert item["broadcast_time"] == "04-Nov-2026 19:53:23"
+    assert item["details_url"] == "https://nsearchives.nseindia.com/corporate/results.pdf"
+    assert len(item["attachments"]) == 2

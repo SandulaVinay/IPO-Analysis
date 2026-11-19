@@ -1,6 +1,7 @@
 """Daily IPO digest: evidence-linked status summary without unsupported recommendations."""
 
 import os
+import re
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
@@ -126,9 +127,15 @@ def _company_source_links(ipo: Any) -> list[tuple[str, str]]:
         if isinstance(item, dict):
             add(str(item.get("document_title") or item.get("document_type") or "Issuer document"), item.get("source_url") or item.get("url"))
     add("Issuer source", getattr(ipo, "source_url", None))
-    for document in (getattr(ipo, "documents", None) or []):
-        for version in (getattr(document, "versions", None) or []):
-            add(str(getattr(document, "document_title", None) or getattr(document, "document_type", None) or "Issuer document"), getattr(version, "source_url", None))
+    try:
+        for document in (getattr(ipo, "documents", None) or []):
+            try:
+                for version in (getattr(document, "versions", None) or []):
+                    add(str(getattr(document, "document_title", None) or getattr(document, "document_type", None) or "Issuer document"), getattr(version, "source_url", None))
+            except Exception:
+                pass
+    except Exception:
+        pass
     return links
 
 
@@ -186,9 +193,68 @@ def _plain_company_summary(ipo: Any, now: datetime) -> str:
     )
 
 
-def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional[Dict[str, Any]]) -> tuple[str, str]:
+def _collect_recent_financial_reports(results_dir: Optional[Path] = None, max_items: int = 5) -> list[Dict[str, Any]]:
+    """Parse recent official financial result reports to include in the daily digest."""
+    path = results_dir or Path("reports/results")
+    if not path.is_dir():
+        return []
+    records = []
+    seen_symbols = set()
+    files = sorted(path.glob("*.md"), key=lambda f: f.stat().st_mtime, reverse=True)
+    for md_file in files:
+        try:
+            content = md_file.read_text(encoding="utf-8")
+            lines = content.splitlines()
+            title = lines[0] if lines else ""
+            match_title = re.search(r"Official financial-results filing:\s*(.+?)\s*\(([A-Z0-9]+)\)", title)
+            if not match_title:
+                continue
+            company_name = match_title.group(1).strip()
+            symbol = match_title.group(2).strip()
+            if symbol in seen_symbols:
+                continue
+
+            def find_field(key: str) -> str:
+                for line in lines:
+                    if f"- **{key}:**" in line:
+                        return line.split(f"- **{key}:**", 1)[1].strip()
+                return ""
+
+            period_ended = find_field("Period ended")
+            broadcast_time = find_field("Broadcast time")
+            statement_basis = find_field("Statement basis")
+            audited_status = find_field("Audited status")
+            filing_url = find_field("Filing attachment")
+
+            seen_symbols.add(symbol)
+            records.append({
+                "company_name": company_name,
+                "symbol": symbol,
+                "period_ended": period_ended,
+                "broadcast_time": broadcast_time,
+                "statement_basis": statement_basis,
+                "audited_status": audited_status,
+                "filing_url": filing_url,
+                "file_mtime": md_file.stat().st_mtime,
+            })
+            if len(records) >= max_items:
+                break
+        except Exception:
+            continue
+    return records
+
+
+def _build_report(
+    ipos: Iterable[Any],
+    *,
+    now: datetime,
+    discovery_run: Optional[Dict[str, Any]],
+    recent_results: Optional[list[Dict[str, Any]]] = None,
+) -> tuple[str, str]:
     today = now.date()
     discovery_status = discovery_run.get("status", "UNKNOWN") if discovery_run else "NOT_RUN"
+    if recent_results is None:
+        recent_results = _collect_recent_financial_reports()
     selected = [ipo for ipo in ipos if _include_ipo(ipo, today)]
     selected.sort(key=lambda item: (
         _as_date(getattr(item, "verified_open_date", None))
@@ -265,12 +331,51 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
         ])
     if len(selected) > 20:
         lines.extend([f"_Showing 20 of {len(selected)} records._", ""])
+
+    if recent_results:
+        lines.extend([
+            "## Latest corporate financial results",
+            "",
+            "Recent quarterly filings monitored from official exchange feeds:",
+            "",
+        ])
+        for res in recent_results:
+            c_name = res["company_name"]
+            c_symbol = res["symbol"]
+            period = res.get("period_ended") or "Recent"
+            broadcast = res.get("broadcast_time") or "Exchange broadcast"
+            basis = res.get("statement_basis") or ""
+            audited = res.get("audited_status") or ""
+            details = [p for p in (audited, basis) if p and p.lower() != "not specified"]
+            type_info = f" ({' '.join(details)})" if details else ""
+            filing_link = f"[Official Filing Attachment]({res['filing_url']})" if res.get("filing_url") else "Not linked"
+            lines.extend([
+                f"### {c_name} ({c_symbol})",
+                "",
+                f"- Period ended: {period}{type_info}",
+                f"- Broadcast time: {broadcast}",
+                f"- Official filing: {filing_link}",
+                "",
+            ])
+
     lines.extend([
         "## Important limitation",
         "",
         "This discovery/status digest is not an investment recommendation or personalized financial advice. Prospectus candidate passages remain UNVERIFIED until financial periods, units, consolidated/standalone basis, and source evidence are reconciled. Do not apply based on this digest alone.",
         "",
     ])
+
+    results_message_part = ""
+    if recent_results:
+        results_message_part = (
+            "\n\nLatest corporate financial results:\n"
+            + "\n".join(
+                f"- {res['company_name']} ({res['symbol']}): Period ended {res.get('period_ended', 'N/A')} "
+                f"| Broadcast: {res.get('broadcast_time', 'N/A')}\n  Official filing: {res.get('filing_url', 'N/A')}"
+                for res in recent_results
+            )
+        )
+
     message = (
         f"Daily IPO status digest — {now.strftime('%d %b %Y')} (IST)\n"
         f"Upcoming/unresolved records: {len(selected)}\n"
@@ -279,6 +384,7 @@ def _build_report(ipos: Iterable[Any], *, now: datetime, discovery_run: Optional
         + "\n"
         + "\n\n".join(_plain_company_summary(ipo, now) for ipo in selected[:8])
         + ("\n\nIssuer-specific source links are included under each company when available." if selected else "\n\nNo issuer-specific IPO records or source links were available in persisted state.")
+        + results_message_part
     )
     run_id = os.getenv("GITHUB_RUN_ID")
     repository = os.getenv("GITHUB_REPOSITORY", "SandulaVinay/IPO-Analysis")

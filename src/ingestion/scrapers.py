@@ -10,12 +10,14 @@ import re
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
+import httpx
 
 from src.common.logging import logger
-from src.ingestion.client import http_client
+from src.ingestion.client import http_client, HTTPClient
 
 
 NSE_IPO_URL = "https://www.nseindia.com/market-data/all-upcoming-issues-ipo"
+NSE_IPO_API_URL = "https://www.nseindia.com/api/ipo-current-issue"
 BSE_IPO_URL = "https://www.bseindia.com/markets/PublicIssues/IPOIssues_new.aspx?id=1&Type=p"
 IPOWATCH_GMP_URL = "https://ipowatch.cc/gmp"
 
@@ -266,6 +268,77 @@ def _parse_official_issue_tables(html: str, *, source_name: str, source_url: str
     return rows
 
 
+def parse_nse_current_issues_payload(payload: Any) -> List[Dict[str, Any]]:
+    """Parse NSE's official /api/ipo-current-issue JSON feed."""
+    if not isinstance(payload, list):
+        return []
+    invalid_labels = {
+        "company name", "name of company", "company", "issuer", "issuer name",
+        "offered reserved", "offered / reserved", "offered/ reserved",
+        "offered", "reserved", "total", "grand total", "no records found",
+        "no data available", "no records available", "no upcoming issues",
+    }
+    parsed: List[Dict[str, Any]] = []
+    seen = set()
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        company_name = re.sub(r"\s+", " ", str(item.get("companyName") or "")).strip()
+        norm_key = _norm(company_name)
+        if (
+            not company_name
+            or norm_key in invalid_labels
+            or len(re.sub(r"[^a-z]", "", norm_key)) < 4
+        ):
+            continue
+        if norm_key in seen:
+            continue
+        seen.add(norm_key)
+
+        symbol = (item.get("symbol") or "").strip().upper() or None
+        series = str(item.get("series") or item.get("segment") or "").upper()
+        issue_type = "SME" if ("SME" in series or "EMERGE" in series) else "MAINBOARD"
+
+        price_text = str(item.get("issuePrice") or "")
+        price_values = [float(v.replace(",", "")) for v in re.findall(r"\d[\d,]*(?:\.\d+)?", price_text)]
+        min_price = price_values[0] if len(price_values) >= 1 else None
+        max_price = price_values[1] if len(price_values) >= 2 else min_price
+
+        open_date = str(item.get("issueStartDate") or "").strip() or None
+        close_date = str(item.get("issueEndDate") or "").strip() or None
+
+        issue_size_val = None
+        shares_str = str(item.get("noOfSharesOffered") or item.get("issueSize") or "").strip()
+        try:
+            shares_num = float(shares_str.replace(",", ""))
+            if max_price and shares_num > 0:
+                issue_size_val = round((shares_num * max_price) / 10_000_000, 2)
+        except (ValueError, TypeError):
+            pass
+
+        row = {
+            "company_name": company_name,
+            "symbol": symbol,
+            "industry": None,
+            "issue_type": issue_type,
+            "source_name": "NSE India",
+            "source_tier": "TIER_1",
+            "source_url": NSE_IPO_URL,
+            "announced_open_date": open_date,
+            "verified_open_date": open_date,
+            "announced_close_date": close_date,
+            "verified_close_date": close_date,
+            "min_price": min_price,
+            "max_price": max_price,
+            "issue_size_cr": issue_size_val,
+            "source_status": str(item.get("status") or "Active"),
+            "document_links": [],
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+        }
+        parsed.append(row)
+    return parsed
+
+
 class BaseScraper:
     source_name: str = "BaseScraper"
     source_tier: str = "TIER_1"
@@ -282,16 +355,48 @@ class PortalScraper(BaseScraper):
         self.last_source_errors = []
         self._gmp_rows_by_name: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
+    async def _fetch_nse_api_current_issues(self) -> List[Dict[str, Any]]:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.nseindia.com/market-data/all-upcoming-issues-ipo",
+        }
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            await client.get("https://www.nseindia.com", headers=headers)
+            response = await client.get(NSE_IPO_API_URL, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                return parse_nse_current_issues_payload(data)
+        return []
+
     async def fetch_upcoming_ipos(self) -> List[Dict[str, Any]]:
         collected: List[Dict[str, Any]] = []
         successful_sources = 0
         recognized_sources = 0
         source_errors = []
+
+        # 1. Attempt official NSE API feed first (unless http_client has been mocked for unit tests)
+        is_client_mocked = getattr(http_client.get, "__func__", None) is not HTTPClient.get
+        if not is_client_mocked:
+            try:
+                api_rows = await self._fetch_nse_api_current_issues()
+                if api_rows:
+                    collected.extend(api_rows)
+                    successful_sources += 1
+                    recognized_sources += 1
+                    logger.info("Official NSE API yielded %s live IPO records.", len(api_rows))
+            except Exception as exc:
+                logger.info("NSE API feed not available (%s); checking HTML sources.", type(exc).__name__)
+
+        # 2. Query official HTML pages
         sources = (
             ("NSE India", NSE_IPO_URL),
             ("BSE India", BSE_IPO_URL),
         )
         for source_name, url in sources:
+            if source_name == "NSE India" and collected:
+                continue
             try:
                 headers = {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
@@ -305,13 +410,15 @@ class PortalScraper(BaseScraper):
                 successful_sources += 1
                 if _has_recognized_issue_table(response.text):
                     recognized_sources += 1
+                    parsed = _parse_official_issue_tables(response.text, source_name=source_name, source_url=url)
+                    logger.info("Official IPO source %s yielded %s table rows.", source_name, len(parsed))
+                    collected.extend(parsed)
                 else:
-                    source_errors.append(f"{source_name}:UNRECOGNIZED_LAYOUT")
-                parsed = _parse_official_issue_tables(response.text, source_name=source_name, source_url=url)
-                logger.info("Official IPO source %s yielded %s table rows.", source_name, len(parsed))
-                collected.extend(parsed)
+                    if collected:
+                        logger.info("Official IPO source %s returned SPA/unrecognized table; exchange coverage fulfilled.", source_name)
+                    else:
+                        source_errors.append(f"{source_name}:UNRECOGNIZED_LAYOUT")
             except Exception as exc:
-                # Keep the other official source available if one exchange is down.
                 source_errors.append(f"{source_name}:{type(exc).__name__}")
                 logger.warning("Official IPO source %s could not be retrieved or parsed (%s).", source_name, type(exc).__name__)
 

@@ -232,19 +232,97 @@ def test_empty_digest_explains_incomplete_discovery_without_claiming_no_ipos():
         [],
         now=datetime(2026, 11, 3, 11, 0, tzinfo=ZoneInfo("Asia/Kolkata")),
         discovery_run={"status": "PARTIAL"},
+        recent_results=[],
     )
     assert "IPO discovery is incomplete" in report
     assert "Do not interpret this empty section as confirmation" in report
     assert "No future-dated IPO records or date-conflict records are currently present" not in report
 
 
-
-def test_empty_digest_explains_incomplete_discovery_without_claiming_no_ipos():
-    report, _ = _build_report(
+def test_daily_digest_includes_recent_corporate_financial_results():
+    recent = [
+        {
+            "company_name": "Godavari Biorefineries Limited",
+            "symbol": "GODAVARIB",
+            "period_ended": "30-Sep-2026",
+            "broadcast_time": "04-Nov-2026 19:53:23",
+            "statement_basis": "Consolidated",
+            "audited_status": "Un-Audited",
+            "filing_url": "https://nsearchives.nseindia.in/corporate/godavari_results.pdf",
+        }
+    ]
+    report, message = _build_report(
         [],
-        now=datetime(2026, 11, 3, 11, 0, tzinfo=ZoneInfo("Asia/Kolkata")),
-        discovery_run={"status": "PARTIAL"},
+        now=datetime(2026, 11, 19, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata")),
+        discovery_run={"status": "SUCCESS"},
+        recent_results=recent,
     )
-    assert "IPO discovery is incomplete" in report
-    assert "Do not interpret this empty section as confirmation" in report
-    assert "No future-dated IPO records or date-conflict records are currently present" not in report
+    assert "## Latest corporate financial results" in report
+    assert "Godavari Biorefineries Limited (GODAVARIB)" in report
+    assert "Period ended: 30-Sep-2026 (Un-Audited Consolidated)" in report
+    assert "https://nsearchives.nseindia.in/corporate/godavari_results.pdf" in report
+    assert "Latest corporate financial results:" in message
+    assert "GODAVARIB" in message
+
+
+def test_parse_nse_current_issues_payload():
+    from src.ingestion.scrapers import parse_nse_current_issues_payload
+
+    payload = [
+        {
+            "companyName": "Crystal Crop Protection Limited",
+            "symbol": "CRYSTALCP",
+            "series": "Equity",
+            "issueStartDate": "18-Nov-2026",
+            "issueEndDate": "20-Nov-2026",
+            "issuePrice": "Rs.259 to Rs.272",
+            "noOfSharesOffered": "12170076",
+            "status": "Active",
+        },
+        {
+            "companyName": "Watrana Rentals Limited",
+            "symbol": "WATRANA",
+            "series": "SME",
+            "issueStartDate": "19-Nov-2026",
+            "issueEndDate": "23-Nov-2026",
+            "issuePrice": "Rs.232 to Rs.245",
+            "noOfSharesOffered": "3516000",
+            "status": "Active",
+        },
+        {
+            "companyName": "offered/ reserved",
+            "symbol": "OFFERED",
+            "series": "Equity",
+        },
+    ]
+    parsed = parse_nse_current_issues_payload(payload)
+    assert len(parsed) == 2
+    assert parsed[0]["symbol"] == "CRYSTALCP"
+    assert parsed[0]["min_price"] == 259.0
+    assert parsed[0]["max_price"] == 272.0
+    assert parsed[0]["issue_type"] == "MAINBOARD"
+    assert parsed[0]["issue_size_cr"] == 331.03
+    assert parsed[1]["symbol"] == "WATRANA"
+    assert parsed[1]["issue_type"] == "SME"
+
+
+def test_collect_recent_financial_reports_reads_results_dir(tmp_path):
+    from src.reporting.daily_digest import _collect_recent_financial_reports
+
+    report_file = tmp_path / "CLEAN_30-Sep-2026_1234.md"
+    report_file.write_text(
+        "# Official financial-results filing: Clean Science and Technology Limited (CLEAN)\n\n"
+        "- **Exchange:** NSE\n"
+        "- **Period ended:** 30-Sep-2026\n"
+        "- **Broadcast time:** 31-Oct-2026 14:33:48\n"
+        "- **Audited status:** Un-Audited\n"
+        "- **Statement basis:** Consolidated\n"
+        "- **Filing attachment:** https://nsearchives.nseindia.in/corporate/clean.pdf\n",
+        encoding="utf-8",
+    )
+    records = _collect_recent_financial_reports(tmp_path)
+    assert len(records) == 1
+    assert records[0]["symbol"] == "CLEAN"
+    assert records[0]["company_name"] == "Clean Science and Technology Limited"
+    assert records[0]["period_ended"] == "30-Sep-2026"
+    assert records[0]["filing_url"] == "https://nsearchives.nseindia.in/corporate/clean.pdf"

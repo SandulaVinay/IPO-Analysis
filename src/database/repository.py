@@ -96,6 +96,7 @@ class IPORepository:
             select(IPO)
             .options(
                 selectinload(IPO.events),
+                selectinload(IPO.documents).selectinload(IPODocument.versions),
                 selectinload(IPO.gmp_snapshots),
                 selectinload(IPO.analysis_runs).selectinload(AnalysisRun.recommendation),
             )

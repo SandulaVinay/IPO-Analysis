@@ -225,7 +225,7 @@
       "processing_status": "UNAVAILABLE",
       "status": "ACCEPTED",
       "symbol": "GODAVARIB",
-      "updated_at": "2026-11-19T16:14:01.556746+00:00"
+      "updated_at": "2026-11-19T17:00:40.308836+00:00"
     },
     {
       "channel": "EMAIL",
@@ -235,9 +235,9 @@
       "processing_status": null,
       "status": "ACCEPTED",
       "symbol": "ALL",
-      "updated_at": "2026-11-19T16:14:04.609574+00:00"
+      "updated_at": "2026-11-19T17:00:44.719732+00:00"
     }
   ],
   "schema_version": 1,
-  "updated_at": "2026-11-19T16:14:04.609582+00:00"
+  "updated_at": "2026-11-19T17:00:44.719738+00:00"
 }

@@ -1,24 +1,6 @@
 {
   "runs": [
     {
-      "command": "discover",
-      "detail": "restored=1; discovered=1; registry_total=1; source_coverage=PARTIAL",
-      "status": "PARTIAL",
-      "timestamp": "2026-10-31T10:43:35.856306+00:00"
-    },
-    {
-      "command": "results",
-      "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; errors=0",
-      "status": "SUCCESS",
-      "timestamp": "2026-10-31T10:43:41.951923+00:00"
-    },
-    {
-      "command": "discover",
-      "detail": "restored=1; discovered=1; registry_total=1; source_coverage=PARTIAL",
-      "status": "PARTIAL",
-      "timestamp": "2026-10-31T12:13:26.192289+00:00"
-    },
-    {
       "command": "results",
       "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; errors=0",
       "status": "SUCCESS",
@@ -1199,6 +1181,24 @@
       "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; notification_failures=0; notification_skipped=0; documents_unavailable=0; errors=0",
       "status": "SUCCESS",
       "timestamp": "2026-11-20T02:48:15.748945+00:00"
+    },
+    {
+      "command": "discover",
+      "detail": "restored=3; discovered=3; registry_total=3; source_coverage=SUCCESS",
+      "status": "SUCCESS",
+      "timestamp": "2026-11-20T03:09:27.929883+00:00"
+    },
+    {
+      "command": "results",
+      "detail": "symbols_checked=5; new_filings=4; notifications_accepted=4; notification_failures=0; notification_skipped=0; documents_unavailable=4; errors=0",
+      "status": "PARTIAL",
+      "timestamp": "2026-11-20T03:10:06.476465+00:00"
+    },
+    {
+      "command": "digest",
+      "detail": "records=3; channel=TELEGRAM+EMAIL",
+      "status": "ACCEPTED",
+      "timestamp": "2026-11-20T03:10:10.964171+00:00"
     }
   ],
   "schema_version": 1

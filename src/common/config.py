@@ -23,6 +23,7 @@ class Settings(BaseSettings):
         "enable_whatsapp",
         "enable_email",
         "enable_sms",
+        "enable_telegram",
         mode="before",
     )
     @classmethod
@@ -148,6 +149,11 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     email_from: str = ""
     email_to: str = ""
+
+    # Telegram Provider Settings
+    enable_telegram: bool = False
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
 
     # SMS Provider Settings
     enable_sms: bool = False

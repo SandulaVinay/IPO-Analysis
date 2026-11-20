@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from src.common.config import settings
 from src.common.logging import logger
 from src.notifications.email import EmailProvider
+from src.notifications.telegram import TelegramProvider
 from src.state.store import StateStore
 from src.reporting.pdf import markdown_to_pdf
 from src.reporting.email_html import digest_email_html
@@ -440,17 +441,37 @@ async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateSt
     if force_resend and store.has_processed_event(event_key):
         logger.warning("Manual digest resend override enabled for today's already-processed digest.")
 
-    email = await EmailProvider().send_notification(
-        recipient=settings.email_to,
-        subject=f"Daily IPO status digest — {now.strftime('%d %b %Y')}",
-        content=message,
-        metadata={
-            "attachments": pdf_attachments,
-            "html_body": digest_email_html(report_text),
-        },
-    )
-    accepted = bool(email.get("success") and (email.get("accepted") or email.get("delivered")))
-    channel = "EMAIL" if accepted else None
+    dispatched_channels = []
+    accepted = False
+
+    # 1. Telegram dispatch (real-time, free, supports PDF attachment)
+    if settings.enable_telegram:
+        tg_res = await TelegramProvider().send_notification(
+            recipient=settings.telegram_chat_id,
+            subject=f"Daily IPO status digest — {now.strftime('%d %b %Y')}",
+            content=message,
+            metadata={"attachments": pdf_attachments},
+        )
+        if tg_res.get("success") and (tg_res.get("accepted") or tg_res.get("delivered")):
+            dispatched_channels.append("TELEGRAM")
+            accepted = True
+
+    # 2. Email dispatch (SMTP)
+    if settings.enable_email:
+        email = await EmailProvider().send_notification(
+            recipient=settings.email_to,
+            subject=f"Daily IPO status digest — {now.strftime('%d %b %Y')}",
+            content=message,
+            metadata={
+                "attachments": pdf_attachments,
+                "html_body": digest_email_html(report_text),
+            },
+        )
+        if email.get("success") and (email.get("accepted") or email.get("delivered")):
+            dispatched_channels.append("EMAIL")
+            accepted = True
+
+    channel = "+".join(dispatched_channels) if dispatched_channels else None
 
     if accepted:
         store.record_event(
@@ -462,7 +483,7 @@ async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateSt
             channel=channel,
         )
         status = "ACCEPTED"
-    elif settings.enable_whatsapp or settings.enable_email:
+    elif settings.enable_telegram or settings.enable_whatsapp or settings.enable_email:
         store.record_event(
             event_key,
             event_type="DAILY_IPO_DIGEST",

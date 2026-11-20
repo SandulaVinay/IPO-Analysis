@@ -6,6 +6,7 @@ from importlib import import_module
 
 _EXPORTS = {
     "NotificationProvider": "provider",
+    "TelegramProvider": "telegram",
     "WhatsAppProvider": "whatsapp",
     "EmailProvider": "email",
     "SMSProvider": "sms",
@@ -29,6 +30,7 @@ def __dir__():
 
 __all__ = [
     "NotificationProvider",
+    "TelegramProvider",
     "WhatsAppProvider",
     "EmailProvider",
     "SMSProvider",

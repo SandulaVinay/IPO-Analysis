@@ -15,6 +15,7 @@ TARGETS = [
     ("Gmail SMTP implicit TLS (465)", "smtp.gmail.com", 465),
     ("NSE website HTTPS", "www.nseindia.com", 443),
     ("BSE website HTTPS", "www.bseindia.com", 443),
+    ("Telegram Bot API HTTPS", "api.telegram.org", 443),
 ]
 
 

@@ -163,6 +163,11 @@ async def cmd_health():
         console.print(table)
 
 
+async def cmd_test_telegram():
+    from scripts.test_telegram import test_telegram_connection
+    await test_telegram_connection()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Indian IPO Intelligence System CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -188,6 +193,9 @@ def main():
     # health
     subparsers.add_parser("health", help="Check subsystem health")
 
+    # test-telegram
+    subparsers.add_parser("test-telegram", help="Test Telegram bot connectivity and alert dispatch")
+
     # serve
     p_serve = subparsers.add_parser("serve", help="Start Web Dashboard server")
     p_serve.add_argument("--port", type=int, default=8000, help="Port to listen on")
@@ -206,6 +214,8 @@ def main():
         asyncio.run(cmd_results())
     elif args.command == "health":
         asyncio.run(cmd_health())
+    elif args.command == "test-telegram":
+        asyncio.run(cmd_test_telegram())
     elif args.command == "serve":
         uvicorn.run("src.web.app:app", host="0.0.0.0", port=args.port, reload=True)
     else:

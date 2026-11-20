@@ -13,6 +13,7 @@ from src.database.models import IPO, Alert, Notification, NotificationAttempt
 from src.database.repository import IPORepository
 from src.notifications.whatsapp import WhatsAppProvider
 from src.notifications.email import EmailProvider
+from src.notifications.telegram import TelegramProvider
 from src.reporting.generator import ReportGenerator
 from src.state.store import StateStore
 
@@ -24,9 +25,10 @@ class NotificationOrchestrator:
         self.session = session
         self.repo = IPORepository(session)
         # Email is primary; WhatsApp is an optional fallback controlled by settings.
-        # Provider acceptance is not proof of final delivery, and mock/console modes
-        # must never be treated as a delivered alert.
+        # Telegram is prepended when enabled for real-time instant alerts.
         self.providers = [EmailProvider(), WhatsAppProvider()]
+        if settings.enable_telegram:
+            self.providers.insert(0, TelegramProvider())
 
     async def trigger_t_minus_2_alert(self, ipo_id: int, analysis_data: Dict[str, Any]) -> bool:
         """Dispatches T-2 calendar day alert or immediate verified alert."""

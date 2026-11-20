@@ -115,6 +115,9 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
           EMAIL_TO: ${{ inputs.recipient_email != '' && inputs.recipient_email || secrets.EMAIL_TO }}
+          ENABLE_TELEGRAM: ${{ github.event_name == 'push' && 'false' || secrets.ENABLE_TELEGRAM || 'true' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m src.cli.main discover
 
       - name: Run financial results monitor
@@ -140,6 +143,9 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
           EMAIL_TO: ${{ inputs.recipient_email != '' && inputs.recipient_email || secrets.EMAIL_TO }}
+          ENABLE_TELEGRAM: ${{ github.event_name == 'push' && 'false' || secrets.ENABLE_TELEGRAM || 'true' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m src.cli.main results
 
       - name: Run system health checks
@@ -163,6 +169,9 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
           EMAIL_TO: ${{ inputs.recipient_email != '' && inputs.recipient_email || secrets.EMAIL_TO }}
+          ENABLE_TELEGRAM: ${{ github.event_name == 'push' && 'false' || secrets.ENABLE_TELEGRAM || 'true' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m src.cli.main health
 
       - name: Run daily IPO status digest
@@ -186,6 +195,9 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM || secrets.SMTP_USER }}
           EMAIL_TO: ${{ inputs.recipient_email != '' && inputs.recipient_email || secrets.EMAIL_TO }}
+          ENABLE_TELEGRAM: ${{ github.event_name == 'push' && 'false' || secrets.ENABLE_TELEGRAM || 'true' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m src.cli.digest
 
       - name: Upload daily IPO digest

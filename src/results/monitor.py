@@ -26,6 +26,7 @@ from src.common.logging import logger
 from src.discovery.normalizer import Normalizer
 from src.ingestion.client import http_client
 from src.notifications.email import EmailProvider
+from src.notifications.telegram import TelegramProvider
 from src.notifications.whatsapp import WhatsAppProvider
 from src.state.store import StateStore
 from src.reporting.pdf import markdown_to_pdf
@@ -1493,8 +1494,19 @@ async def monitor_financial_results() -> Dict[str, Any]:
             )
             channel = "EMAIL"
             email_accepted = False
+            telegram_accepted = False
             success = False
             if should_notify:
+                # Telegram bot alert (if configured / enabled)
+                if settings.enable_telegram:
+                    tg_res = await TelegramProvider().send_notification(
+                        recipient=settings.telegram_chat_id,
+                        subject=subject,
+                        content=content,
+                        metadata={"attachments": pdf_attachments},
+                    )
+                    telegram_accepted = bool(tg_res.get("success") and (tg_res.get("accepted") or tg_res.get("delivered")))
+
                 # Email is primary; WhatsApp is an explicit fallback only.
                 result = await EmailProvider().send_notification(
                     recipient=settings.email_to,
@@ -1506,8 +1518,15 @@ async def monitor_financial_results() -> Dict[str, Any]:
                     },
                 )
                 email_accepted = bool(result.get("success") and (result.get("accepted") or result.get("delivered")))
-                success = email_accepted
-                if not email_accepted and settings.enable_whatsapp:
+                success = email_accepted or telegram_accepted
+                if telegram_accepted and email_accepted:
+                    channel = "TELEGRAM+EMAIL"
+                elif telegram_accepted:
+                    channel = "TELEGRAM"
+                elif email_accepted:
+                    channel = "EMAIL"
+
+                if not email_accepted and not telegram_accepted and settings.enable_whatsapp:
                     result = await WhatsAppProvider().send_notification(
                         recipient=settings.whatsapp_recipient_phone,
                         subject=subject,
@@ -1519,7 +1538,7 @@ async def monitor_financial_results() -> Dict[str, Any]:
             elif prior_notified:
                 success = True
                 channel = str(prior_record.get("channel") or "EMAIL")
-            if should_notify and settings.enable_email and not email_accepted:
+            if should_notify and settings.enable_email and not email_accepted and not telegram_accepted:
                 notification_failures += 1
             if success:
                 accepted_count += 1

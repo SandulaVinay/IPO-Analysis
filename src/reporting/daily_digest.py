@@ -265,10 +265,17 @@ def _plain_company_summary(ipo: Any, now: datetime) -> str:
         source_text = "\n".join(f"  Source: {label} {url}" for label, url in source_links)
     else:
         source_text = "  Source: not captured yet; check the official NSE/BSE page before acting"
+    subscription = _latest_subscription(ipo, now)
+    subscription_text = (
+        f"{subscription:.2f}x (NSE bids, latest, not final)"
+        if subscription is not None
+        else "not available from NSE feed"
+    )
     return (
         f"{name} ({symbol})\n"
         f"  Timing: {_ipo_timing(ipo, now.date())}\n"
         f"  Price band: {_price_band_text(ipo)}; issue size: {size_text}\n"
+        f"  Subscription: {subscription_text}\n"
         f"  GMP: {_latest_gmp(ipo, now)}\n"
         f"  Rating: {rating_text}\n"
         f"  Status: {_status_line(ipo, now)}\n"

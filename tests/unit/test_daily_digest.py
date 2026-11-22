@@ -509,3 +509,43 @@ def test_collector_reads_only_present_candidate_figures_and_treats_placeholders_
         ("Revenue from operations", "₹1,234.56 Cr"),
         ("EPS", "₹12.00"),
     ]
+
+
+def _subscription_card(snapshots):
+    from src.reporting.daily_digest import _plain_company_summary
+
+    ipo = SimpleNamespace(
+        company_name="Test Co",
+        symbol="TESTCO",
+        min_price=100.0,
+        max_price=110.0,
+        issue_size_cr=250.0,
+        subscription_snapshots=snapshots,
+    )
+    now = datetime(2026, 11, 23, 10, 30, tzinfo=ZoneInfo("Asia/Kolkata"))
+    return _plain_company_summary(ipo, now).splitlines()
+
+
+def test_card_shows_fresh_nse_subscription_as_line_directly_under_price_band():
+    lines = _subscription_card([
+        SimpleNamespace(overall_times=11.1, captured_at=datetime(2026, 11, 23, 4, 0)),
+    ])
+    price_index = next(i for i, line in enumerate(lines) if line.strip().startswith("Price band:"))
+    assert lines[price_index + 1] == "  Subscription: 11.10x (NSE bids, latest, not final)"
+
+
+def test_card_shows_not_available_when_no_subscription_snapshot():
+    lines = _subscription_card([])
+    assert "  Subscription: not available from NSE feed" in lines
+
+
+def test_card_subscription_ignores_stale_snapshot_and_formats_two_decimals():
+    lines = _subscription_card([
+        SimpleNamespace(overall_times=0.1, captured_at=datetime(2026, 11, 20, 4, 0)),
+    ])
+    assert "  Subscription: not available from NSE feed" in lines
+
+    lines = _subscription_card([
+        SimpleNamespace(overall_times=0.11, captured_at=datetime(2026, 11, 23, 3, 0)),
+    ])
+    assert "  Subscription: 0.11x (NSE bids, latest, not final)" in lines

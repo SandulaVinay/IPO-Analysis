@@ -80,7 +80,9 @@ The PR body has a Summary, what is not in the PR, and Testing. End it with:
 ## 7. Wait for checks, then merge into main
 
 - Check the status with `gh pr checks <number>` until every required check has finished.
-- **Never merge while a check is failing or still pending.** Read the failing log (`gh run view <id> --log-failed`), fix the root cause, push, and wait again.
+- **Merge rule (owner decision, 2026-11-22):** Cloudflare preview builds for non-production branches are turned off, so PRs have no Cloudflare check. Merge when the `test` (GitHub Actions) check passes and the PR is mergeable.
+- **Never merge while a `test` check is failing or still pending.** Read the failing log (`gh run view <id> --log-failed`), fix the root cause, push, and wait again.
+- If a failing check is one the owner has turned off or does not run on PRs, say so in the PR and the handoff entry; do not treat it as a blocker.
 - Do not bypass checks, use admin override, or skip hooks.
 - When every check passes and the PR is mergeable:
 

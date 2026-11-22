@@ -10,7 +10,7 @@ Rules, checked in order:
   2. No GMP or no issue price                               -> UNABLE_TO_ASSESS
   3. Estimated listing gain below 0%                        -> AVOID
   4. Subscription not available                             -> NEUTRAL (capped; never APPLY)
-  5. Estimated gain >= 30% AND Day 3 subscription >= 10x    -> APPLY
+  5. Estimated gain >= 10% AND Day 3 subscription >= 10x    -> APPLY
   6. Anything else                                          -> NEUTRAL
 """
 
@@ -20,7 +20,7 @@ from src.calculations.math import FinancialMath
 
 LABEL = "Indicative (GMP and subscription only; financials not verified)"
 
-APPLY_MIN_GAIN_PCT = 30.0
+APPLY_MIN_GAIN_PCT = 10.0
 APPLY_MIN_SUBSCRIPTION_TIMES = 10.0
 
 

@@ -40,7 +40,7 @@ def test_strong_gain_and_strong_subscription_is_apply():
 
 
 def test_gain_below_threshold_is_neutral_even_with_strong_subscription():
-    assert _run(gmp_value=20, overall_subscription=50)["status"] == "NEUTRAL"
+    assert _run(gmp_value=5, overall_subscription=50)["status"] == "NEUTRAL"
 
 
 def test_weak_subscription_is_neutral_even_with_strong_gain():

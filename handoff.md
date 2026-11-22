@@ -370,6 +370,7 @@ The run result is `PASS_LIVE_OFFICIAL_SOURCE_VALIDATION`. All extracted facts re
 
 Every change adds an entry here. The working procedure is in [SKILL.md](SKILL.md). Entries are newest first.
 
+- **2026-11-22 — feat/telegram-ipo-commands, PR #53, merged.** Relay Worker `ipo-analysis` deployed; webhook set and `/ongoing` verified. Workers Builds passed after adding an empty `[previews]` block to `wrangler.toml` (root) and `relay/wrangler.toml` (commit `8b9f773`). Note: the `main` branch build previously ran `wrangler preview` and needed that block.
 - **2026-11-22 — docs/skill-change-workflow (this change).** Added `SKILL.md`, the procedure for branches, tests, handoff updates, checks and merges. Added this change log. No code changed. PR: see the PR for this branch.
 - **2026-11-22 — fix/neon-database-url, PR #54, merged as `d7952f0`.** `src/database/url.py` converts Neon libpq URLs (`sslmode`, `channel_binding`) to the asyncpg form. The repo secret `DATABASE_URL` was already set, so the scheduler uses Neon from its next run. Tests: 5 new; full suite 224 passed with the 2 known Windows failures. **Process note:** this PR was merged while the Cloudflare check `Workers Builds: ipo-analysis` was failing. That check is the Cloudflare build of the repository root, not the code tests. The fix is in the Cloudflare dashboard (see the next entry).
 - **2026-11-22 — chore/relay rename, commit `86e99b7` on PR #53.** The relay Worker is renamed `ipo-analysis` in `relay/wrangler.toml`, `relay/README.md` and `relay/src/worker.js`, to match the existing Cloudflare Worker. Open item: point the Cloudflare build at the `relay` folder (root directory `relay`, deploy command `npx wrangler deploy`), then add secrets `TELEGRAM_BOT_TOKEN`, `WEBHOOK_SECRET`, `OWNER_CHAT_ID`.
@@ -387,3 +388,9 @@ Every change adds an entry here. The working procedure is in [SKILL.md](SKILL.md
 3. `/run` and `/report` Telegram commands: planned, not built. `/run` will need the `GITHUB_TOKEN` Worker secret (fine-grained, `SandulaVinay/IPO-Analysis` only, Actions read and write).
 4. Neon: confirm the first scheduled run after PR #54 writes to Neon and that `init_db` succeeds.
 5. Opinions: labelled Indicative / Verified (not built). Full research report planned in stages (see the plan in the conversation record).
+
+## 15. Change log — Workers Builds root config (feat/telegram-ipo-commands, PR #53)
+
+- Cloudflare build daa6fe57 failed with "Could not detect a directory containing static files" during `npx wrangler deploy`. Wrangler ran where no `wrangler.toml` existed, so it fell back to static assets.
+- Fix: added a root `wrangler.toml` (`main = "relay/src/worker.js"`). Dry-run passes from both the repo root and `relay/` (7.96 KiB bundle, no bindings).
+- Still open: confirm the next Workers Builds check passes. Secrets (TELEGRAM_BOT_TOKEN, WEBHOOK_SECRET, OWNER_CHAT_ID) are set in Cloudflare, not in the repo.

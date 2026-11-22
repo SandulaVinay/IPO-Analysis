@@ -1,0 +1,8 @@
+# Workers Builds runs `npx wrangler deploy` from the repository root unless the
+# Root directory is set to "relay". This file makes the deploy work from either.
+# The Worker itself lives in relay/; secrets are set in Cloudflare, never here.
+name = "ipo-analysis"
+main = "relay/src/worker.js"
+compatibility_date = "2026-01-01"
+
+[previews]

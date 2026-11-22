@@ -262,9 +262,11 @@ def test_daily_digest_includes_recent_corporate_financial_results():
     )
     assert "## Latest corporate financial results" in report
     assert "Godavari Biorefineries Limited (GODAVARIB)" in report
-    assert "Period ended: 30-Sep-2026 (Un-Audited Consolidated)" in report
+    assert "Period ended: 30-Sep-2026" in report
+    assert "Audited status: Un-Audited" in report
+    assert "Statement basis: Consolidated" in report
     assert "https://nsearchives.nseindia.in/corporate/godavari_results.pdf" in report
-    assert "Latest corporate financial results:" in message
+    assert "Latest corporate financial results (CANDIDATE, not verified):" in message
     assert "GODAVARIB" in message
 
 
@@ -413,3 +415,97 @@ def test_digest_footer_points_to_pdf_or_run_without_claiming_delivery(monkeypatc
     assert "actions/runs/123" in footer and "PDF not available this run" in footer
     monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
     assert "actions/runs" not in _digest_footer(False)
+
+
+def _results_section(report: str) -> str:
+    start = report.index("## Latest corporate financial results")
+    end = report.index("## Important limitation")
+    return report[start:end]
+
+
+def test_results_entries_are_labelled_candidate_not_verified_and_never_verified():
+    recent = [
+        {
+            "company_name": "Godavari Biorefineries Limited",
+            "symbol": "GODAVARIB",
+            "period_ended": "30-Sep-2026",
+            "broadcast_time": "04-Nov-2026 19:53:23",
+            "statement_basis": "Consolidated",
+            "audited_status": "Un-Audited",
+            "filing_url": "https://nsearchives.nseindia.in/corporate/godavari_results.pdf",
+            "candidate_figures": [("Revenue from operations", "₹1,234.56 Cr")],
+        }
+    ]
+    report, message = _build_report(
+        [],
+        now=datetime(2026, 11, 19, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata")),
+        discovery_run={"status": "SUCCESS"},
+        recent_results=recent,
+    )
+    section = _results_section(report)
+    assert "CANDIDATE, not verified" in section
+    assert "VERIFIED" not in section
+    assert "VERIFIED" not in message
+    assert "CANDIDATE, not verified" in message
+    assert "Revenue from operations: ₹1,234.56 Cr (candidate, not verified)" in section
+    assert "Revenue from operations: ₹1,234.56 Cr (candidate, not verified)" in message
+
+
+def test_results_missing_source_fields_are_shown_as_source_not_captured():
+    recent = [
+        {
+            "company_name": "Clean Science and Technology Limited",
+            "symbol": "CLEAN",
+            "period_ended": "",
+            "broadcast_time": "",
+            "statement_basis": "",
+            "audited_status": "",
+            "filing_url": "",
+            "candidate_figures": [],
+        }
+    ]
+    report, message = _build_report(
+        [],
+        now=datetime(2026, 11, 19, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata")),
+        discovery_run={"status": "SUCCESS"},
+        recent_results=recent,
+    )
+    section = _results_section(report)
+    assert "Period ended: source not captured" in section
+    assert "Source: source not captured" in section
+    assert "Audited status: source not captured" in section
+    assert "Broadcast time: source not captured" in section
+    assert "Not linked" not in section
+    assert "Period ended source not captured" not in message
+    assert "source not captured" in message
+    assert "Not linked" not in message
+
+
+def test_collector_reads_only_present_candidate_figures_and_treats_placeholders_as_missing(tmp_path):
+    from src.reporting.daily_digest import _collect_recent_financial_reports
+
+    (tmp_path / "ABC_30-Sep-2026_1.md").write_text(
+        "# Official financial-results filing: Alpha Limited (ALPHA)\n\n"
+        "- **Period ended:** Not specified in the filing notice or attachment header\n"
+        "- **Broadcast time:** 31-Oct-2026 10:00:00\n"
+        "- **Audited status:** Not specified\n"
+        "- **Statement basis:** Not specified\n"
+        "- **Filing attachment:** Not available\n\n"
+        "## Extracted financial metrics\n\n"
+        "- **Revenue from operations:** ₹1,234.56 Cr\n"
+        "- **Profit after tax (PAT):** Not available\n"
+        "- **EPS:** ₹12.00\n"
+        "- **Operating cash flow:** Not available\n",
+        encoding="utf-8",
+    )
+    records = _collect_recent_financial_reports(tmp_path)
+    assert len(records) == 1
+    record = records[0]
+    assert record["period_ended"] == ""
+    assert record["audited_status"] == ""
+    assert record["statement_basis"] == ""
+    assert record["filing_url"] == ""
+    assert record["candidate_figures"] == [
+        ("Revenue from operations", "₹1,234.56 Cr"),
+        ("EPS", "₹12.00"),
+    ]

@@ -232,6 +232,27 @@ def _plain_company_summary(ipo: Any, now: datetime) -> str:
     )
 
 
+RESULTS_LABEL = "CANDIDATE, not verified"
+MISSING_SOURCE_TEXT = "source not captured"
+# Only these figures are shown, and only when the filing record contains a numeric value.
+# Every figure is a candidate: the monitor never reconciles it against the original statement.
+_CANDIDATE_FIGURE_FIELDS = (
+    "Revenue from operations",
+    "Profit after tax (PAT)",
+    "EPS",
+    "Operating cash flow",
+)
+_PLACEHOLDER_PREFIXES = ("Not specified", "Not provided", "Not available")
+_FIGURE_VALUE_PATTERN = re.compile(r"^₹-?[\d,]+(\.\d+)?( Cr)?$")
+
+
+def _header_value(value: str) -> str:
+    """Treat monitor placeholder text as a missing field, so the digest can say so."""
+    if not value or value.lower() in {"n/a", "none", "-"} or value.startswith(_PLACEHOLDER_PREFIXES):
+        return ""
+    return value
+
+
 def _collect_recent_financial_reports(results_dir: Optional[Path] = None, max_items: int = 5) -> list[Dict[str, Any]]:
     """Parse recent official financial result reports to include in the daily digest."""
     path = results_dir or Path("reports/results")
@@ -259,11 +280,18 @@ def _collect_recent_financial_reports(results_dir: Optional[Path] = None, max_it
                         return line.split(f"- **{key}:**", 1)[1].strip()
                 return ""
 
-            period_ended = find_field("Period ended")
-            broadcast_time = find_field("Broadcast time")
-            statement_basis = find_field("Statement basis")
-            audited_status = find_field("Audited status")
+            period_ended = _header_value(find_field("Period ended"))
+            broadcast_time = _header_value(find_field("Broadcast time"))
+            statement_basis = _header_value(find_field("Statement basis"))
+            audited_status = _header_value(find_field("Audited status"))
             filing_url = find_field("Filing attachment")
+            filing_url = filing_url if filing_url.startswith("https://") else ""
+
+            candidate_figures = []
+            for field in _CANDIDATE_FIGURE_FIELDS:
+                value = find_field(field)
+                if _FIGURE_VALUE_PATTERN.match(value):
+                    candidate_figures.append((field, value))
 
             seen_symbols.add(symbol)
             records.append({
@@ -274,6 +302,7 @@ def _collect_recent_financial_reports(results_dir: Optional[Path] = None, max_it
                 "statement_basis": statement_basis,
                 "audited_status": audited_status,
                 "filing_url": filing_url,
+                "candidate_figures": candidate_figures,
                 "file_mtime": md_file.stat().st_mtime,
             })
             if len(records) >= max_items:
@@ -375,25 +404,30 @@ def _build_report(
         lines.extend([
             "## Latest corporate financial results",
             "",
-            "Recent quarterly filings monitored from official exchange feeds:",
+            "Recent quarterly filings monitored from official exchange feeds. "
+            f"Status of every item below: {RESULTS_LABEL}. Figures are not reconciled against the original statement.",
             "",
         ])
         for res in recent_results:
             c_name = res["company_name"]
             c_symbol = res["symbol"]
-            period = res.get("period_ended") or "Recent"
-            broadcast = res.get("broadcast_time") or "Exchange broadcast"
-            basis = res.get("statement_basis") or ""
-            audited = res.get("audited_status") or ""
-            details = [p for p in (audited, basis) if p and p.lower() != "not specified"]
-            type_info = f" ({' '.join(details)})" if details else ""
-            filing_link = f"[Official Filing Attachment]({res['filing_url']})" if res.get("filing_url") else "Not linked"
+            filing_link = (
+                f"[Official Filing Attachment]({res['filing_url']})" if res.get("filing_url") else MISSING_SOURCE_TEXT
+            )
+            figure_lines = [
+                f"- {label}: {value} (candidate, not verified)"
+                for label, value in res.get("candidate_figures") or []
+            ] or ["- Candidate figures: none in the filing record"]
             lines.extend([
                 f"### {c_name} ({c_symbol})",
                 "",
-                f"- Period ended: {period}{type_info}",
-                f"- Broadcast time: {broadcast}",
-                f"- Official filing: {filing_link}",
+                f"- Status: {RESULTS_LABEL}",
+                f"- Period ended: {res.get('period_ended') or MISSING_SOURCE_TEXT}",
+                f"- Audited status: {res.get('audited_status') or MISSING_SOURCE_TEXT}",
+                f"- Statement basis: {res.get('statement_basis') or MISSING_SOURCE_TEXT}",
+                f"- Broadcast time: {res.get('broadcast_time') or MISSING_SOURCE_TEXT}",
+                f"- Source: {filing_link}",
+                *figure_lines,
                 "",
             ])
 
@@ -406,13 +440,21 @@ def _build_report(
 
     results_message_part = ""
     if recent_results:
-        results_message_part = (
-            "\n\nLatest corporate financial results:\n"
-            + "\n".join(
-                f"- {res['company_name']} ({res['symbol']}): Period ended {res.get('period_ended', 'N/A')} "
-                f"| Broadcast: {res.get('broadcast_time', 'N/A')}\n  Official filing: {res.get('filing_url', 'N/A')}"
-                for res in recent_results
+        entries = []
+        for res in recent_results:
+            entry = (
+                f"- {res['company_name']} ({res['symbol']}) [{RESULTS_LABEL}]\n"
+                f"  Period ended: {res.get('period_ended') or MISSING_SOURCE_TEXT}\n"
+                f"  Audited status: {res.get('audited_status') or MISSING_SOURCE_TEXT}; "
+                f"statement basis: {res.get('statement_basis') or MISSING_SOURCE_TEXT}\n"
+                f"  Broadcast time: {res.get('broadcast_time') or MISSING_SOURCE_TEXT}\n"
+                f"  Source: {res.get('filing_url') or MISSING_SOURCE_TEXT}"
             )
+            for label, value in res.get("candidate_figures") or []:
+                entry += f"\n  {label}: {value} (candidate, not verified)"
+            entries.append(entry)
+        results_message_part = (
+            f"\n\nLatest corporate financial results ({RESULTS_LABEL}):\n" + "\n".join(entries)
         )
 
     more = f"\n(+{len(selected) - 8} more in the full report)" if len(selected) > 8 else ""

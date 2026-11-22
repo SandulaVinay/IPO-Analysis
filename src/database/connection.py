@@ -8,10 +8,11 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from src.common.config import settings
 from src.common.logging import logger
 from src.database.models import Base
+from src.database.url import normalize_database_url
 
 # Create async engine
 engine = create_async_engine(
-    settings.database_url,
+    normalize_database_url(settings.database_url),
     echo=False,
     future=True,
 )

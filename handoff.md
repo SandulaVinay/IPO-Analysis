@@ -363,3 +363,9 @@ The official SEBI ESDS Software Solution Limited DRHP was downloaded and extract
 - All three selected candidates matched the FY2023–2024 period, explicit million unit, and consolidated basis; arithmetic checks passed.
 
 The run result is `PASS_LIVE_OFFICIAL_SOURCE_VALIDATION`. All extracted facts remain `CANDIDATE_UNVERIFIED`. The live extraction gate is passed for these selected rows, not for every financial value in the prospectus and not as an authorization to score or recommend the IPO. An authorized reviewer must independently reconcile the original statements before critical facts can become `VERIFIED`.
+
+## 15. Change log — Workers Builds root config (feat/telegram-ipo-commands, PR #53)
+
+- Cloudflare build daa6fe57 failed with "Could not detect a directory containing static files" during `npx wrangler deploy`. Wrangler ran where no `wrangler.toml` existed, so it fell back to static assets.
+- Fix: added a root `wrangler.toml` (`main = "relay/src/worker.js"`). Dry-run passes from both the repo root and `relay/` (7.96 KiB bundle, no bindings).
+- Still open: confirm the next Workers Builds check passes. Secrets (TELEGRAM_BOT_TOKEN, WEBHOOK_SECRET, OWNER_CHAT_ID) are set in Cloudflare, not in the repo.

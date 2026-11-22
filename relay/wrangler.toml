@@ -1,0 +1,8 @@
+name = "ipo-analysis"
+main = "src/worker.js"
+compatibility_date = "2026-01-01"
+
+# Secrets are set with `npx wrangler secret put <NAME>` and never stored in this file:
+#   TELEGRAM_BOT_TOKEN, WEBHOOK_SECRET, OWNER_CHAT_ID
+
+[previews]

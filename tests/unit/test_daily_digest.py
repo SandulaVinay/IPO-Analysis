@@ -35,7 +35,10 @@ def test_daily_digest_fails_closed_and_links_official_sources():
     assert "Overall rating: Unavailable / 10" in report
     assert "GMP (grey-market premium): Not available from a captured snapshot" in report
     assert "No APPLY/AVOID" in report
-    assert "Latest discovery status: SUCCESS" in message
+    assert "Discovery status: SUCCESS" in message
+    assert "Timing: Opens 10 Nov 2026" in message
+    assert "Status: UNABLE_TO_ASSESS" in message
+    assert "Upcoming/unresolved" not in message
 
 
 def test_daily_digest_marks_cached_state_stale_when_discovery_failed():
@@ -373,3 +376,40 @@ async def test_daily_digest_without_session_keeps_single_daily_key(tmp_path, mon
     result = await generate_daily_ipo_digest([], StateStore(root=str(tmp_path / "state")))
     assert result["event_key"].startswith("IPO_DAILY_DIGEST_")
     assert result["event_key"].count("_") == 3
+
+
+def test_ipo_timing_labels_open_now_upcoming_and_closed():
+    from src.reporting.daily_digest import _ipo_timing
+
+    today = date(2026, 11, 22)
+    open_now = SimpleNamespace(
+        verified_open_date=date(2026, 11, 19), verified_close_date=date(2026, 11, 23),
+        announced_open_date=None, announced_close_date=None,
+    )
+    upcoming = SimpleNamespace(
+        verified_open_date=date(2026, 11, 25), verified_close_date=date(2026, 11, 27),
+        announced_open_date=None, announced_close_date=None,
+    )
+    closed = SimpleNamespace(
+        verified_open_date=date(2026, 11, 10), verified_close_date=date(2026, 11, 12),
+        announced_open_date=None, announced_close_date=None,
+    )
+    unverified = SimpleNamespace(
+        verified_open_date=None, verified_close_date=None,
+        announced_open_date=date(2026, 11, 25), announced_close_date=date(2026, 11, 27),
+    )
+    assert _ipo_timing(open_now, today) == "Open now, closes 23 Nov 2026"
+    assert _ipo_timing(upcoming, today) == "Opens 25 Nov 2026, closes 27 Nov 2026"
+    assert _ipo_timing(closed, today) == "Closed 12 Nov 2026; listing date pending"
+    assert _ipo_timing(unverified, today).endswith("(dates announced, not verified)")
+
+
+def test_digest_footer_points_to_pdf_or_run_without_claiming_delivery(monkeypatch):
+    from src.reporting.daily_digest import _digest_footer
+
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    assert _digest_footer(True) == "Full report: the attached PDF. Not investment advice."
+    footer = _digest_footer(False)
+    assert "actions/runs/123" in footer and "PDF not available this run" in footer
+    monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
+    assert "actions/runs" not in _digest_footer(False)

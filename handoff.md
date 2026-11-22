@@ -1,75 +1,73 @@
-# GPT Handoff — IPO-Analysis
+# AI Agent Handoff — IPO-Analysis
 
-> **Purpose:** This file is an operational handoff for a future GPT/AI coding agent. Read this first, then inspect the live repository and CI before changing anything. Treat repository state and current GitHub checks as authoritative; this document is a snapshot and can become stale.
+> **Purpose:** Operational handoff for the next AI coding agent. Read this first, then confirm against the live repository and GitHub Actions before changing anything. Repository state and current checks are authoritative; this file is a snapshot.
 >
-> **Last updated:** 2026-11-01  
+> **Last updated:** 2026-11-22  
 > **Repository:** https://github.com/SandulaVinay/IPO-Analysis  
-> **Default branch:** `main`  
-> **Live-source extraction status: PASS for selected ESDS DRHP facts.** The Clean Science-like PDF remains a synthetic parser fixture. The official SEBI ESDS DRHP was downloaded and validated end to end on [GitHub Actions run 41421645589](https://github.com/SandulaVinay/IPO-Analysis/actions/runs/41421645589). This does not approve the extracted facts for scoring; reviewer verification remains required.
+> **Default branch:** `main` at `672cca9` (2026-11-20)  
+> **CI on that commit:** "CI - Tests and Safety Checks" passed — **217 passed** ([run 44663292452](https://github.com/SandulaVinay/IPO-Analysis/actions/runs/44663292452)).  
+> **Scheduler:** "Automated IPO Discovery & Alert Scheduler" scheduled runs on `main` succeeding through 2026-11-20. A green run does not prove an email or Telegram message was delivered.
+
+Sections 1–2 describe the current state. Sections 3 onward are a **historical log** kept for context; where they disagree with sections 1–2, sections 1–2 win.
 
 ---
 
-## 1. START HERE — Current objective
+## 1. START HERE — Current state and next steps
 
-**We are building a reliable IPO-analysis and monitoring system that gathers company/IPO evidence, analyzes financial quality and risk, and sends useful alerts without fabricating data or issuing recommendations from incomplete evidence.**
+**Goal:** a reliable IPO-analysis and monitoring system that gathers official company/IPO evidence, analyses financial quality and risk, and sends useful alerts — without fabricating data or issuing recommendations from incomplete or unverified evidence.
 
-### Immediate next task
+### What exists on `main` today
+- **Discovery:** official NSE/BSE IPO pages, plus the NSE JSON API (`https://www.nseindia.com/api/ipo-current-issue`) via `parse_nse_current_issues_payload` / `_fetch_nse_api_current_issues` in `src/ingestion/scrapers.py` (added 2026-11-19, `b1e1244`).
+- **Results monitoring** (`src/results/monitor.py`): structured XBRL feeds plus NSE corporate announcements ("Outcome of Board Meeting", "Financial Results"), merged per period, with official PDF attachments (added 2026-11-19, `a28cfb9`). `nseindia.in` redirect domain is accepted by the attachment validator. The rolling lookback window is enforced strictly (`132a974`). Extracted values remain `CANDIDATE_UNVERIFIED`.
+- **Daily digest** (`src/reporting/daily_digest.py`): includes live NSE IPOs and recent financial results (`b1e1244`). Still `UNABLE_TO_ASSESS` for Apply/Avoid until verified evidence is connected.
+- **Notifications:** Telegram bot (`src/notifications/telegram.py`, added 2026-11-20, `672cca9`) is prepended to the provider list when `ENABLE_TELEGRAM` is true; then Email, then WhatsApp (optional fallback). Telegram supports PDF attachments. Manual test script: `scripts/test_telegram.py`. Settings: `ENABLE_TELEGRAM`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (see `.env.example`).
+- **Scheduler workflow** (`.github/workflows/ipo_scheduler.yml`): runs every day at 07:47 IST (cron `17 2 * * *`, `DIGEST_SESSION=PRE_OPEN`) and 16:17 IST (cron `47 10 * * *`, `DIGEST_SESSION=POST_CLOSE`); each session sends its own digest with its own idempotency key. Until 2026-11-22 the schedule was four weekday runs and scheduled runs started roughly 7.5–9 hours late (e.g. the 17:30 IST digest arrived around 01:00 IST). Check whether the new off-the-hour schedule fires on time; if not, trigger `workflow_dispatch` externally. `ENABLE_TELEGRAM` resolves to `false` on push events, otherwise to the `ENABLE_TELEGRAM` secret, **defaulting to `true`** if that secret is unset. Repository secrets currently present (names only): `EMAIL_TO`, `ENABLE_EMAIL`, `ENABLE_TELEGRAM`, `SMTP_PASSWORD`, `SMTP_USER`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. `DATABASE_URL` is **not** set.
+- **Verified scoring pipeline:** 8-pillar reviewer-verified pipeline (`FactReviewService` in `src/verification/reviewer.py`, `run_pipeline_for_ipo` in `src/web/app.py`), secured reviewer API (`src/web/reviewer_auth.py`, PR #50), typed/finite evidence validation before scoring, OCR fallback for scanned PDFs, expanded Ind AS XBRL taxonomy (`9c825f3`, 2026-11-05). Scoring is ungated only when all 8 pillars are reviewer-verified; otherwise `UNABLE_TO_ASSESS`.
+- **Official-source validation:** ESDS DRHP selected FY2024 rows validated end to end (section 13). Those facts are still `CANDIDATE_UNVERIFIED` pending reviewer approval.
 
-Implement a **conservative, test-driven financial-statement extraction and verification pipeline** for financial results and prospectus PDFs. The current monitor can extract bounded PDF text excerpts for context, but arbitrary PDF statement tables are not yet converted into verified financial metrics.
+### Not yet verified / open
+1. **Telegram:** the Bot API accepted the 2026-11-21 digest (log: "Telegram document successfully sent ... message ID 13" in run 44804256454). Arrival on the owner's device is confirmed only by the owner.
+   - **IPO opinion quality:** every digest entry is `UNABLE_TO_ASSESS` because no RHP link, reviewer-verified facts, subscription data, or matched GMP reach the digest. See the improvement plan in the PR/issue for this work before changing scoring.
+2. **No persistent database in Actions.** Without `DATABASE_URL`, reviewer-verified facts and analysis runs are lost between scheduled runs; only the sanitized `state` branch persists. Production scoring therefore stays `UNABLE_TO_ASSESS` in scheduled runs.
+3. **No reviewer-approved facts yet.** ESDS and all other extracted figures are candidates only.
+4. **NSE API fragility.** The NSE endpoint needs a cookie warm-up request and browser-like headers; it may break or rate-limit without notice. Discovery falls back to HTML table parsing.
+5. **Open PRs to triage:**
+   - #41–#45 Dependabot: reportlab `>=5.1.0`, pdfplumber `>=0.11.10`, lxml `>=6.1.3`, pypdf `>=6.21.4`, apscheduler `>=3.11.3`. Rebase, check CI, merge individually (reportlab and pypdf are major bumps — check PDF rendering/extraction tests).
+   - #30 multi-format results extraction + Screener fallback — likely superseded by work already on `main`; compare before closing. Screener is not an official source.
+   - #27 old GPT handoff doc — superseded by this file; close.
+6. **Stale remote branches:** ~30 merged/abandoned `feature/*`, `docs/*`, `fix*` branches remain on origin. Clean up only with owner approval.
+7. **Docs drift:** README says 205 tests (CI now runs 217); README notifications section does not yet describe Telegram.
 
-Do not jump straight to a scoring formula. First trace the current data flow, schemas, verification engine, scoring engine, and tests. Build extraction so it preserves evidence and provenance, and keep ambiguous figures unverified.
-
-### Definition of done for the next milestone
-
-- [x] Extract candidate financial rows/values from PDFs with source URL, page number, row label, raw text, period label, unit text, and statement basis where identifiable.
-- [x] Normalize only when period, unit, and statement basis are explicit and unambiguous; retain raw source values and normalization metadata.
-- [x] Distinguish standalone from consolidated statements; never combine or compare unlike bases.
-- [x] Handle Indian numbering and common units (₹, ₹ lakh, ₹ crore, thousands/millions) conservatively; never guess an absent unit.
-- [x] Reconcile key values across available official source evidence and periods. Record discrepancies rather than silently choosing one value.
-- [x] Mark extracted-but-unreconciled values as candidate/unverified; do not pass them to scoring as verified facts.
-- [x] Return `UNABLE_TO_ASSESS` when critical evidence is absent, ambiguous, conflicting, or unverified.
-- [x] Add synthetic PDF/table fixtures and regression tests for ambiguous periods, units, statement basis, negative values, missing fields, and conflicting figures.
-- [x] Run relevant unit tests and full CI; use a branch and PR. Merge only after checks pass.
+### Suggested next task
+Confirm Telegram delivery with the owner, then triage open PRs (Dependabot first, then close #27 and decide on #30). After that, decide whether to provision a persistent PostgreSQL `DATABASE_URL` so reviewer-verified facts survive between runs.
 
 ---
 
-## 2. Project status and progress
+## 2. Status summary
 
 | Area | Status | Notes |
 |---|---|---|
-| GitHub Actions / automated test workflow | In place | Local full suite: 179 passed. Remote Actions were not run for the current uncommitted branch. |
-| Results monitoring and event/notification orchestration | In place | Idempotent event ledger, retry for unavailable attachments, exact NSE/BSE issuer matching, candidate-only extraction from PDF, XML/iXBRL, HTML, CSV/TSV, XLS, and XLSX. |
-| Email-first notifications | Implemented | Plain-text and HTML email bodies; PDF attachment is optional on render success. WhatsApp is an explicit fallback when enabled. |
-| Bounded financial-results extraction | Implemented | `src/results/document_extractors.py` handles PDF, XML/iXBRL, HTML, CSV/TSV, XLS, and XLSX within size/row limits; values stay candidate-only. |
-| PDF report rendering / source URLs | Implemented | Long source URLs wrapped cleanly in PDF and Markdown executive summaries. |
-| Verification and fail-closed assessment gates | Implemented | Missing critical fields and unverified financial inputs fail closed (`UNABLE_TO_ASSESS`). |
-| Financial trend scoring | Implemented | `src/analysis/financials.py` scores verified multi-period trends without artificial neutrals. |
-| PDF financial table extraction | Complete | Multi-row stacked header parsing, unit extraction, basis detection (`src/documents/extractor.py`). |
-| Period/unit/basis reconciliation | Complete | `src/verification/financial_evidence.py` and `tests/fixtures/official_prospectus_manifest.json`. |
-| Real official prospectus validation | Passed for selected ESDS DRHP rows | Actual SEBI PDF downloaded, hashed, text-extracted, period/unit/basis normalized, and three FY2024 values matched. See run 41421645589. |
-| Reviewer-controlled fact promotion | Complete | `src/verification/reviewer.py` (`FactReviewService`) with full audit logging in `AuditLog`. |
-| Verified IPO recommendations / production decisioning | Complete | Full 8-pillar reviewer-verified evidence pipeline wired in `FactReviewService` and `run_pipeline_for_ipo`. Safely produces ungated score and horizon recommendations when all 8 pillars are verified; strictly fails closed as `UNABLE_TO_ASSESS` if any evidence is missing or unverified. |
-| Scanned PDF / OCR Image Fallback | Complete | `src/documents/extractor.py` provides `extract_scanned_pdf_ocr_text` with pytesseract integration and structured error reporting when OCR engine is missing. |
-| Expanded Ind AS XBRL Taxonomy | Complete | Expanded metric aliases in `src/results/monitor.py` and `src/results/document_extractors.py` for banking and financial statement variants. |
-| End-to-end production readiness | Complete | All 204 automated tests passing (100% green); fail-closed gates validated end-to-end. |
-
-**Overall production status: COMPLETE (204/204 tests passing).** The 8-pillar evidence ingestion, reviewer fact promotion, OCR fallback, Ind AS taxonomy, and deterministic scoring pipeline are complete and verified by automated tests. Strict fail-closed safety remains enforced in all production paths.
-
-### Current local work (2026-11-04)
-
-Branch: `codex/workflow-results-reliability` (local, uncommitted; no push or remote Actions run for this work).
-
-- Results monitoring now processes official PDF, XBRL/iXBRL, HTML, CSV/TSV, XLS, and XLSX attachments. Periods can be inferred only from explicit, unambiguous attachment/XBRL context; extracted values are labelled `CANDIDATE_UNVERIFIED` and are not assessment-eligible.
-- Attachments that are temporarily unavailable are retried without duplicate emails; the recipient gets one follow-up if extraction later succeeds. A missing attachment is recorded separately.
-- Discovery can include an IPOWATCH GMP snapshot only after exact issuer matching and consistency with the official price band. These quotes are unofficial, may lack a quote timestamp, expire from the digest after 48 hours, and do not affect Apply/Avoid advice.
-- Email includes plain-text and HTML bodies. PDF rendering failure no longer prevents sending; the message omits a PDF attachment in that case.
-- The scheduler accepts a `DATABASE_URL` secret for persistent async PostgreSQL storage. Its default SQLite database is runner-local, so reviewer facts and analysis runs do not persist between workflows unless the secret is configured; the sanitized state branch remains the fallback for public IPO metadata and event keys.
-- Live assessment returns `UNABLE_TO_ASSESS` when business-model, governance, peer-valuation, issue-proceeds, risk, or market-regime evidence is not connected to reviewer-verified source facts. The current core financial fields alone are insufficient.
-- Verification on this local branch: 179 tests passed. SMTP delivery and a GitHub Actions run were not performed, so external credentials/source availability remain unverified.
+| CI test suite | Passing | 217 passed on `672cca9`. |
+| Scheduled workflow | Running | Daily 07:47 IST (pre-open) and 16:17 IST (post-close) since 2026-11-22; earlier runs were ~8 h late. |
+| IPO discovery | Implemented | NSE/BSE HTML + NSE JSON API. |
+| Results monitoring | Implemented | XBRL + NSE corporate announcements; PDF/XML/iXBRL/HTML/CSV/TSV/XLS/XLSX attachments; candidate-only values. |
+| Daily digest | Implemented | Live IPOs + recent results; IPOWATCH GMP snapshot only after exact issuer match; no Apply/Avoid. |
+| Telegram alerts | Implemented, Bot API accepting | First provider when enabled; device arrival confirmed only by the owner. |
+| Email alerts | Implemented | Plain-text + HTML, optional PDF attachment. |
+| WhatsApp | Optional fallback | Disabled unless explicitly enabled. |
+| Financial extraction & normalization | Implemented | Provenance, period/unit/basis detection, reconciliation (`src/documents/`, `src/verification/financial_evidence.py`). |
+| Reviewer verification | Implemented | `FactReviewService`, secured API, audit log. No facts promoted yet. |
+| 8-pillar scoring | Implemented, gated | Unlocks only with all pillars reviewer-verified. |
+| Persistent storage in Actions | Missing | `DATABASE_URL` not configured. |
+| Production investment recommendations | Not live | Fail-closed `UNABLE_TO_ASSESS` until verified evidence is connected and persisted. |
 
 ---
 
-## 3. Latest work completed
+# Historical log (2026-10-31 → 2026-11-05)
+
+The sections below are preserved from earlier handoffs. Checkbox lists, progress estimates, and "next actions" in them are historical and may already be done or superseded.
+
+## 3. Earlier completed work (historical)
 
 ### PR #25 — merged
 
@@ -152,8 +150,8 @@ Prior official RNIT filing example:
 Described as unaudited financial results for the quarter and half year ended September 30, 2026, together with the limited review report.
 
 Alerting rules:
-- Email-first; WhatsApp remains deferred/disabled unless explicitly requested and separately configured.
-- Do not change recipients, SMTP secrets, or other credentials.
+- Provider order: Telegram first when `ENABLE_TELEGRAM` is true (added 2026-11-20), then email, then WhatsApp. WhatsApp remains deferred/disabled unless explicitly requested and separately configured.
+- Do not change recipients, SMTP or Telegram secrets, chat IDs, or other credentials.
 - Do not clear the event ledger or generate duplicate alerts during testing.
 - A successful workflow run does not prove an email was delivered.
 - Push-triggered scheduler runs are configured to disable real email sending; test with the intended safe workflow and report the distinction clearly.
@@ -195,19 +193,19 @@ Alerting rules:
 
 ---
 
-## 8. Working rules for the next GPT
+## 8. Working rules for the next agent (still current)
 
 - Continue the implementation; do not merely give advice if repository tools permit editing and testing.
 - Read relevant source files and callers before changing contracts.
 - Do not assume earlier chat messages are current; inspect GitHub.
 - Do not claim PDF text extraction is financial metric extraction.
 - Do not claim a workflow run means alert delivery.
-- Do not enable live emails/WhatsApp, alter recipients/secrets, clear ledgers, or send test alerts without explicit authorization.
+- Do not enable live email/Telegram/WhatsApp, alter recipients/secrets, clear ledgers, or send test alerts (including `scripts/test_telegram.py`) without explicit authorization.
 - Do not issue or enable production investment recommendations from unverified inputs.
 - Prefer small, reviewable PRs and regression tests.
 - If tests fail, inspect logs and fix root causes. Never merge while required checks are failing or pending.
 - Keep the README, architecture docs, and this handoff aligned with actual behaviour.
-- Update the **65%** estimate only when concrete milestones change.
+- Update sections 1–2 of this handoff (state, open items, status table) whenever concrete milestones change.
 
 ## 9. Current open work
 
@@ -221,7 +219,7 @@ Alerting rules:
 - [x] Review deployment/operations and notification behaviour before any production recommendation rollout.
 - [x] Implement OCR / scanned-PDF detection and database audit script.
 
-**Milestone status: open.** The synthetic fixture is useful for parser regression tests but cannot close the real-document release gate.
+**Milestone status (historical):** closed by the ESDS live validation in section 13. The synthetic fixture remains a parser regression fixture only.
 
 
 ---

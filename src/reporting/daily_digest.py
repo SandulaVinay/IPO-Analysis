@@ -401,17 +401,40 @@ def _build_report(
     return "\n".join(lines), message
 
 
+_DIGEST_SESSION_LABELS = {
+    "PRE_OPEN": "Pre-market",
+    "POST_CLOSE": "Post-market",
+}
+
+
+def _digest_session() -> Optional[str]:
+    """Return the optional digest session (e.g. PRE_OPEN / POST_CLOSE) from DIGEST_SESSION.
+
+    When set, each session gets its own once-per-day idempotency key so a morning and an
+    evening digest can both be sent. Unset keeps the original single daily digest.
+    """
+    raw = os.getenv("DIGEST_SESSION", "").strip().upper()
+    session = re.sub(r"[^A-Z0-9_]", "", raw)
+    return session or None
+
+
 async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateStore] = None) -> Dict[str, Any]:
     """Create a daily artifact and send it by SMTP email when configured."""
     store = store or StateStore()
     ipos = list(ipos)
     now = datetime.now(IST)
-    event_key = f"IPO_DAILY_DIGEST_{now.strftime('%Y-%m-%d')}"
+    session = _digest_session()
+    session_suffix = f"_{session}" if session else ""
+    session_label = _DIGEST_SESSION_LABELS.get(session or "", session.replace("_", " ").title() if session else "")
+    event_key = f"IPO_DAILY_DIGEST_{now.strftime('%Y-%m-%d')}{session_suffix}"
     report_dir = Path("reports/daily")
     report_dir.mkdir(parents=True, exist_ok=True)
     discovery_run = store.latest_run("discover")
     report_text, message = _build_report(ipos, now=now, discovery_run=discovery_run)
-    report_path = report_dir / f"ipo_digest_{now.strftime('%Y%m%d')}.md"
+    report_path = report_dir / f"ipo_digest_{now.strftime('%Y%m%d')}{session_suffix.lower()}.md"
+    subject = f"Daily IPO status digest — {now.strftime('%d %b %Y')}"
+    if session_label:
+        subject = f"{session_label} IPO status digest — {now.strftime('%d %b %Y')}"
     report_path.write_text(report_text, encoding="utf-8")
     pdf_path = report_path.with_suffix(".pdf")
     pdf_attachments = []
@@ -448,7 +471,7 @@ async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateSt
     if settings.enable_telegram:
         tg_res = await TelegramProvider().send_notification(
             recipient=settings.telegram_chat_id,
-            subject=f"Daily IPO status digest — {now.strftime('%d %b %Y')}",
+            subject=subject,
             content=message,
             metadata={"attachments": pdf_attachments},
         )
@@ -460,7 +483,7 @@ async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateSt
     if settings.enable_email:
         email = await EmailProvider().send_notification(
             recipient=settings.email_to,
-            subject=f"Daily IPO status digest — {now.strftime('%d %b %Y')}",
+            subject=subject,
             content=message,
             metadata={
                 "attachments": pdf_attachments,

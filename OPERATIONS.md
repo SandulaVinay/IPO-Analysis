@@ -48,7 +48,8 @@ name: IPO Discovery & Alert Dispatch
 
 on:
   schedule:
-    - cron: '0 3,9 * * 1-5' # 08:30 IST and 14:30 IST on weekdays
+    - cron: '17 2 * * *'  # 07:47 IST daily, before market pre-open
+    - cron: '47 10 * * *' # 16:17 IST daily, after market close
   workflow_dispatch:
 
 jobs:

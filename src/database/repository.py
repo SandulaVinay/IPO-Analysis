@@ -98,6 +98,7 @@ class IPORepository:
                 selectinload(IPO.events),
                 selectinload(IPO.documents).selectinload(IPODocument.versions),
                 selectinload(IPO.gmp_snapshots),
+                selectinload(IPO.subscription_snapshots),
                 selectinload(IPO.analysis_runs).selectinload(AnalysisRun.recommendation),
             )
             .order_by(IPO.verified_open_date.desc().nullslast(), IPO.updated_at.desc())

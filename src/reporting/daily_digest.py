@@ -171,26 +171,64 @@ def _latest_gmp(ipo: Any, now: datetime) -> str:
 
 
 
+def _ipo_timing(ipo: Any, today: date) -> str:
+    """Plain-language timing: open now, opens later, or closed and awaiting listing."""
+    open_d = _as_date(getattr(ipo, "verified_open_date", None)) or _as_date(getattr(ipo, "announced_open_date", None))
+    close_d = _as_date(getattr(ipo, "verified_close_date", None)) or _as_date(getattr(ipo, "announced_close_date", None))
+    verified = bool(getattr(ipo, "verified_open_date", None) and getattr(ipo, "verified_close_date", None))
+    suffix = "" if verified else " (dates announced, not verified)"
+    if open_d and close_d:
+        if today < open_d:
+            text = f"Opens {open_d:%d %b %Y}, closes {close_d:%d %b %Y}"
+        elif today <= close_d:
+            text = f"Open now, closes {close_d:%d %b %Y}"
+        else:
+            text = f"Closed {close_d:%d %b %Y}; listing date pending"
+    elif open_d:
+        text = f"Opens {open_d:%d %b %Y}" if today < open_d else f"Opened {open_d:%d %b %Y}"
+    else:
+        text = "Dates not available"
+    return text + suffix
+
+
+def _price_band_text(ipo: Any) -> str:
+    low = getattr(ipo, "min_price", None)
+    high = getattr(ipo, "max_price", None)
+    if low is None or high is None:
+        return "price band not available"
+    return f"₹{float(low):,.0f}–₹{float(high):,.0f}"
+
+
+def _short_status(ipo: Any) -> str:
+    if getattr(ipo, "status", "") == "SOURCE_CONFLICT":
+        return "WAIT — official sources disagree on dates or price; verify before relying on them"
+    return "UNABLE_TO_ASSESS — financials not yet verified; no Apply/Avoid advice"
+
+
 def _plain_company_summary(ipo: Any, now: datetime) -> str:
     name = str(getattr(ipo, "company_name", getattr(ipo, "symbol", "UNKNOWN")))
     symbol = str(getattr(ipo, "symbol", "UNKNOWN"))
     rating = _verified_rating(ipo)
     rating_text = (
-        f"Overall {rating['overall']:.1f}/10 (listing {rating['listing']:.1f}/10; long-term {rating['long_term']:.1f}/10)"
+        f"{rating['overall']:.1f}/10 (listing {rating['listing']:.1f}, long-term {rating['long_term']:.1f})"
         if rating["available"]
-        else "Overall rating unavailable — insufficient verified inputs"
+        else "not available until verified financials are connected"
     )
+    issue_size = getattr(ipo, "issue_size_cr", None)
+    size_text = f"₹{float(issue_size):,.2f} Cr" if issue_size is not None else "not available"
     source_links = _company_source_links(ipo)
-    sources_text = "\n".join(f"  {label}: {url}" for label, url in source_links)
-    if not sources_text:
-        sources_text = "  Company-specific prospectus/source link: not captured"
+    if source_links:
+        source_text = "\n".join(f"  Source: {label} {url}" for label, url in source_links)
+    else:
+        source_text = "  Source: not captured yet; check the official NSE/BSE page before acting"
     return (
         f"{name} ({symbol})\n"
-        f"  {rating_text}\n"
+        f"  Timing: {_ipo_timing(ipo, now.date())}\n"
+        f"  Price band: {_price_band_text(ipo)}; issue size: {size_text}\n"
         f"  GMP: {_latest_gmp(ipo, now)}\n"
-        f"  Open: {_format_ipo_date(ipo, 'open')}; close: {_format_ipo_date(ipo, 'close')}\n"
-        f"  Status: {_ipo_status(ipo)}\n"
-        f"{sources_text}"
+        f"  Rating: {rating_text}\n"
+        f"  Status: {_short_status(ipo)}\n"
+        f"{source_text}"
     )
 
 
@@ -377,28 +415,29 @@ def _build_report(
             )
         )
 
+    more = f"\n(+{len(selected) - 8} more in the full report)" if len(selected) > 8 else ""
     message = (
-        f"Daily IPO status digest — {now.strftime('%d %b %Y')} (IST)\n"
-        f"Upcoming/unresolved records: {len(selected)}\n"
-        f"Latest discovery status: {discovery_status}\n"
-        + ("WARNING: discovery data may be stale. " if discovery_status != "SUCCESS" else "")
-        + "\n"
-        + "\n\n".join(_plain_company_summary(ipo, now) for ipo in selected[:8])
-        + ("\n\nIssuer-specific source links are included under each company when available." if selected else "\n\nNo issuer-specific IPO records or source links were available in persisted state.")
+        f"Discovery status: {discovery_status}"
+        + (" — data may be stale" if discovery_status != "SUCCESS" else "")
+        + f"\nIPO records open or upcoming: {len(selected)}\n\n"
+        + ("\n\n".join(_plain_company_summary(ipo, now) for ipo in selected[:8]) if selected else "No open or upcoming IPO records in the validated registry.")
+        + more
         + results_message_part
     )
+    return "\n".join(lines), message
+
+
+def _digest_footer(pdf_attached: bool) -> str:
+    if pdf_attached:
+        return "Full report: the attached PDF. Not investment advice."
     run_id = os.getenv("GITHUB_RUN_ID")
     repository = os.getenv("GITHUB_REPOSITORY", "SandulaVinay/IPO-Analysis")
-    artifact_link = (
-        f"\n\nFull PDF report: https://github.com/{repository}/actions/runs/{run_id} "
-        "(open the run and download the daily-ipo-digest artifact)."
-        if run_id else ""
-    )
-    if len(message) + len(artifact_link) > 3500:
-        keep_chars = max(2500, 3500 - len(artifact_link) - 100)
-        message = message[:keep_chars].rstrip() + "\n\n[Truncated; full PDF report is in the GitHub Actions artifact.]"
-    message += artifact_link
-    return "\n".join(lines), message
+    if run_id:
+        return (
+            "PDF not available this run. Full report: GitHub Actions run "
+            f"https://github.com/{repository}/actions/runs/{run_id} (download daily-ipo-digest). Not investment advice."
+        )
+    return "PDF not available this run. Not investment advice."
 
 
 _DIGEST_SESSION_LABELS = {
@@ -444,6 +483,8 @@ async def generate_daily_ipo_digest(ipos: Iterable[Any], store: Optional[StateSt
             pdf_attachments = [str(pdf_path)]
     except Exception as exc:
         logger.warning("Daily digest PDF rendering failed (%s); sending the email body without an attachment.", type(exc).__name__)
+
+    message = f"{message}\n\n{_digest_footer(bool(pdf_attachments))}"
 
     # A previous SMTP acceptance is not proof the recipient received the message.
     # Allow an explicitly requested manual resend for the current day's digest, while

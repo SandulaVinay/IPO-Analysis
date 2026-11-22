@@ -68,7 +68,7 @@ class TelegramProvider(NotificationProvider):
             if candidate.is_file():
                 pdf_path = candidate
 
-        full_message = f"🔔 *{subject}*\n\n{content}".strip()
+        full_message = f"🔔 {subject}\n\n{content}".strip()
         url_prefix = f"{self.TELEGRAM_API_BASE}/bot{bot_token}"
 
         try:
@@ -76,33 +76,19 @@ class TelegramProvider(NotificationProvider):
                 # If an attachment exists, send via sendDocument first
                 if pdf_path and pdf_path.exists():
                     file_bytes = pdf_path.read_bytes()
-                    caption = full_message[: self.MAX_CAPTION_LENGTH]
-                    remaining_text = full_message[self.MAX_CAPTION_LENGTH :].strip()
+                    caption = f"🔔 {subject}"[: self.MAX_CAPTION_LENGTH]
+                    remaining_text = full_message.strip()
 
                     doc_res = await client.post(
                         f"{url_prefix}/sendDocument",
                         data={
                             "chat_id": target_chat,
                             "caption": caption,
-                            "parse_mode": "Markdown",
                         },
                         files={
                             "document": (pdf_path.name, file_bytes, "application/pdf")
                         },
                     )
-
-                    # If Markdown parse error occurred, retry without parse_mode
-                    if doc_res.status_code == 400 and "can't find end" in doc_res.text:
-                        doc_res = await client.post(
-                            f"{url_prefix}/sendDocument",
-                            data={
-                                "chat_id": target_chat,
-                                "caption": caption,
-                            },
-                            files={
-                                "document": (pdf_path.name, file_bytes, "application/pdf")
-                            },
-                        )
 
                     doc_data = doc_res.json()
                     if not doc_data.get("ok"):
@@ -150,21 +136,9 @@ class TelegramProvider(NotificationProvider):
                         json={
                             "chat_id": target_chat,
                             "text": chunk,
-                            "parse_mode": "Markdown",
-                            "disable_web_page_preview": False,
+                            "disable_web_page_preview": True,
                         },
                     )
-
-                    # If markdown parsing fails on special characters, fallback to plain text
-                    if res.status_code == 400 and ("can't find end" in res.text or "parse entities" in res.text):
-                        res = await client.post(
-                            f"{url_prefix}/sendMessage",
-                            json={
-                                "chat_id": target_chat,
-                                "text": chunk,
-                                "disable_web_page_preview": False,
-                            },
-                        )
 
                     data = res.json()
                     if not data.get("ok"):

@@ -72,29 +72,24 @@ async def test_telegram_markdown_fallback(monkeypatch):
 
     provider = TelegramProvider()
 
-    # First call fails with markdown parse error (400), second call succeeds (200)
-    fail_resp = MagicMock()
-    fail_resp.status_code = 400
-    fail_resp.text = "Bad Request: can't find end of the entity"
-    fail_resp.json.return_value = {"ok": False, "description": "can't find end"}
-
     ok_resp = MagicMock()
     ok_resp.status_code = 200
     ok_resp.json.return_value = {"ok": True, "result": {"message_id": 43}}
 
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock, side_effect=[fail_resp, ok_resp]) as mock_post:
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=ok_resp) as mock_post:
         result = await provider.send_notification(
             recipient="999888",
-            subject="Special *Chars* _Test_",
-            content="Some text with odd characters [abc",
+            subject="Special *Chars* _Test_ UNABLE_TO_ASSESS",
+            content="Some text with odd characters [abc UNABLE_TO_ASSESS",
         )
 
         assert result["success"] is True
         assert result["message_id"] == "43"
-        assert mock_post.call_count == 2
-        # Second call does not have parse_mode
-        second_call_json = mock_post.call_args_list[1][1]["json"]
-        assert "parse_mode" not in second_call_json
+        assert mock_post.call_count == 1
+        # Plain text: no parse_mode, so underscores and asterisks are kept as written.
+        sent = mock_post.call_args[1]["json"]
+        assert "parse_mode" not in sent
+        assert "UNABLE_TO_ASSESS" in sent["text"]
 
 
 @pytest.mark.asyncio
@@ -122,8 +117,11 @@ async def test_telegram_send_document_success(monkeypatch, tmp_path):
 
         assert result["success"] is True
         assert result["message_id"] == "99"
-        assert "sendDocument" in mock_post.call_args[0][0]
-        data = mock_post.call_args[1]["data"]
+        first_url = mock_post.call_args_list[0][0][0]
+        assert "sendDocument" in first_url
+        data = mock_post.call_args_list[0][1]["data"]
+        assert "parse_mode" not in data
+        assert data["caption"].startswith("🔔 Daily Digest")
         assert data["chat_id"] == "999888"
 
 

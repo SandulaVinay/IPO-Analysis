@@ -199,10 +199,42 @@ def _price_band_text(ipo: Any) -> str:
     return f"₹{float(low):,.0f}–₹{float(high):,.0f}"
 
 
-def _short_status(ipo: Any) -> str:
-    if getattr(ipo, "status", "") == "SOURCE_CONFLICT":
-        return "WAIT — official sources disagree on dates or price; verify before relying on them"
-    return "UNABLE_TO_ASSESS — financials not yet verified; no Apply/Avoid advice"
+def _fresh_gmp_value(ipo: Any, now: datetime) -> Optional[float]:
+    """Latest GMP number, only if captured within 48 hours (same rule as the GMP text)."""
+    snapshots = [s for s in (getattr(ipo, "gmp_snapshots", None) or []) if isinstance(getattr(s, "captured_at", None), datetime)]
+    if not snapshots:
+        return None
+    latest = max(snapshots, key=lambda s: s.captured_at.replace(tzinfo=None))
+    captured = latest.captured_at.replace(tzinfo=timezone.utc) if latest.captured_at.tzinfo is None else latest.captured_at.astimezone(timezone.utc)
+    now_utc = now.replace(tzinfo=IST).astimezone(timezone.utc) if now.tzinfo is None else now.astimezone(timezone.utc)
+    age_hours = (now_utc - captured).total_seconds() / 3600
+    if age_hours < 0 or age_hours > 48:
+        return None
+    return float(latest.gmp_value)
+
+
+def _day3_subscription(ipo: Any) -> Optional[float]:
+    """Overall subscription on the latest bidding day captured, or None if no source has reported it."""
+    snapshots = [s for s in (getattr(ipo, "subscription_snapshots", None) or []) if (getattr(s, "day_number", 0) or 0) > 0]
+    if not snapshots:
+        return None
+    latest = max(snapshots, key=lambda s: s.day_number)
+    return float(latest.overall_times) if latest.overall_times is not None else None
+
+
+def _status_line(ipo: Any, now: datetime) -> str:
+    """Rules-only status (src/analysis/ipo_status.py). Always labelled indicative."""
+    from src.analysis.ipo_status import ipo_status
+
+    result = ipo_status(
+        source_conflict=getattr(ipo, "status", "") == "SOURCE_CONFLICT",
+        gmp_value=_fresh_gmp_value(ipo, now),
+        issue_price=getattr(ipo, "max_price", None),
+        overall_subscription=_day3_subscription(ipo),
+    )
+    gain = result["estimated_listing_gain_pct"]
+    gain_text = f"estimated listing gain {gain:+.1f}% (unofficial GMP)" if gain is not None else "listing gain not available"
+    return f"{result['status']} — {result['label']}. {gain_text}. {'; '.join(result['reasons'])}."
 
 
 def _plain_company_summary(ipo: Any, now: datetime) -> str:
@@ -227,7 +259,7 @@ def _plain_company_summary(ipo: Any, now: datetime) -> str:
         f"  Price band: {_price_band_text(ipo)}; issue size: {size_text}\n"
         f"  GMP: {_latest_gmp(ipo, now)}\n"
         f"  Rating: {rating_text}\n"
-        f"  Status: {_short_status(ipo)}\n"
+        f"  Status: {_status_line(ipo, now)}\n"
         f"{source_text}"
     )
 

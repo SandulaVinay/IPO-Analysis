@@ -363,3 +363,27 @@ The official SEBI ESDS Software Solution Limited DRHP was downloaded and extract
 - All three selected candidates matched the FY2023–2024 period, explicit million unit, and consolidated basis; arithmetic checks passed.
 
 The run result is `PASS_LIVE_OFFICIAL_SOURCE_VALIDATION`. All extracted facts remain `CANDIDATE_UNVERIFIED`. The live extraction gate is passed for these selected rows, not for every financial value in the prospectus and not as an authorization to score or recommend the IPO. An authorized reviewer must independently reconcile the original statements before critical facts can become `VERIFIED`.
+
+---
+
+## 14. Change log
+
+Every change adds an entry here. The working procedure is in [SKILL.md](SKILL.md). Entries are newest first.
+
+- **2026-11-22 — docs/skill-change-workflow (this change).** Added `SKILL.md`, the procedure for branches, tests, handoff updates, checks and merges. Added this change log. No code changed. PR: see the PR for this branch.
+- **2026-11-22 — fix/neon-database-url, PR #54, merged as `d7952f0`.** `src/database/url.py` converts Neon libpq URLs (`sslmode`, `channel_binding`) to the asyncpg form. The repo secret `DATABASE_URL` was already set, so the scheduler uses Neon from its next run. Tests: 5 new; full suite 224 passed with the 2 known Windows failures. **Process note:** this PR was merged while the Cloudflare check `Workers Builds: ipo-analysis` was failing. That check is the Cloudflare build of the repository root, not the code tests. The fix is in the Cloudflare dashboard (see the next entry).
+- **2026-11-22 — chore/relay rename, commit `86e99b7` on PR #53.** The relay Worker is renamed `ipo-analysis` in `relay/wrangler.toml`, `relay/README.md` and `relay/src/worker.js`, to match the existing Cloudflare Worker. Open item: point the Cloudflare build at the `relay` folder (root directory `relay`, deploy command `npx wrangler deploy`), then add secrets `TELEGRAM_BOT_TOKEN`, `WEBHOOK_SECRET`, `OWNER_CHAT_ID`.
+- **2026-11-22 — feat/telegram-ipo-commands, PR #53, open.** `relay/` Cloudflare Worker answers `/ongoing` (open now, with last date to apply) and `/upcoming`, for the owner's chat only. Reads the public `state/ipo_registry.json`. Tests: 13 relay tests pass. **The relay is not on `main` and not deployed.**
+- **2026-11-22 — fix/telegram-digest-message, PR #52, merged as `cb94656`.** Telegram sends plain text (legacy Markdown removed underscores). No 3,500-character truncation; the PDF is the caption and text follows in split messages. Per-IPO cards show timing (open now / opens / closed), price band, issue size, GMP, rating status, short status and source. Footer says the PDF is attached.
+- **2026-11-22 — docs/handoff-2026-11-22 + scheduler, PR #51, merged as `54f7f0a`.** The scheduler runs daily at 07:47 IST (`DIGEST_SESSION=PRE_OPEN`) and 16:17 IST (`POST_CLOSE`). Each session has its own digest key and subject. Manual runs take a `digest_session` input. Scheduled runs had started hours late before this change; check the timing after the switch.
+- **2026-11-22 — Dependabot, PRs #41, #42, #43 merged.** reportlab `>=5.1.0`, pdfplumber `>=0.11.10`, lxml `>=6.1.3`. PRs #44 (pypdf) and #45 (apscheduler) conflicted and were asked to rebase. PRs #27 and #30 closed as superseded; #30's Screener.in fallback was not carried forward because it is not an official source.
+- **2026-11-20 — feat/notifications, commit `672cca9`.** Telegram provider added, first in the provider list when `ENABLE_TELEGRAM` is true.
+- **2026-11-19 — feat/discovery and results, commits `b1e1244`, `a28cfb9`.** NSE current-issues API and NSE corporate announcements added to discovery and results.
+
+### Open items recorded here
+
+1. Cloudflare Worker deploy: fix the build root (above), add secrets, send the `workers.dev` URL, register the Telegram webhook.
+2. Merge PR #53 after its checks pass; the relay is not on `main` until then.
+3. `/run` and `/report` Telegram commands: planned, not built. `/run` will need the `GITHUB_TOKEN` Worker secret (fine-grained, `SandulaVinay/IPO-Analysis` only, Actions read and write).
+4. Neon: confirm the first scheduled run after PR #54 writes to Neon and that `init_db` succeeds.
+5. Opinions: labelled Indicative / Verified (not built). Full research report planned in stages (see the plan in the conversation record).

@@ -1,0 +1,5 @@
+# Root config so Cloudflare Workers Builds (which runs at the repository root)
+# deploys the Telegram relay. The relay source and its tests live in relay/.
+name = "ipo-analysis"
+main = "relay/src/worker.js"
+compatibility_date = "2026-01-01"

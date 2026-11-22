@@ -24,11 +24,11 @@ npm test
    - `npx wrangler secret put TELEGRAM_BOT_TOKEN` (the bot token from BotFather)
    - `npx wrangler secret put WEBHOOK_SECRET` (a random string you create with `[guid]::NewGuid().ToString("N")`)
    - `npx wrangler secret put OWNER_CHAT_ID` (your numeric Telegram chat ID)
-4. Deploy: `npx wrangler deploy`. It prints a URL like `https://ipo-telegram-relay.<subdomain>.workers.dev`.
+4. Deploy: `npx wrangler deploy`. It prints a URL like `https://ipo-analysis.<subdomain>.workers.dev`.
 5. Register the webhook. Set the three values as environment variables in your own PowerShell session first, then run:
 
 ```powershell
-$url = "https://ipo-telegram-relay.<subdomain>.workers.dev"
+$url = "https://ipo-analysis.<subdomain>.workers.dev"
 $body = @{ url = $url; secret_token = $env:WEBHOOK_SECRET; allowed_updates = @("message") } | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri "https://api.telegram.org/bot$($env:TELEGRAM_BOT_TOKEN)/setWebhook" -ContentType "application/json" -Body $body
 ```

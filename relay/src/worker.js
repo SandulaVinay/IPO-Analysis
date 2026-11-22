@@ -27,7 +27,7 @@ export function defaultDeps(env) {
     async fetchCheckedAt() {
       try {
         const res = await fetch(LAST_COMMIT_URL, {
-          headers: { Accept: "application/vnd.github+json", "User-Agent": "ipo-telegram-relay" },
+          headers: { Accept: "application/vnd.github+json", "User-Agent": "ipo-analysis-relay" },
         });
         if (!res.ok) return null;
         const commits = await res.json();

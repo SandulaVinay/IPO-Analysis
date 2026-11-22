@@ -136,6 +136,25 @@ class DiscoveryEngine:
                     # sentiment site is blocked, stale, or changes its layout.
                     logger.warning("GMP lookup skipped for %s (%s).", symbol, type(exc).__name__)
 
+            # Subscription: NSE's latest bid multiple for the issue. Day 0 means the feed
+            # gives no bidding-day number; the value is the latest reported figure.
+            fetch_subscription = getattr(self.scraper, "fetch_subscription_status", None)
+            if fetch_subscription and ipo.status != "SOURCE_CONFLICT":
+                try:
+                    sub = await fetch_subscription(symbol)
+                    if sub and sub.get("overall_times") is not None:
+                        await self.repo.add_subscription(
+                            ipo_id=ipo.id,
+                            day_number=0,
+                            qib_times=0.0,
+                            nii_times=0.0,
+                            retail_times=0.0,
+                            employee_times=0.0,
+                            overall_times=float(sub["overall_times"]),
+                        )
+                except Exception as exc:
+                    logger.warning("Subscription lookup skipped for %s (%s).", symbol, type(exc).__name__)
+
             # Prospectus links are optional: only real, validated PDFs are ingested.
             # A failed download never creates a placeholder and never unblocks scoring.
             for document in raw.get("document_links") or []:

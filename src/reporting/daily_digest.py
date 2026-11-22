@@ -213,13 +213,25 @@ def _fresh_gmp_value(ipo: Any, now: datetime) -> Optional[float]:
     return float(latest.gmp_value)
 
 
-def _day3_subscription(ipo: Any) -> Optional[float]:
-    """Overall subscription on the latest bidding day captured, or None if no source has reported it."""
-    snapshots = [s for s in (getattr(ipo, "subscription_snapshots", None) or []) if (getattr(s, "day_number", 0) or 0) > 0]
+def _latest_subscription(ipo: Any, now: datetime) -> Optional[float]:
+    """Latest NSE subscription multiple captured within 48 hours, or None.
+
+    The NSE feed gives no bidding-day number, so this is the latest reported figure,
+    which is intraday until bidding closes. Not a final Day 3 figure.
+    """
+    snapshots = [
+        s for s in (getattr(ipo, "subscription_snapshots", None) or [])
+        if isinstance(getattr(s, "captured_at", None), datetime) and s.overall_times is not None
+    ]
     if not snapshots:
         return None
-    latest = max(snapshots, key=lambda s: s.day_number)
-    return float(latest.overall_times) if latest.overall_times is not None else None
+    latest = max(snapshots, key=lambda s: s.captured_at.replace(tzinfo=None))
+    captured = latest.captured_at.replace(tzinfo=timezone.utc) if latest.captured_at.tzinfo is None else latest.captured_at.astimezone(timezone.utc)
+    now_utc = now.replace(tzinfo=IST).astimezone(timezone.utc) if now.tzinfo is None else now.astimezone(timezone.utc)
+    age_hours = (now_utc - captured).total_seconds() / 3600
+    if age_hours < 0 or age_hours > 48:
+        return None
+    return float(latest.overall_times)
 
 
 def _status_line(ipo: Any, now: datetime) -> str:
@@ -230,7 +242,7 @@ def _status_line(ipo: Any, now: datetime) -> str:
         source_conflict=getattr(ipo, "status", "") == "SOURCE_CONFLICT",
         gmp_value=_fresh_gmp_value(ipo, now),
         issue_price=getattr(ipo, "max_price", None),
-        overall_subscription=_day3_subscription(ipo),
+        overall_subscription=_latest_subscription(ipo, now),
     )
     gain = result["estimated_listing_gain_pct"]
     gain_text = f"estimated listing gain {gain:+.1f}% (unofficial GMP)" if gain is not None else "listing gain not available"

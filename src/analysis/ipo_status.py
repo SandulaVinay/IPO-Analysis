@@ -1,7 +1,7 @@
 """
 Rules-only IPO status (Stage 1): APPLY, NEUTRAL, AVOID, WAIT or UNABLE_TO_ASSESS.
 
-Inputs are only GMP (unofficial), issue price and Day 3 subscription. Financials are
+Inputs are only GMP (unofficial), issue price and latest NSE subscription. Financials are
 NOT used here, so every status is labelled "Indicative". Thresholds are starting
 values, not calibrated; they stay labelled until the Stage 4 backtest is done.
 
@@ -10,7 +10,7 @@ Rules, checked in order:
   2. No GMP or no issue price                               -> UNABLE_TO_ASSESS
   3. Estimated listing gain below 0%                        -> AVOID
   4. Subscription not available                             -> NEUTRAL (capped; never APPLY)
-  5. Estimated gain >= 10% AND Day 3 subscription >= 10x    -> APPLY
+  5. Estimated gain >= 10% AND latest NSE subscription >= 10x    -> APPLY
   6. Anything else                                          -> NEUTRAL
 """
 
@@ -52,7 +52,7 @@ def ipo_status(
     elif gain >= APPLY_MIN_GAIN_PCT and overall_subscription >= APPLY_MIN_SUBSCRIPTION_TIMES:
         status = "APPLY"
         reasons.append(
-            f"estimated listing gain {gain:.1f}% and Day 3 subscription {overall_subscription:.1f}x "
+            f"estimated listing gain {gain:.1f}% and latest NSE subscription {overall_subscription:.1f}x "
             f"meet the starting thresholds ({APPLY_MIN_GAIN_PCT:.0f}% and {APPLY_MIN_SUBSCRIPTION_TIMES:.0f}x)"
         )
     else:

@@ -559,7 +559,33 @@ class PortalScraper(BaseScraper):
         """Compatibility wrapper for callers that have a company name as the symbol."""
         return await self.fetch_live_gmp_for_company(symbol)
 
+    async def _load_nse_subscription_rows(self) -> Dict[str, Dict[str, Any]]:
+        """Fetch NSE's current-issue feed once per run (official NSE site, owner-confirmed)."""
+        if getattr(self, "_nse_subscription_rows", None) is not None:
+            return self._nse_subscription_rows
+        self._nse_subscription_rows = {}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.nseindia.in/market-data/all-upcoming-issues-ipo",
+        }
+        try:
+            from src.ingestion.nse_subscription import NSE_SUBSCRIPTION_URL, parse_nse_subscription_payload
+
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                await client.get("https://www.nseindia.in/market-data/all-upcoming-issues-ipo", headers=headers)
+                response = await client.get(NSE_SUBSCRIPTION_URL, headers=headers)
+                if response.status_code == 200:
+                    self._nse_subscription_rows = parse_nse_subscription_payload(response.json())
+                else:
+                    logger.warning("NSE subscription feed returned HTTP %s; no subscription data this run.", response.status_code)
+        except Exception as exc:
+            # Subscription is supplementary. A failure must not block IPO discovery.
+            logger.warning("NSE subscription feed unavailable (%s).", type(exc).__name__)
+        return self._nse_subscription_rows
+
     async def fetch_subscription_status(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Subscription data is unavailable until an exchange source adapter is configured."""
-        logger.info("Subscription data unavailable for %s; no verified source adapter is configured.", symbol)
-        return None
+        """Latest NSE subscription multiple for one issue, or None if NSE has not reported it."""
+        rows = await self._load_nse_subscription_rows()
+        return rows.get(str(symbol or "").strip().upper())

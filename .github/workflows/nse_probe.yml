@@ -1,0 +1,33 @@
+name: NSE endpoint probe (read-only)
+
+# Manual only. Captures raw NSE IPO responses so the subscription parser can be written
+# against real data. Makes GET requests only. No secrets are used.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install probe dependency
+        run: python -m pip install httpx
+
+      - name: Probe NSE endpoints
+        run: python scripts/nse_probe.py nse_probe_out
+
+      - name: Upload raw responses
+        uses: actions/upload-artifact@v4
+        with:
+          name: nse-probe-${{ github.run_id }}
+          path: nse_probe_out/
+          retention-days: 7

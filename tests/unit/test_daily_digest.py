@@ -326,3 +326,50 @@ def test_collect_recent_financial_reports_reads_results_dir(tmp_path):
     assert records[0]["company_name"] == "Clean Science and Technology Limited"
     assert records[0]["period_ended"] == "30-Sep-2026"
     assert records[0]["filing_url"] == "https://nsearchives.nseindia.in/corporate/clean.pdf"
+
+
+@pytest.mark.asyncio
+async def test_daily_digest_sends_pre_open_and_post_close_sessions_separately(tmp_path, monkeypatch):
+    import src.reporting.daily_digest as digest_module
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "enable_whatsapp", False)
+    monkeypatch.setattr(settings, "enable_telegram", False)
+    monkeypatch.setattr(settings, "enable_email", True)
+    monkeypatch.delenv("FORCE_RESEND_DIGEST", raising=False)
+    subjects = []
+
+    async def email_accept(self, recipient, subject, content, metadata=None):
+        subjects.append(subject)
+        return {"success": True, "accepted": True, "delivered": False, "error": None}
+
+    monkeypatch.setattr(digest_module.EmailProvider, "send_notification", email_accept)
+    store = StateStore(root=str(tmp_path / "state"))
+
+    monkeypatch.setenv("DIGEST_SESSION", "PRE_OPEN")
+    morning = await generate_daily_ipo_digest([], store)
+    morning_repeat = await generate_daily_ipo_digest([], store)
+    monkeypatch.setenv("DIGEST_SESSION", "post_close")
+    evening = await generate_daily_ipo_digest([], store)
+
+    assert morning["status"] == "ACCEPTED"
+    assert morning["event_key"].endswith("_PRE_OPEN")
+    assert morning["report_path"].endswith("_pre_open.md")
+    assert morning_repeat["status"] == "ALREADY_SENT"
+    assert evening["status"] == "ACCEPTED"
+    assert evening["event_key"].endswith("_POST_CLOSE")
+    assert len(subjects) == 2
+    assert subjects[0].startswith("Pre-market IPO status digest")
+    assert subjects[1].startswith("Post-market IPO status digest")
+
+
+@pytest.mark.asyncio
+async def test_daily_digest_without_session_keeps_single_daily_key(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "enable_whatsapp", False)
+    monkeypatch.setattr(settings, "enable_telegram", False)
+    monkeypatch.setattr(settings, "enable_email", False)
+    monkeypatch.delenv("DIGEST_SESSION", raising=False)
+    result = await generate_daily_ipo_digest([], StateStore(root=str(tmp_path / "state")))
+    assert result["event_key"].startswith("IPO_DAILY_DIGEST_")
+    assert result["event_key"].count("_") == 3

@@ -2,11 +2,12 @@ name: Automated IPO Discovery & Alert Scheduler
 
 on:
   schedule:
-    # 08:30, 11:30, 14:30, and 17:30 IST weekdays; scheduled runs can be delayed by GitHub.
-    - cron: '0 3 * * 1-5'
-    - cron: '0 6 * * 1-5'
-    - cron: '0 9 * * 1-5'
-    - cron: '0 12 * * 1-5'
+    # Every day: 07:47 IST (before the 09:00 pre-open session) and 16:17 IST (after the 15:30 close).
+    # Off-the-hour minutes avoid GitHub's top-of-hour scheduling backlog. GitHub can still delay
+    # scheduled runs substantially; an external workflow_dispatch trigger is more punctual.
+    # If you change these strings, update the DIGEST_SESSION mapping in the digest step too.
+    - cron: '17 2 * * *'
+    - cron: '47 10 * * *'
   workflow_dispatch:
     inputs:
       recipient_email:
@@ -29,6 +30,14 @@ on:
         required: false
         type: boolean
         default: false
+      digest_session:
+        description: "Digest session label for a manual run"
+        required: false
+        type: choice
+        options:
+          - PRE_OPEN
+          - POST_CLOSE
+        default: PRE_OPEN
   # Run a production smoke check when scheduler, exchange adapters, or notification code changes.
   push:
     branches: [main]
@@ -175,9 +184,10 @@ jobs:
         run: python -m src.cli.main health
 
       - name: Run daily IPO status digest
-        if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.schedule == '0 12 * * 1-5')
+        if: always()
         env:
           FORCE_RESEND_DIGEST: ${{ inputs.resend_digest || 'false' }}
+          DIGEST_SESSION: ${{ github.event_name == 'workflow_dispatch' && inputs.digest_session || github.event.schedule == '17 2 * * *' && 'PRE_OPEN' || github.event.schedule == '47 10 * * *' && 'POST_CLOSE' || '' }}
           APP_ENV: production
           STATE_DIR: state-branch/state
           ENABLE_DEMO_ANALYSIS: "false"

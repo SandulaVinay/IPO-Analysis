@@ -1,18 +1,6 @@
 {
   "runs": [
     {
-      "command": "digest",
-      "detail": "records=0; channel=EMAIL",
-      "status": "ACCEPTED",
-      "timestamp": "2026-11-03T06:32:04.914230+00:00"
-    },
-    {
-      "command": "discover",
-      "detail": "restored=1; discovered=0; registry_total=1; source_coverage=PARTIAL",
-      "status": "PARTIAL",
-      "timestamp": "2026-11-03T10:32:42.804518+00:00"
-    },
-    {
       "command": "results",
       "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; errors=0",
       "status": "SUCCESS",
@@ -1199,6 +1187,18 @@
       "detail": "records=2; channel=NONE",
       "status": "REPORT_ONLY",
       "timestamp": "2026-11-22T18:51:27.517088+00:00"
+    },
+    {
+      "command": "discover",
+      "detail": "restored=3; discovered=2; registry_total=3; source_coverage=SUCCESS",
+      "status": "SUCCESS",
+      "timestamp": "2026-11-23T10:49:22.979111+00:00"
+    },
+    {
+      "command": "results",
+      "detail": "symbols_checked=5; new_filings=0; notifications_accepted=0; notification_failures=0; notification_skipped=0; documents_unavailable=0; errors=0",
+      "status": "SUCCESS",
+      "timestamp": "2026-11-23T10:49:31.986773+00:00"
     }
   ],
   "schema_version": 1

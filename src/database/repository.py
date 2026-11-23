@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models import (
     IPO,
     IPOEvent,
+    GMPLastSeen,
     IPODocument,
     DocumentVersion,
     Fact,
@@ -268,6 +269,20 @@ class IPORepository:
         self.session.add(gmp)
         await self.session.flush()
         return gmp
+
+    async def mark_gmp_seen(self, ipo_id: int, source: str, seen_at: datetime) -> GMPLastSeen:
+        """Record that a source returned an accepted GMP quote at seen_at (one row per IPO and source)."""
+        result = await self.session.execute(
+            select(GMPLastSeen).where(GMPLastSeen.ipo_id == ipo_id, GMPLastSeen.source == source)
+        )
+        row = result.scalars().first()
+        if row is None:
+            row = GMPLastSeen(ipo_id=ipo_id, source=source, last_seen_at=seen_at)
+            self.session.add(row)
+        else:
+            row.last_seen_at = seen_at
+        await self.session.flush()
+        return row
 
     async def latest_gmp_snapshot(self, ipo_id: int, source: Optional[str] = None) -> Optional[GMPSnapshot]:
         """Get the newest stored quote, optionally restricted to one source label."""

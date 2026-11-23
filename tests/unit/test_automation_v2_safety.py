@@ -450,6 +450,9 @@ async def test_discovery_persists_gmp_only_when_tracker_band_matches_official_pr
         async def add_gmp(self, **kwargs):
             self.added.append(kwargs)
 
+        async def mark_gmp_seen(self, **_kwargs):
+            return None
+
     class Scraper:
         last_source_status = "SUCCESS"
 

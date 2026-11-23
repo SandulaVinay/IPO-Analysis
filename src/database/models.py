@@ -311,6 +311,19 @@ class GMPSnapshot(Base):
     ipo = relationship("IPO", back_populates="gmp_snapshots")
 
 
+class GMPLastSeen(Base):
+    """One row per IPO and source: when the source last returned an accepted GMP
+    quote for it. Kept apart from gmp_snapshots so unchanged readings do not add
+    rows, and so no existing table needs an ALTER (create_all adds new tables)."""
+    __tablename__ = "gmp_last_seen"
+    __table_args__ = (UniqueConstraint("ipo_id", "source", name="uq_gmp_last_seen_ipo_source"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ipo_id = Column(Integer, ForeignKey("ipos.id"), nullable=False, index=True)
+    source = Column(String(100), nullable=False)
+    last_seen_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class SubscriptionSnapshot(Base):
     """Subscription progress throughout the bidding days."""
     __tablename__ = "subscription_snapshots"

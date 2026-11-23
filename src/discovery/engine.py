@@ -113,6 +113,13 @@ class DiscoveryEngine:
                         elif quote_type != "UNKNOWN" and ipo_type not in {"UNKNOWN", quote_type}:
                             logger.info("Skipping GMP for %s because the tracker issue type conflicts with official discovery.", symbol)
                         else:
+                            # Every accepted open-period quote counts as "still seen", even when
+                            # its value is unchanged and no new reading row is stored below.
+                            await self.repo.mark_gmp_seen(
+                                ipo_id=ipo.id,
+                                source=IPOWATCH_GMP_SOURCE,
+                                seen_at=_naive_utc(quote.get("captured_at")),
+                            )
                             previous = await self.repo.latest_gmp_snapshot(ipo.id, source=IPOWATCH_GMP_SOURCE)
                             gmp_value = float(quote["gmp_value"])
                             trend = "UNKNOWN"

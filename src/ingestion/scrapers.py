@@ -525,6 +525,9 @@ class PortalScraper(BaseScraper):
                 timeout=30.0,
             )
             rows = parse_ipowatch_gmp_rows(response.text)
+            for row in rows:
+                # Record the raw tracker wording so the open-status vocabulary can be checked later.
+                logger.info("IPOWATCH status for %s: %r", row.get("company_name"), row.get("status"))
             indexed: Dict[str, List[Dict[str, Any]]] = {}
             for row in rows:
                 if row.get("name_key"):

@@ -213,6 +213,22 @@ def _fresh_gmp_value(ipo: Any, now: datetime) -> Optional[float]:
     return float(latest.gmp_value)
 
 
+GMP_WARNING_LINE = "  Warning: no GMP captured while open; listing-gain status cannot be estimated. Check the IPOWATCH source."
+
+
+def _open_without_gmp(ipo: Any, now: datetime) -> bool:
+    """True when the issue is open now and has no GMP within the 48-hour window."""
+    return _ipo_timing(ipo, now.date()).startswith("Open now") and _fresh_gmp_value(ipo, now) is None
+
+
+def _gmp_action_text(count: int) -> str:
+    if count <= 0:
+        return ""
+    if count == 1:
+        return "1 open IPO has no GMP captured."
+    return f"{count} open IPOs have no GMP captured."
+
+
 def _latest_subscription(ipo: Any, now: datetime) -> Optional[float]:
     """Latest NSE subscription multiple captured within 48 hours, or None.
 
@@ -277,7 +293,8 @@ def _plain_company_summary(ipo: Any, now: datetime) -> str:
         f"  Price band: {_price_band_text(ipo)}; issue size: {size_text}\n"
         f"  Subscription: {subscription_text}\n"
         f"  GMP: {_latest_gmp(ipo, now)}\n"
-        f"  Rating: {rating_text}\n"
+        + (f"{GMP_WARNING_LINE}\n" if _open_without_gmp(ipo, now) else "")
+        + f"  Rating: {rating_text}\n"
         f"  Status: {_status_line(ipo, now)}\n"
         f"{source_text}"
     )
@@ -381,11 +398,13 @@ def _build_report(
         or date.max,
         str(getattr(item, "company_name", "")),
     ))
+    action_text = _gmp_action_text(sum(1 for ipo in selected if _open_without_gmp(ipo, now)))
     lines = [
         "# Daily Indian IPO status digest",
         "",
         f"- **Generated (IST):** {now.strftime('%d %b %Y, %I:%M %p')}",
         f"- **Latest discovery run status:** {discovery_status}",
+        *([f"- **Action:** {action_text}"] if action_text else []),
         "- **Assessment policy:** no investment recommendation is generated from incomplete or unverified issuer financials.",
         "",
         "## Upcoming / unresolved IPO records",
@@ -512,6 +531,7 @@ def _build_report(
     message = (
         f"Discovery status: {discovery_status}"
         + (" — data may be stale" if discovery_status != "SUCCESS" else "")
+        + (f"\nAction: {action_text}" if action_text else "")
         + f"\nIPO records open or upcoming: {len(selected)}\n\n"
         + ("\n\n".join(_plain_company_summary(ipo, now) for ipo in selected[:8]) if selected else "No open or upcoming IPO records in the validated registry.")
         + more

@@ -549,3 +549,84 @@ def test_card_subscription_ignores_stale_snapshot_and_formats_two_decimals():
         SimpleNamespace(overall_times=0.11, captured_at=datetime(2026, 11, 23, 3, 0)),
     ])
     assert "  Subscription: 0.11x (NSE bids, latest, not final)" in lines
+
+
+GMP_WARNING = "  Warning: no GMP captured while open; listing-gain status cannot be estimated. Check the IPOWATCH source."
+GMP_NOW = datetime(2026, 11, 22, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
+
+
+def _gmp_warning_ipo(open_date, close_date, gmp_snapshots=None):
+    return SimpleNamespace(
+        symbol="GMPTEST",
+        company_name="GMP Test Limited",
+        status="IPO_DISCOVERED",
+        verified_open_date=open_date,
+        verified_close_date=close_date,
+        announced_open_date=None,
+        announced_close_date=None,
+        min_price=100,
+        max_price=110,
+        issue_size_cr=250,
+        gmp_snapshots=gmp_snapshots or [],
+    )
+
+
+def test_open_ipo_without_gmp_gets_warning_under_gmp_line():
+    from src.reporting.daily_digest import _plain_company_summary
+
+    ipo = _gmp_warning_ipo(date(2026, 11, 19), date(2026, 11, 23))
+    lines = _plain_company_summary(ipo, GMP_NOW).splitlines()
+    gmp_index = next(i for i, line in enumerate(lines) if line.startswith("  GMP:"))
+    assert lines[gmp_index + 1] == GMP_WARNING
+
+
+def test_open_ipo_with_fresh_gmp_gets_no_warning():
+    from src.reporting.daily_digest import _plain_company_summary
+
+    ipo = _gmp_warning_ipo(
+        date(2026, 11, 19),
+        date(2026, 11, 23),
+        gmp_snapshots=[SimpleNamespace(gmp_value=35.0, source="IPOWATCH", captured_at=datetime(2026, 11, 22, 4, 0))],
+    )
+    assert "Warning: no GMP" not in _plain_company_summary(ipo, GMP_NOW)
+
+
+def test_open_ipo_with_only_stale_gmp_gets_warning():
+    from src.reporting.daily_digest import _plain_company_summary
+
+    ipo = _gmp_warning_ipo(
+        date(2026, 11, 19),
+        date(2026, 11, 23),
+        gmp_snapshots=[SimpleNamespace(gmp_value=35.0, source="IPOWATCH", captured_at=datetime(2026, 11, 18, 4, 0))],
+    )
+    assert GMP_WARNING in _plain_company_summary(ipo, GMP_NOW).splitlines()
+
+
+def test_upcoming_ipo_without_gmp_gets_no_warning():
+    from src.reporting.daily_digest import _plain_company_summary
+
+    ipo = _gmp_warning_ipo(date(2026, 11, 25), date(2026, 11, 27))
+    assert "Warning: no GMP" not in _plain_company_summary(ipo, GMP_NOW)
+
+
+def test_closed_ipo_without_gmp_gets_no_warning():
+    from src.reporting.daily_digest import _plain_company_summary
+
+    ipo = _gmp_warning_ipo(date(2026, 11, 10), date(2026, 11, 12))
+    assert "Warning: no GMP" not in _plain_company_summary(ipo, GMP_NOW)
+
+
+def test_digest_header_counts_open_ipos_without_gmp():
+    open_no_gmp = _gmp_warning_ipo(date(2026, 11, 19), date(2026, 11, 23))
+    open_with_gmp = _gmp_warning_ipo(
+        date(2026, 11, 19),
+        date(2026, 11, 23),
+        gmp_snapshots=[SimpleNamespace(gmp_value=35.0, source="IPOWATCH", captured_at=datetime(2026, 11, 22, 4, 0))],
+    )
+    report, message = _build_report([open_no_gmp], now=GMP_NOW, discovery_run={"status": "SUCCESS"})
+    assert "Action: 1 open IPO has no GMP captured." in message
+    assert "- **Action:** 1 open IPO has no GMP captured." in report
+
+    report, message = _build_report([open_with_gmp], now=GMP_NOW, discovery_run={"status": "SUCCESS"})
+    assert "Action:" not in message
+    assert "Action:" not in report

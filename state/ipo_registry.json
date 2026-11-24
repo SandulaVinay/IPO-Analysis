@@ -37,6 +37,24 @@
       "verified_open_date": "2026-11-19"
     },
     {
+      "announced_close_date": "2026-11-27",
+      "announced_open_date": "2026-11-25",
+      "company_name": "Shree Siddhivinayak Greentech Industries Limited",
+      "fresh_issue_cr": null,
+      "gmp_snapshots": [],
+      "industry": null,
+      "issue_size_cr": 93.66,
+      "issue_type": "SME",
+      "lot_size": null,
+      "max_price": 142.0,
+      "min_price": 130.0,
+      "ofs_cr": null,
+      "status": "IPO_DISCOVERED",
+      "symbol": "SHREESIDHI",
+      "verified_close_date": "2026-11-27",
+      "verified_open_date": "2026-11-25"
+    },
+    {
       "announced_close_date": "2026-11-23",
       "announced_open_date": "2026-11-19",
       "company_name": "Watrana Rentals Limited",
@@ -56,5 +74,5 @@
     }
   ],
   "schema_version": 1,
-  "updated_at": "2026-11-24T12:32:19.334581+00:00"
+  "updated_at": "2026-11-24T20:53:16.090620+00:00"
 }

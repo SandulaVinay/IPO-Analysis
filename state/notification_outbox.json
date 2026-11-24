@@ -307,8 +307,18 @@
       "status": "ACCEPTED",
       "symbol": "ALL",
       "updated_at": "2026-11-23T22:16:11.700668+00:00"
+    },
+    {
+      "channel": "TELEGRAM+EMAIL",
+      "event_date": "2026-11-24",
+      "event_key": "IPO_DAILY_DIGEST_2026-11-24_PRE_OPEN",
+      "event_type": "DAILY_IPO_DIGEST",
+      "processing_status": null,
+      "status": "ACCEPTED",
+      "symbol": "ALL",
+      "updated_at": "2026-11-24T12:32:46.764493+00:00"
     }
   ],
   "schema_version": 1,
-  "updated_at": "2026-11-23T22:16:11.700674+00:00"
+  "updated_at": "2026-11-24T12:32:46.764510+00:00"
 }

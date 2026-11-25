@@ -19,6 +19,24 @@
       "verified_open_date": "2026-11-18"
     },
     {
+      "announced_close_date": "2026-11-30",
+      "announced_open_date": "2026-11-26",
+      "company_name": "Foodlink F&B Holdings (India) Limited",
+      "fresh_issue_cr": null,
+      "gmp_snapshots": [],
+      "industry": null,
+      "issue_size_cr": null,
+      "issue_type": "MAINBOARD",
+      "lot_size": null,
+      "max_price": 191.0,
+      "min_price": 181.0,
+      "ofs_cr": null,
+      "status": "IPO_DISCOVERED",
+      "symbol": "FOODLINK",
+      "verified_close_date": "2026-11-30",
+      "verified_open_date": "2026-11-26"
+    },
+    {
       "announced_close_date": "2026-11-23",
       "announced_open_date": "2026-11-19",
       "company_name": "Mahanadi Coalfields Limited",
@@ -74,5 +92,5 @@
     }
   ],
   "schema_version": 1,
-  "updated_at": "2026-11-25T11:20:36.086250+00:00"
+  "updated_at": "2026-11-25T20:12:55.692709+00:00"
 }

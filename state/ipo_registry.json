@@ -25,7 +25,7 @@
       "fresh_issue_cr": null,
       "gmp_snapshots": [],
       "industry": null,
-      "issue_size_cr": null,
+      "issue_size_cr": 200.05,
       "issue_type": "MAINBOARD",
       "lot_size": null,
       "max_price": 191.0,
@@ -92,5 +92,5 @@
     }
   ],
   "schema_version": 1,
-  "updated_at": "2026-11-25T20:12:55.692709+00:00"
+  "updated_at": "2026-11-26T10:56:32.182341+00:00"
 }

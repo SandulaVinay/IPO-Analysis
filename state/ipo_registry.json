@@ -1,6 +1,24 @@
 {
   "ipos": [
     {
+      "announced_close_date": "2026-12-01",
+      "announced_open_date": "2026-11-27",
+      "company_name": "Airpro Technology India Limited",
+      "fresh_issue_cr": null,
+      "gmp_snapshots": [],
+      "industry": null,
+      "issue_size_cr": 35.64,
+      "issue_type": "SME",
+      "lot_size": null,
+      "max_price": 99.0,
+      "min_price": 99.0,
+      "ofs_cr": null,
+      "status": "IPO_DISCOVERED",
+      "symbol": "AIRPRO",
+      "verified_close_date": "2026-12-01",
+      "verified_open_date": "2026-11-27"
+    },
+    {
       "announced_close_date": "2026-11-20",
       "announced_open_date": "2026-11-18",
       "company_name": "Crystal Crop Protection Limited",
@@ -92,5 +110,5 @@
     }
   ],
   "schema_version": 1,
-  "updated_at": "2026-11-26T10:56:32.182341+00:00"
+  "updated_at": "2026-11-26T19:50:22.951815+00:00"
 }
